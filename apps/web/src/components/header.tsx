@@ -1,7 +1,15 @@
-import { useQueryClient } from "@tanstack/react-query";
+import { buttonVariants } from "@opentrends/ui/components/button";
+import { cn } from "@opentrends/ui/lib/utils";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
+import { Star } from "lucide-react";
 
 import { trendsPageQueryOptions } from "@/components/trends/trends-query";
+import {
+	GITHUB_REPOSITORY_URL,
+	type GitHubRepositoryStats,
+	getGithubRepositoryStats,
+} from "@/functions/get-github-repository-stats";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
 
 import LanguageToggle from "./language-toggle";
@@ -22,11 +30,40 @@ const TOPIC_IDS = [
 const linkClassName =
 	"shrink-0 rounded px-2 py-1 text-[var(--text-secondary)] whitespace-nowrap transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[status=active]:bg-[var(--accent-blue-bg)] data-[status=active]:text-[var(--accent-blue)]";
 
-export default function Header() {
+const GITHUB_STATS_STALE_MS = 10 * 60_000;
+const GITHUB_STATS_GC_MS = 60 * 60_000;
+
+function formatStars(stars: number | null | undefined): string {
+	if (typeof stars !== "number") {
+		return "--";
+	}
+
+	return new Intl.NumberFormat("en", {
+		compactDisplay: "short",
+		maximumFractionDigits: stars >= 1000 ? 1 : 0,
+		notation: "compact",
+	}).format(stars);
+}
+
+interface HeaderProps {
+	initialGithubStats: GitHubRepositoryStats;
+}
+
+export default function Header({ initialGithubStats }: HeaderProps) {
 	const t = useT();
 	const locale = useLocale();
 	const localeParam = localePathParam(locale);
 	const queryClient = useQueryClient();
+	const githubStats = useQuery({
+		queryKey: ["github-repository-stats"],
+		queryFn: () => getGithubRepositoryStats(),
+		gcTime: GITHUB_STATS_GC_MS,
+		initialData: initialGithubStats,
+		refetchOnWindowFocus: false,
+		staleTime: GITHUB_STATS_STALE_MS,
+	});
+	const githubStars = formatStars(githubStats.data?.stars);
+	const githubUrl = githubStats.data?.url ?? GITHUB_REPOSITORY_URL;
 
 	function prefetchTopic(topic: string) {
 		queryClient
@@ -55,6 +92,21 @@ export default function Header() {
 						<Logo />
 					</Link>
 					<div className="flex shrink-0 items-center gap-2">
+						<a
+							aria-label={`Open OpenTrends on GitHub, ${githubStars} stars`}
+							className={cn(
+								buttonVariants({ size: "sm", variant: "outline" }),
+								"h-7 gap-1.5 border-[var(--border-default)] bg-transparent px-2 text-[var(--text-secondary)] hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
+							)}
+							href={githubUrl}
+							rel="noopener"
+							target="_blank"
+							title="Open OpenTrends on GitHub"
+						>
+							<span>GitHub</span>
+							<Star className="size-3.5" />
+							<span className="tabular-nums">{githubStars}</span>
+						</a>
 						<LanguageToggle />
 						<ThemeToggle />
 					</div>

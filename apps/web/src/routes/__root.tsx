@@ -9,6 +9,7 @@ import {
 import { ThemeProvider } from "next-themes";
 import { lazy, Suspense } from "react";
 
+import { getGithubRepositoryStats } from "@/functions/get-github-repository-stats";
 import { HTML_LANG, useLocale } from "@/lib/i18n";
 import { buildSeo } from "@/lib/seo";
 import type { orpc } from "@/utils/orpc";
@@ -39,6 +40,7 @@ const QueryDevtools = import.meta.env.DEV
 	: null;
 
 export const Route = createRootRouteWithContext<RouterAppContext>()({
+	loader: () => getGithubRepositoryStats(),
 	head: () => {
 		const seo = buildSeo();
 		return {
@@ -67,6 +69,7 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 
 function RootDocument() {
 	const locale = useLocale();
+	const githubStats = Route.useLoaderData();
 	return (
 		<html lang={HTML_LANG[locale]} suppressHydrationWarning>
 			<head>
@@ -88,7 +91,7 @@ function RootDocument() {
 					enableSystem
 				>
 					<div className="grid h-svh grid-rows-[auto_1fr]">
-						<Header />
+						<Header initialGithubStats={githubStats} />
 						<Outlet />
 					</div>
 					<Toaster richColors />
