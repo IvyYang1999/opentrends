@@ -1,0 +1,5 @@
+<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="#155DFF">
+  <!-- Option AC: Symmetrical Shift -->
+  <path d="M4 12V4h8v4H8v4H4zM20 28h8v-8h-4v4h-4v4z"/>
+  <path d="M12 20h8v-8h-8v8z"/>
+</svg>

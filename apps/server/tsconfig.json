@@ -1,0 +1,15 @@
+{
+  "extends": "@opentrends/config/tsconfig.base.json",
+  "compilerOptions": {
+    "composite": true,
+    "outDir": "dist",
+    "paths": {
+      "@/*": ["./src/*"]
+    },
+    "jsx": "react-jsx",
+    "jsxImportSource": "hono/jsx",
+    "strictNullChecks": true
+  },
+  "include": ["src/**/*", "src/**/*.json"],
+  "exclude": ["dist", "src/**/__tests__/**"]
+}

@@ -1,0 +1,91 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" fill="none" role="img" aria-label="OpenTrends digital flame logo proposal sheet">
+  <title>OpenTrends digital flame logo proposal sheet</title>
+  <defs>
+    <path id="flame-shape" d="M401.92 9.216A65.024 65.024 0 0 1 466.578286 8.045714c291.620571 135.460571 456.704 416.768 446.537143 651.995429-4.388571 98.816-39.716571 190.317714-108.251429 257.097143-68.608 66.852571-167.131429 105.910857-291.84 106.130285a379.318857 379.318857 0 0 1-402.432-363.300571v-0.585143a320.365714 320.365714 0 0 1 164.644571-288.182857 36.571429 36.571429 0 0 1 51.2 17.188571A366.08 366.08 0 0 0 400.091429 497.078857c36.132571-47.177143 52.809143-108.105143 52.297142-175.104-0.585143-79.725714-25.6-165.229714-67.584-238.006857A55.588571 55.588571 0 0 1 401.92 9.216z"/>
+    <clipPath id="scanline-clip"><use href="#flame-shape"/></clipPath>
+    <clipPath id="glitch-clip"><use href="#flame-shape"/></clipPath>
+    <clipPath id="grid-clip"><use href="#flame-shape"/></clipPath>
+    <pattern id="pixel-grid" width="96" height="96" patternUnits="userSpaceOnUse">
+      <rect width="62" height="62" rx="10" fill="#155DFF"/>
+      <rect x="72" y="72" width="18" height="18" rx="4" fill="#78A4FF"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="800" fill="#F7F6F3"/>
+  <text x="60" y="64" fill="#37352F" font-family="Inter, -apple-system, system-ui, sans-serif" font-size="30" font-weight="700">OpenTrends digital flame logo proposals</text>
+  <text x="60" y="96" fill="#787774" font-family="Inter, -apple-system, system-ui, sans-serif" font-size="16">All options keep the original flame silhouette; no extra center icon is added.</text>
+  <g fill="#FFFFFF" stroke="#E9E9E7">
+    <rect x="60" y="132" width="320" height="286" rx="16"/>
+    <rect x="440" y="132" width="320" height="286" rx="16"/>
+    <rect x="820" y="132" width="320" height="286" rx="16"/>
+    <rect x="60" y="470" width="320" height="286" rx="16"/>
+    <rect x="440" y="470" width="320" height="286" rx="16"/>
+    <rect x="820" y="470" width="320" height="286" rx="16"/>
+  </g>
+  <g transform="translate(118 168) scale(.2)">
+    <use href="#flame-shape" fill="#155DFF"/>
+  </g>
+  <g transform="translate(498 168) scale(.2)">
+    <use href="#flame-shape" fill="#E8F4FE"/>
+    <use href="#flame-shape" fill="none" stroke="#155DFF" stroke-linejoin="round" stroke-width="54"/>
+    <use href="#flame-shape" fill="none" opacity="0.42" stroke="#155DFF" stroke-linejoin="round" stroke-width="22" transform="translate(512 512) scale(.84) translate(-512 -512)"/>
+  </g>
+  <g transform="translate(878 168) scale(.2)">
+    <use href="#flame-shape" fill="#155DFF" opacity="0.1"/>
+    <g clip-path="url(#scanline-clip)" stroke="#155DFF" stroke-linecap="round" stroke-width="34">
+      <path d="M188 116h348"/>
+      <path d="M210 192h518"/>
+      <path d="M248 268h566"/>
+      <path d="M292 344h584"/>
+      <path d="M326 420h572"/>
+      <path d="M150 496h738"/>
+      <path d="M116 572h760"/>
+      <path d="M98 648h728"/>
+      <path d="M118 724h642"/>
+      <path d="M168 800h514"/>
+      <path d="M248 876h332"/>
+    </g>
+    <use href="#flame-shape" fill="none" stroke="#155DFF" stroke-linejoin="round" stroke-width="20"/>
+  </g>
+  <g transform="translate(118 506) scale(.2)">
+    <use href="#flame-shape" fill="url(#pixel-grid)"/>
+    <use href="#flame-shape" fill="none" stroke="#155DFF" stroke-linejoin="round" stroke-width="24"/>
+  </g>
+  <g transform="translate(498 506) scale(.2)">
+    <use href="#flame-shape" fill="#155DFF"/>
+    <g clip-path="url(#glitch-clip)">
+      <rect x="300" y="128" width="246" height="42" rx="10" fill="#78A4FF"/>
+      <rect x="520" y="278" width="348" height="48" rx="10" fill="#0D4AD6"/>
+      <rect x="214" y="430" width="292" height="44" rx="10" fill="#78A4FF"/>
+      <rect x="624" y="590" width="286" height="42" rx="10" fill="#0D4AD6"/>
+      <rect x="126" y="720" width="370" height="46" rx="10" fill="#78A4FF"/>
+      <rect x="414" y="866" width="250" height="40" rx="10" fill="#0D4AD6"/>
+    </g>
+  </g>
+  <g transform="translate(878 506) scale(.2)">
+    <use href="#flame-shape" fill="#155DFF" opacity="0.08"/>
+    <g clip-path="url(#grid-clip)" stroke="#155DFF" stroke-linecap="round" stroke-width="16">
+      <path d="M180 168h650"/>
+      <path d="M156 288h746"/>
+      <path d="M128 408h790"/>
+      <path d="M94 528h818"/>
+      <path d="M100 648h760"/>
+      <path d="M140 768h640"/>
+      <path d="M220 888h440"/>
+      <path d="M212 96v846"/>
+      <path d="M332 64v902"/>
+      <path d="M452 38v928"/>
+      <path d="M572 70v896"/>
+      <path d="M692 132v784"/>
+      <path d="M812 292v478"/>
+    </g>
+    <use href="#flame-shape" fill="none" stroke="#155DFF" stroke-linejoin="round" stroke-width="24"/>
+  </g>
+  <g fill="#37352F" font-family="Inter, -apple-system, system-ui, sans-serif" font-size="16" font-weight="650">
+    <text x="80" y="390">01 Solid UI Blue</text>
+    <text x="460" y="390">02 Contour</text>
+    <text x="840" y="390">03 Scanline</text>
+    <text x="80" y="728">04 Pixel Grid</text>
+    <text x="460" y="728">05 Glitch Slices</text>
+    <text x="840" y="728">06 Grid Contour</text>
+  </g>
+</svg>

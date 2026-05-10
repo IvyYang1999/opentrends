@@ -1,0 +1,194 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "shadcn/tailwind.css";
+@source "../../../apps/**/*.{ts,tsx}";
+@source "../**/*.{ts,tsx}";
+
+@custom-variant dark (&:where(
+	.dark,
+	.dark *,
+	[data-theme="dark"],
+	[data-theme="dark"] *
+));
+
+:root,
+[data-theme="light"] {
+	--surface-app: #ffffff;
+	--surface-sidebar: #f4f4f2;
+	--surface-panel: #ffffff;
+	--surface-card: #ffffff;
+	--surface-popover: #ffffff;
+	--surface-input: #ffffff;
+	--surface-button: #ebebea;
+	--surface-overlay: rgba(0, 0, 0, 0.3);
+
+	--text-primary: #37352f;
+	--text-secondary: #787774;
+	--text-muted: #b4b4b4;
+	--text-heading: #37352f;
+	--text-inverse: #ffffff;
+
+	--border-default: #e9e9e7;
+	--border-subtle: #ececea;
+	--border-strong: #d9d9d6;
+	--border-focus: #1a4edc;
+
+	--state-hover: #ebebea;
+	--state-hover-subtle: #f0f0ef;
+	--state-selected: #e8f4fe;
+	--state-selected-strong: #d8ecfe;
+	--state-focus-ring: #1a4edc;
+	--state-disabled: #f0f0ef;
+
+	--accent-blue: #1a4edc;
+	--accent-blue-bg: rgba(21, 93, 255, 0.09);
+	--accent-blue-hover: #0d4ad6;
+	--accent-green: #38a169;
+	--accent-green-light: rgba(56, 161, 105, 0.12);
+	--accent-orange: #d9730d;
+	--accent-orange-light: rgba(217, 115, 13, 0.12);
+	--accent-red: #e53e3e;
+	--accent-red-light: rgba(229, 62, 62, 0.12);
+
+	--background: var(--surface-app);
+	--foreground: var(--text-primary);
+	--card: var(--surface-card);
+	--card-foreground: var(--text-primary);
+	--popover: var(--surface-popover);
+	--popover-foreground: var(--text-primary);
+	--primary: var(--accent-blue);
+	--primary-foreground: var(--text-inverse);
+	--secondary: #f0f0ef;
+	--secondary-foreground: var(--text-primary);
+	--muted: #f7f6f3;
+	--muted-foreground: var(--text-secondary);
+	--accent: var(--state-hover);
+	--accent-foreground: var(--text-primary);
+	--destructive: var(--accent-red);
+	--destructive-foreground: var(--text-inverse);
+	--border: var(--border-default);
+	--input: var(--border-default);
+	--ring: var(--state-focus-ring);
+	--radius: 0.5rem;
+	color-scheme: light;
+}
+
+:root.dark,
+[data-theme="dark"] {
+	--surface-app: #1f1e1b;
+	--surface-sidebar: #191814;
+	--surface-panel: #23221f;
+	--surface-card: #23221f;
+	--surface-popover: #292823;
+	--surface-input: #1f1e1b;
+	--surface-button: #34322d;
+	--surface-overlay: rgba(8, 8, 7, 0.58);
+
+	--text-primary: #e6e1d8;
+	--text-secondary: #b8b1a6;
+	--text-muted: #7f776d;
+	--text-heading: #f1ece3;
+	--text-inverse: #151411;
+
+	--border-default: #34322d;
+	--border-subtle: #2a2925;
+	--border-strong: #46433b;
+	--border-focus: #78a4ff;
+
+	--state-hover: #2d2b27;
+	--state-hover-subtle: #262520;
+	--state-selected: #1e344c;
+	--state-selected-strong: #25415f;
+	--state-focus-ring: #78a4ff;
+	--state-disabled: #292824;
+
+	--accent-blue: #78a4ff;
+	--accent-blue-bg: rgba(120, 164, 255, 0.2);
+	--accent-blue-hover: #9bbeff;
+	--accent-green: #79d89d;
+	--accent-green-light: rgba(121, 216, 157, 0.16);
+	--accent-orange: #f3a15b;
+	--accent-orange-light: rgba(243, 161, 91, 0.17);
+	--accent-red: #ff8a86;
+	--accent-red-light: rgba(255, 138, 134, 0.16);
+
+	--background: var(--surface-app);
+	--foreground: var(--text-primary);
+	--card: var(--surface-card);
+	--card-foreground: var(--text-primary);
+	--popover: var(--surface-popover);
+	--popover-foreground: var(--text-primary);
+	--primary: var(--accent-blue);
+	--primary-foreground: var(--text-inverse);
+	--secondary: #2d2b27;
+	--secondary-foreground: var(--text-primary);
+	--muted: #262520;
+	--muted-foreground: var(--text-secondary);
+	--accent: var(--state-hover);
+	--accent-foreground: var(--text-primary);
+	--destructive: var(--accent-red);
+	--destructive-foreground: var(--text-inverse);
+	--border: var(--border-default);
+	--input: var(--border-default);
+	--ring: var(--state-focus-ring);
+	color-scheme: dark;
+}
+
+@theme inline {
+	--font-sans:
+		"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+		Ubuntu, Cantarell, sans-serif;
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-primary: var(--primary);
+	--color-primary-foreground: var(--primary-foreground);
+	--color-secondary: var(--secondary);
+	--color-secondary-foreground: var(--secondary-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-accent: var(--accent);
+	--color-accent-foreground: var(--accent-foreground);
+	--color-destructive: var(--destructive);
+	--color-destructive-foreground: var(--destructive-foreground);
+	--color-border: var(--border);
+	--color-input: var(--input);
+	--color-ring: var(--ring);
+	--color-surface-app: var(--surface-app);
+	--color-surface-sidebar: var(--surface-sidebar);
+	--color-surface-panel: var(--surface-panel);
+	--color-surface-card: var(--surface-card);
+	--color-text-primary: var(--text-primary);
+	--color-text-secondary: var(--text-secondary);
+	--color-text-muted: var(--text-muted);
+	--color-accent-blue: var(--accent-blue);
+	--color-accent-blue-bg: var(--accent-blue-bg);
+	--color-accent-green: var(--accent-green);
+	--color-accent-orange: var(--accent-orange);
+	--color-accent-red: var(--accent-red);
+	--radius-sm: calc(var(--radius) - 4px);
+	--radius-md: calc(var(--radius) - 2px);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+	* {
+		@apply border-border outline-ring/50;
+	}
+	html {
+		font-size: 14px;
+		font-weight: 400;
+		-webkit-font-smoothing: antialiased;
+		-moz-osx-font-smoothing: grayscale;
+		line-height: 1.5;
+		text-rendering: optimizeLegibility;
+		@apply font-sans;
+	}
+	body {
+		@apply bg-background text-foreground font-sans;
+	}
+}

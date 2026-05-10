@@ -1,0 +1,41 @@
+name: opentrends
+
+services:
+  postgres:
+    image: postgres
+    container_name: opentrends-postgres
+    environment:
+      POSTGRES_DB: opentrends
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - opentrends_postgres_data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  rsshub:
+    image: diygod/rsshub:chromium-bundled
+    container_name: opentrends-rsshub
+    environment:
+      NODE_ENV: production
+      CACHE_TYPE: memory
+      CACHE_EXPIRE: "300"
+      ALLOW_USER_HOTLINK_TEMPLATE: "{href}"
+      PROXY_PROTOCOL: ""
+    ports:
+      - "${RSSHUB_PORT:-1200}:1200"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:1200/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  opentrends_postgres_data:

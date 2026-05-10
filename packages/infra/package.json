@@ -1,0 +1,19 @@
+{
+  "name": "@opentrends/infra",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:cloud": "alchemy dev",
+    "deploy": "alchemy deploy",
+    "destroy": "alchemy destroy"
+  },
+  "dependencies": {
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@opentrends/config": "workspace:*",
+    "alchemy": "catalog:",
+    "typescript": "catalog:"
+  }
+}

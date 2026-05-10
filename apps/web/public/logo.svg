@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 32" fill="none" role="img" aria-label="OpenTrends">
+  <title>OpenTrends</title>
+  <image href="logo-mark.svg" x="3" y="4" width="24" height="24" preserveAspectRatio="xMidYMid meet"/>
+  <text x="40" y="20.5" font-family="Inter, -apple-system, system-ui, sans-serif" font-size="16" font-weight="600" letter-spacing="-0.02em" fill="#37352F">Open<tspan font-weight="700" fill="#155DFF">Trends</tspan></text>
+</svg>

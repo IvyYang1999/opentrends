@@ -1,0 +1,62 @@
+{
+  "name": "opentrends",
+  "license": "MIT",
+  "private": true,
+  "workspaces": {
+    "packages": [
+      "apps/*",
+      "packages/*"
+    ],
+    "catalog": {
+      "dotenv": "^17.2.2",
+      "zod": "^4.1.13",
+      "typescript": "^6",
+      "@types/bun": "^1.3.4",
+      "hono": "^4.8.2",
+      "@orpc/server": "^1.13.14",
+      "@orpc/openapi": "^1.13.14",
+      "@orpc/zod": "^1.13.14",
+      "better-auth": "1.6.9",
+      "next-themes": "^0.4.6",
+      "@orpc/client": "^1.13.14",
+      "@types/react-dom": "^19.2.3",
+      "alchemy": "^0.91.2"
+    }
+  },
+  "type": "module",
+  "scripts": {
+    "dev": "bun run db:start && bun run --filter '*' dev",
+    "build": "bun run --filter '*' build",
+    "check-types": "bun run --filter '*' check-types",
+    "dev:web": "bun run --filter web dev",
+    "dev:server": "bun run --filter server dev",
+    "db:studio": "bun run --filter @opentrends/db db:studio",
+    "db:generate": "bun run --filter @opentrends/db db:generate",
+    "db:migrate": "bun run --filter @opentrends/db db:migrate",
+    "db:start": "bun run --filter @opentrends/db db:start",
+    "db:watch": "bun run --filter @opentrends/db db:watch",
+    "db:stop": "bun run --filter @opentrends/db db:stop",
+    "db:down": "bun run --filter @opentrends/db db:down",
+    "deploy": "bun run --filter @opentrends/infra deploy",
+    "destroy": "bun run --filter @opentrends/infra destroy",
+    "void": "bun --cwd apps/web void",
+    "check": "ultracite check",
+    "fix": "ultracite fix",
+    "prepare": "husky"
+  },
+  "dependencies": {
+    "@opentrends/env": "workspace:*",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.14",
+    "@cloudflare/workers-types": "^4.20251213.0",
+    "@opentrends/config": "workspace:*",
+    "@types/bun": "catalog:",
+    "husky": "latest",
+    "typescript": "catalog:",
+    "ultracite": "7.6.3"
+  },
+  "packageManager": "bun@1.3.2"
+}

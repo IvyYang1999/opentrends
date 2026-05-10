@@ -1,0 +1,1 @@
+CREATE INDEX "news_item_translation_lang_source_item_idx" ON "news_item_translation" USING btree ("lang","source_id","item_id");

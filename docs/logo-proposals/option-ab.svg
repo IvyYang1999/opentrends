@@ -1,0 +1,5 @@
+<svg viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" fill="#155DFF">
+  <!-- Option AB: Data Window -->
+  <path d="M4 4v24h24v-4H8V4H4z"/>
+  <rect x="20" y="4" width="8" height="8"/>
+</svg>

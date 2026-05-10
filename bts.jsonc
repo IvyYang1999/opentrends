@@ -1,0 +1,31 @@
+// Better-T-Stack
+//
+// Website: https://www.better-t-stack.dev/
+// Stack Builder: https://www.better-t-stack.dev/new
+// Analytics: https://www.better-t-stack.dev/analytics
+// Showcase: https://www.better-t-stack.dev/showcase
+// Sponsor: https://github.com/sponsors/AmanVarshney01
+//
+// Add new addons with: bun create better-t-stack add
+// This file is safe to delete
+
+{
+  "$schema": "https://r2.better-t-stack.dev/schema.json",
+  "version": "3.28.0",
+  "createdAt": "2026-05-05T06:29:33.060Z",
+  "reproducibleCommand": "bun create better-t-stack@latest opentrends --frontend tanstack-start --backend hono --runtime bun --database postgres --orm drizzle --api orpc --auth better-auth --payments none --addons biome fumadocs husky ultracite --examples none --db-setup docker --web-deploy cloudflare --server-deploy none --git --package-manager bun --install",
+  "database": "postgres",
+  "orm": "drizzle",
+  "backend": "hono",
+  "runtime": "bun",
+  "frontend": ["tanstack-start"],
+  "addons": ["biome", "fumadocs", "husky", "ultracite"],
+  "examples": [],
+  "auth": "better-auth",
+  "payments": "none",
+  "packageManager": "bun",
+  "dbSetup": "docker",
+  "api": "orpc",
+  "webDeploy": "cloudflare",
+  "serverDeploy": "none",
+}

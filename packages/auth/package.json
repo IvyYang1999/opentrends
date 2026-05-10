@@ -1,0 +1,24 @@
+{
+  "name": "@opentrends/auth",
+  "type": "module",
+  "exports": {
+    ".": {
+      "default": "./src/index.ts"
+    },
+    "./*": {
+      "default": "./src/*.ts"
+    }
+  },
+  "scripts": {},
+  "dependencies": {
+    "@opentrends/db": "workspace:*",
+    "@opentrends/env": "workspace:*",
+    "better-auth": "catalog:",
+    "dotenv": "catalog:",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@opentrends/config": "workspace:*",
+    "typescript": "catalog:"
+  }
+}
