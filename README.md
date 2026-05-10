@@ -142,6 +142,63 @@ docker compose up -d --build
 
 This starts Postgres, RSSHub, a migration job, the API server, and the web app.
 
+## GitHub Container Registry Images
+
+The repository includes a GitHub Actions workflow that builds both Docker images
+and publishes them to GitHub Container Registry:
+
+- `ghcr.io/nexmoe/opentrends-server`
+- `ghcr.io/nexmoe/opentrends-web`
+
+The workflow runs on pull requests, pushes to `main`, version tags such as
+`v1.0.0`, and manual dispatch. Pull requests build the images without pushing.
+Pushes to `main` publish `main`, `latest`, and `sha-<commit>` tags. Version tags
+publish the matching tag.
+
+The published web image is built with these defaults:
+
+- `VITE_SERVER_URL=http://localhost:3000`
+- `VITE_SITE_URL=http://localhost:3001`
+
+Set repository variables named `VITE_SERVER_URL` and `VITE_SITE_URL` before
+running the workflow if the image should be built for a public deployment URL.
+
+Pull the published images:
+
+```bash
+docker pull ghcr.io/nexmoe/opentrends-server:latest
+docker pull ghcr.io/nexmoe/opentrends-web:latest
+```
+
+To use the published images with Compose, override the `server`, `migrate`, and
+`web` image names in a separate file:
+
+```yaml
+# docker-compose.ghcr.yml
+services:
+  migrate:
+    image: ghcr.io/nexmoe/opentrends-server:latest
+    build: !reset null
+
+  server:
+    image: ghcr.io/nexmoe/opentrends-server:latest
+    build: !reset null
+
+  web:
+    image: ghcr.io/nexmoe/opentrends-web:latest
+    build: !reset null
+```
+
+Then start the stack with the existing Compose file plus the override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
+```
+
+This keeps the checked-in Postgres, RSSHub, migration, API, and web service
+configuration while replacing the locally built app images with GHCR images. Set
+the same environment variables documented in `.env.docker.example`.
+
 ## Deployment
 
 Void deployment configs live in `apps/server/void.json` and `apps/web/void.json`.
