@@ -15,6 +15,7 @@ import { Route as Char123LocaleChar125SourcesRouteImport } from './routes/{-$loc
 import { Route as Char123LocaleChar125LoginRouteImport } from './routes/{-$locale}/login'
 import { Route as Char123LocaleChar125DashboardRouteImport } from './routes/{-$locale}/dashboard'
 import { Route as _voidPrerenderPathsRouteImport } from './routes/[_][_]void/prerender-paths'
+import { Route as DotwellKnownApiCatalogRouteImport } from './routes/[.]well-known.api-catalog'
 import { Route as Char123LocaleChar125TrendsIndexRouteImport } from './routes/{-$locale}/trends.index'
 import { Route as Char123LocaleChar125TrendsTopicRouteImport } from './routes/{-$locale}/trends.$topic'
 import { Route as Char123LocaleChar125SkillsOpentrendsRouteImport } from './routes/{-$locale}/skills.opentrends'
@@ -54,6 +55,11 @@ const _voidPrerenderPathsRoute = _voidPrerenderPathsRouteImport.update({
   path: '/__void/prerender-paths',
   getParentRoute: () => rootRouteImport,
 } as any)
+const DotwellKnownApiCatalogRoute = DotwellKnownApiCatalogRouteImport.update({
+  id: '/.well-known/api-catalog',
+  path: '/.well-known/api-catalog',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const Char123LocaleChar125TrendsIndexRoute =
   Char123LocaleChar125TrendsIndexRouteImport.update({
     id: '/',
@@ -74,6 +80,7 @@ const Char123LocaleChar125SkillsOpentrendsRoute =
   } as any)
 
 export interface FileRoutesByFullPath {
+  '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/__void/prerender-paths': typeof _voidPrerenderPathsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
@@ -85,6 +92,7 @@ export interface FileRoutesByFullPath {
   '/{-$locale}/trends/': typeof Char123LocaleChar125TrendsIndexRoute
 }
 export interface FileRoutesByTo {
+  '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/__void/prerender-paths': typeof _voidPrerenderPathsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
@@ -96,6 +104,7 @@ export interface FileRoutesByTo {
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
+  '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/__void/prerender-paths': typeof _voidPrerenderPathsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
@@ -109,6 +118,7 @@ export interface FileRoutesById {
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
+    | '/.well-known/api-catalog'
     | '/__void/prerender-paths'
     | '/{-$locale}/dashboard'
     | '/{-$locale}/login'
@@ -120,6 +130,7 @@ export interface FileRouteTypes {
     | '/{-$locale}/trends/'
   fileRoutesByTo: FileRoutesByTo
   to:
+    | '/.well-known/api-catalog'
     | '/__void/prerender-paths'
     | '/{-$locale}/dashboard'
     | '/{-$locale}/login'
@@ -130,6 +141,7 @@ export interface FileRouteTypes {
     | '/{-$locale}/trends'
   id:
     | '__root__'
+    | '/.well-known/api-catalog'
     | '/__void/prerender-paths'
     | '/{-$locale}/dashboard'
     | '/{-$locale}/login'
@@ -142,6 +154,7 @@ export interface FileRouteTypes {
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
+  DotwellKnownApiCatalogRoute: typeof DotwellKnownApiCatalogRoute
   _voidPrerenderPathsRoute: typeof _voidPrerenderPathsRoute
   Char123LocaleChar125DashboardRoute: typeof Char123LocaleChar125DashboardRoute
   Char123LocaleChar125LoginRoute: typeof Char123LocaleChar125LoginRoute
@@ -195,6 +208,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof _voidPrerenderPathsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/.well-known/api-catalog': {
+      id: '/.well-known/api-catalog'
+      path: '/.well-known/api-catalog'
+      fullPath: '/.well-known/api-catalog'
+      preLoaderRoute: typeof DotwellKnownApiCatalogRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/{-$locale}/trends/': {
       id: '/{-$locale}/trends/'
       path: '/'
@@ -236,6 +256,7 @@ const Char123LocaleChar125TrendsRouteWithChildren =
   )
 
 const rootRouteChildren: RootRouteChildren = {
+  DotwellKnownApiCatalogRoute: DotwellKnownApiCatalogRoute,
   _voidPrerenderPathsRoute: _voidPrerenderPathsRoute,
   Char123LocaleChar125DashboardRoute: Char123LocaleChar125DashboardRoute,
   Char123LocaleChar125LoginRoute: Char123LocaleChar125LoginRoute,

@@ -1,5 +1,7 @@
 # OpenTrends
 
+[简体中文](README.zh-CN.md)
+
 OpenTrends is an open-source AI trend-reading app for following first-party
 information across technology, AI, product, finance, crypto, Chinese web
 platforms, and developer communities.

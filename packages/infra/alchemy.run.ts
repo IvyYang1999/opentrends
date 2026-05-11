@@ -2,6 +2,8 @@ import alchemy from "alchemy";
 import { TanStackStart } from "alchemy/cloudflare";
 import { config } from "dotenv";
 
+import { CloudflareZoneSetting } from "./cloudflare-zone-setting";
+
 config({ path: "./.env" });
 config({ path: "../../apps/web/.env" });
 config({ path: "../../apps/server/.env" });
@@ -29,6 +31,18 @@ export const web = await TanStackStart("web", {
 	},
 });
 
+export const markdownForAgents = await CloudflareZoneSetting(
+	"markdown-for-agents",
+	{
+		hostname: "opentrends.io",
+		settingId: "content_converter",
+		value: "on",
+	}
+);
+
 console.log(`Web    -> ${web.url}`);
+console.log(
+	`Markdown for Agents -> ${markdownForAgents.zoneName}/${markdownForAgents.settingId}:${markdownForAgents.value}`
+);
 
 await app.finalize();
