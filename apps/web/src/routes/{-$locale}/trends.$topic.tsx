@@ -23,8 +23,6 @@ const TOPIC_TITLE_KEYS = {
 	hardware: "topic.hardware",
 	biotech: "topic.biotech",
 	programming: "topic.programming",
-	tech: "topic.tech",
-	indie: "topic.indie",
 	cn: "topic.cn",
 } as const satisfies Record<string, TranslationKey>;
 

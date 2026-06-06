@@ -22,8 +22,6 @@ const TOPIC_IDS = [
 	"hardware",
 	"biotech",
 	"programming",
-	"tech",
-	"indie",
 	"cn",
 ] as const;
 
@@ -75,7 +73,7 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 
 	const links = [
 		{ to: "/{-$locale}/trends", label: t("nav.trends") },
-		{ to: "/{-$locale}/sources", label: t("nav.sources") },
+		{ to: "/{-$locale}/events", label: t("nav.events") },
 		{ to: "/{-$locale}/skills/opentrends", label: t("nav.skills") },
 	] as const;
 

@@ -20,6 +20,7 @@ import {
 	TooltipTrigger,
 } from "@opentrends/ui/components/tooltip";
 import { useQuery } from "@tanstack/react-query";
+import { Link } from "@tanstack/react-router";
 import {
 	ArrowUpRight,
 	CircleAlert,
@@ -29,7 +30,13 @@ import {
 } from "lucide-react";
 import { useCallback, useRef, useState } from "react";
 
-import { type Locale, type Translator, useLocale, useT } from "@/lib/i18n";
+import {
+	type Locale,
+	localePathParam,
+	type Translator,
+	useLocale,
+	useT,
+} from "@/lib/i18n";
 
 import {
 	type DisplaySettings,
@@ -66,6 +73,7 @@ function proxiedImageUrl(imageUrl: string): string {
 
 export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	const locale = useLocale();
+	const localeParam = localePathParam(locale);
 	const t = useT();
 	const [displayPage, setDisplayPage] = useState(page);
 	const translationRequestKeyRef = useRef<string | null>(null);
@@ -117,7 +125,7 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 		}))
 	);
 	return (
-		<ScrollArea className="h-full min-w-0 overflow-hidden bg-[var(--surface-app)] text-[var(--text-primary)]">
+		<ScrollArea className="min-w-0 flex-1 overflow-hidden bg-[var(--surface-app)] text-[var(--text-primary)]">
 			<div ref={translationRef}>
 				<TrendsSummary
 					key={displayPage.id}
@@ -133,6 +141,14 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 						</span>
 					) : null}
 					<div className="flex items-center gap-2">
+						<Link
+							className="rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
+							params={{ locale: localeParam }}
+							search={{ topic: displayPage.id }}
+							to="/{-$locale}/events"
+						>
+							Events
+						</Link>
 						<LayoutSettingsMenuContent
 							settings={settings}
 							storeOptions={displaySettingsStore}

@@ -7,11 +7,7 @@ const repoRoot = new URL("../../..", import.meta.url);
 const runtimeEnv: Record<string, string | undefined> = {};
 
 config({
-	path: [
-		fileURLToPath(new URL(".env", repoRoot)),
-		fileURLToPath(new URL("apps/server/.env", repoRoot)),
-		fileURLToPath(new URL("apps/server/.env.local", repoRoot)),
-	],
+	path: [fileURLToPath(new URL("apps/server/.env.local", repoRoot))],
 	override: true,
 	processEnv: runtimeEnv,
 	quiet: true,
@@ -43,6 +39,11 @@ export const env = createEnv({
 		LLM_API_KEY: z.string().min(1).optional(),
 		LLM_BASE_URL: z.url().default("https://dashboard.thorbase.com/v1"),
 		LLM_MODEL: z.string().min(1).default("deepseek/deepseek-v4-pro"),
+		SILICONFLOW_API_KEY: z.string().min(1).optional(),
+		SILICONFLOW_EMBEDDING_MODEL: z
+			.string()
+			.min(1)
+			.default("Qwen/Qwen3-VL-Embedding-8B"),
 		TRENDS_REFRESH_SCHEDULER: z
 			.enum(["auto", "disabled", "enabled"])
 			.default("auto"),

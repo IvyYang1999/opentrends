@@ -11,6 +11,7 @@ import {
 } from "../config/refresh-policies";
 import { getSourcePreset } from "../config/sources";
 import type { SourceId, SourceSnapshot } from "../types";
+import { dispatchEventMergeJob } from "./event-merge-jobs";
 
 export type RefreshOutcome =
 	| { kind: "ok"; snapshot: SourceSnapshot }
@@ -46,13 +47,22 @@ export async function refreshSource(
 			params: "params" in preset ? preset.params : undefined,
 		});
 		const fetchedAt = Date.now();
-		await writeSnapshotSuccess({
+		const delta = await writeSnapshotSuccess({
 			sourceId,
 			items,
 			fetchedAt,
 			softTtlMs: policy.softTtlMs,
 			staleTtlMs: policy.staleTtlMs,
 		});
+		const itemsToProcess = [...delta.newItems, ...delta.changedItems];
+		await dispatchEventMergeJob({ sourceId, items: itemsToProcess }).catch(
+			(error) => {
+				console.warn(
+					"[event-merge] dispatch failed after source refresh",
+					error
+				);
+			}
+		);
 		return {
 			kind: "ok",
 			snapshot: {

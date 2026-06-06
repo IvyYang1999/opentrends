@@ -62,8 +62,8 @@ bun install
 Create local env files from the examples:
 
 ```bash
-cp apps/server/.env.example apps/server/.env
-cp apps/web/.env.example apps/web/.env
+cp apps/server/.env.example apps/server/.env.local
+cp apps/web/.env.example apps/web/.env.local
 ```
 
 Start Postgres and run the app:

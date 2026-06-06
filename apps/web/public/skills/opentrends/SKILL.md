@@ -1,6 +1,6 @@
 ---
 name: opentrends
-description: Read structured trend data from the public OpenTrends API. Use when users ask about OpenTrends, current trends, AI trends, tech trends, programming trends, hardware trends, biotech trends, embodied AI trends, China tech trends, or indie trends.
+description: Read structured trend data from the public OpenTrends API. Use when users ask about OpenTrends, current trends, AI trends, programming trends, hardware trends, biotech trends, embodied AI trends, or China tech trends.
 ---
 
 # OpenTrends API Reader
@@ -37,13 +37,11 @@ Supported topics:
 
 ```txt
 ai
-tech
 programming
 hardware
 biotech
 embodied
 cn
-indie
 ```
 
 Useful query parameters:

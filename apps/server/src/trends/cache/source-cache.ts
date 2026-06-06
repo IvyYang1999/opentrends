@@ -23,6 +23,13 @@ export interface SourceSnapshotSummary {
 	status: SourceStatus;
 }
 
+export interface SourceRefreshDelta {
+	changedItems: Array<{ itemId: string; sourceId: SourceId }>;
+	newItems: Array<{ itemId: string; sourceId: SourceId }>;
+	sourceId: SourceId;
+	unchangedCount: number;
+}
+
 interface SourceRow {
 	errorCount: number;
 	expiresAt: Date | null;
@@ -300,11 +307,66 @@ export async function writeSnapshotSuccess(params: {
 	fetchedAt: number;
 	softTtlMs: number;
 	staleTtlMs: number;
-}): Promise<void> {
+}): Promise<SourceRefreshDelta> {
 	const { sourceId, items, fetchedAt, softTtlMs, staleTtlMs } = params;
 	const fetchedAtDate = new Date(fetchedAt);
 	const expiresAt = new Date(fetchedAt + softTtlMs);
 	const staleUntil = new Date(fetchedAt + staleTtlMs);
+	const itemRows = items.map((item, index) => ({
+		sourceId,
+		itemId: item.id,
+		generation: 0,
+		url: item.url,
+		title: item.title,
+		description: item.description ?? null,
+		imageUrl: item.imageUrl ?? null,
+		rank: item.rank ?? index + 1,
+		publishedAt:
+			item.publishedAt === undefined ? null : new Date(item.publishedAt),
+		fetchedAt: new Date(item.fetchedAt),
+		lastSeenAt: fetchedAtDate,
+		contentHash: makeContentHash(item),
+		hotValue: item.hotValue ?? null,
+		original: item.original ?? null,
+	}));
+
+	const existingItemRows =
+		itemRows.length === 0
+			? []
+			: await db
+					.select({
+						itemId: sourceItem.itemId,
+						contentHash: sourceItem.contentHash,
+					})
+					.from(sourceItem)
+					.where(
+						and(
+							eq(sourceItem.sourceId, sourceId),
+							inArray(
+								sourceItem.itemId,
+								itemRows.map((item) => item.itemId)
+							)
+						)
+					);
+	const existingHashes = new Map(
+		existingItemRows.map((row) => [row.itemId, row.contentHash])
+	);
+	const delta: SourceRefreshDelta = {
+		sourceId,
+		newItems: [],
+		changedItems: [],
+		unchangedCount: 0,
+	};
+	for (const item of itemRows) {
+		const previousHash = existingHashes.get(item.itemId);
+		if (previousHash === undefined) {
+			delta.newItems.push({ sourceId, itemId: item.itemId });
+		} else if (previousHash === item.contentHash) {
+			delta.unchangedCount += 1;
+		} else {
+			delta.changedItems.push({ sourceId, itemId: item.itemId });
+		}
+	}
 
 	await db.transaction(async (tx) => {
 		const existing = await tx
@@ -356,22 +418,9 @@ export async function writeSnapshotSuccess(params: {
 		await tx
 			.insert(sourceItem)
 			.values(
-				items.map((item, index) => ({
-					sourceId,
-					itemId: item.id,
+				itemRows.map((item) => ({
+					...item,
 					generation,
-					url: item.url,
-					title: item.title,
-					description: item.description ?? null,
-					imageUrl: item.imageUrl ?? null,
-					rank: item.rank ?? index + 1,
-					publishedAt:
-						item.publishedAt === undefined ? null : new Date(item.publishedAt),
-					fetchedAt: new Date(item.fetchedAt),
-					lastSeenAt: fetchedAtDate,
-					contentHash: makeContentHash(item),
-					hotValue: item.hotValue ?? null,
-					original: item.original ?? null,
 				}))
 			)
 			.onConflictDoUpdate({
@@ -387,11 +436,14 @@ export async function writeSnapshotSuccess(params: {
 					fetchedAt: sql`excluded.fetched_at`,
 					lastSeenAt: sql`excluded.last_seen_at`,
 					contentHash: sql`excluded.content_hash`,
+					contentStatus: sql`CASE WHEN ${sourceItem.contentHash} IS DISTINCT FROM excluded.content_hash THEN 'pending' ELSE ${sourceItem.contentStatus} END`,
+					contentError: sql`CASE WHEN ${sourceItem.contentHash} IS DISTINCT FROM excluded.content_hash THEN NULL ELSE ${sourceItem.contentError} END`,
 					hotValue: sql`excluded.hot_value`,
 					original: sql`excluded.original`,
 				},
 			});
 	});
+	return delta;
 }
 
 export async function writeSnapshotError(params: {

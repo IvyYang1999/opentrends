@@ -19,7 +19,7 @@ interface SourcesPageProps {
 export function SourcesPage({ data }: SourcesPageProps) {
 	const t = useT();
 	return (
-		<ScrollArea className="h-full min-w-0 overflow-hidden bg-[var(--surface-app)] text-[var(--text-primary)]">
+		<ScrollArea className="min-w-0 flex-1 overflow-hidden bg-[var(--surface-app)] text-[var(--text-primary)]">
 			<div className="flex flex-col">
 				<SummaryBar
 					generatedAt={data.generatedAt}
@@ -52,6 +52,16 @@ function SummaryBar({
 			label: t("sources.totalsTotal"),
 			value: totals.sources,
 			color: "var(--text-secondary)",
+		},
+		{
+			label: t("sources.events"),
+			value: sources.filter((source) => source.eventEligible).length,
+			color: "var(--accent-blue)",
+		},
+		{
+			label: t("sources.totalsEventItems"),
+			value: totals.eventItems,
+			color: "var(--accent-green)",
 		},
 		{
 			label: t("sources.totalsOk"),
@@ -135,6 +145,9 @@ function SourceTable({
 					<th className={`${COL_HEAD} w-[7%] text-right`}>
 						{t("sources.colItems")}
 					</th>
+					<th className={`${COL_HEAD} w-[8%] text-right`}>
+						{t("sources.colEventItems")}
+					</th>
 					<th className={`${COL_HEAD} w-[12%]`}>{t("sources.colStatus")}</th>
 					<th className={`${COL_HEAD} w-[8%]`}>{t("sources.colLastFetch")}</th>
 					<th className={`${COL_HEAD} w-[12%]`}>{t("sources.colTopics")}</th>
@@ -202,6 +215,9 @@ function SourceMobileCard({
 				</div>
 				<StatusBadge errorCount={entry.errorCount} status={entry.status} />
 			</div>
+			<div className="mt-2">
+				<EventEligibilityBadge eligible={entry.eventEligible} t={t} />
+			</div>
 			<div className="mt-3 grid grid-cols-2 gap-2 text-[11px] text-[var(--text-secondary)]">
 				<SourceMobileMeta label={t("sources.colProvider")}>
 					<span className="font-mono uppercase tracking-wider">
@@ -210,6 +226,9 @@ function SourceMobileCard({
 				</SourceMobileMeta>
 				<SourceMobileMeta label={t("sources.colItems")}>
 					<span className="font-mono tabular-nums">{entry.itemCount}</span>
+				</SourceMobileMeta>
+				<SourceMobileMeta label={t("sources.colEventItems")}>
+					<EventItemCount value={entry.eventItemCount} />
 				</SourceMobileMeta>
 				<SourceMobileMeta label={t("sources.colRefresh")}>
 					{entry.refresh}
@@ -281,6 +300,7 @@ function SourceRow({ entry, t }: { entry: SourceStatusEntry; t: Translator }) {
 							<span className="font-medium text-[var(--text-primary)]">
 								{entry.name}
 							</span>
+							<EventEligibilityBadge eligible={entry.eventEligible} t={t} />
 							{entry.homeUrl ? (
 								<a
 									aria-label={t("sources.openLabel", { name: entry.name })}
@@ -333,6 +353,11 @@ function SourceRow({ entry, t }: { entry: SourceStatusEntry; t: Translator }) {
 			>
 				{entry.itemCount}
 			</td>
+			<td
+				className={`${COL_CELL} border-[var(--border-subtle)] border-t text-right`}
+			>
+				<EventItemCount value={entry.eventItemCount} />
+			</td>
 			<td className={`${COL_CELL} border-[var(--border-subtle)] border-t`}>
 				<StatusBadge errorCount={entry.errorCount} status={entry.status} />
 			</td>
@@ -359,6 +384,40 @@ function SourceRow({ entry, t }: { entry: SourceStatusEntry; t: Translator }) {
 				</div>
 			</td>
 		</tr>
+	);
+}
+
+function EventItemCount({ value }: { value: number }) {
+	return (
+		<span
+			className={
+				value > 0
+					? "font-mono text-[var(--accent-blue)] tabular-nums"
+					: "font-mono text-[var(--text-muted)] tabular-nums"
+			}
+		>
+			{value}
+		</span>
+	);
+}
+
+function EventEligibilityBadge({
+	eligible,
+	t,
+}: {
+	eligible: boolean;
+	t: Translator;
+}) {
+	return (
+		<span
+			className={
+				eligible
+					? "inline-flex shrink-0 items-center rounded border border-[var(--accent-blue)] bg-[var(--accent-blue-bg)] px-1.5 py-0.5 text-[10px] text-[var(--accent-blue)]"
+					: "inline-flex shrink-0 items-center rounded border border-[var(--border-subtle)] bg-[var(--surface-sidebar)] px-1.5 py-0.5 text-[10px] text-[var(--text-muted)]"
+			}
+		>
+			{eligible ? t("sources.events") : t("sources.noEvents")}
+		</span>
 	);
 }
 

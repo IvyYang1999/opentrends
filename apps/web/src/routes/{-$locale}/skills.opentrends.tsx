@@ -11,21 +11,22 @@ const INSTALL_PROMPT =
 
 const COPY_RESET_MS = 1800;
 
-const STRINGS: Record<
-	Locale,
-	{
-		copied: string;
-		copyPrompt: string;
-		examples: string;
-		examplesList: string[];
-		heroBody: string;
-		heroTitle: string;
-		installBody: string;
-		installTitle: string;
-		seoDescription: string;
-		seoTitle: string;
-	}
-> = {
+interface SkillPageStrings {
+	copied: string;
+	copyPrompt: string;
+	examples: string;
+	examplesList: string[];
+	heroBody: string;
+	heroTitle: string;
+	installBody: string;
+	installTitle: string;
+	seoDescription: string;
+	seoTitle: string;
+}
+
+const STRINGS: Partial<Record<Locale, SkillPageStrings>> & {
+	en: SkillPageStrings;
+} = {
 	en: {
 		copied: "Copied",
 		copyPrompt: "Copy prompt",
@@ -108,11 +109,15 @@ const STRINGS: Record<
 	},
 };
 
+function getSkillPageStrings(locale: Locale): SkillPageStrings {
+	return STRINGS[locale] ?? STRINGS.en;
+}
+
 export const Route = createFileRoute("/{-$locale}/skills/opentrends")({
 	component: OpenTrendsSkillRoute,
 	head: ({ params }) => {
 		const locale = resolveLocale(params.locale);
-		const strings = STRINGS[locale];
+		const strings = getSkillPageStrings(locale);
 		return buildSeo({
 			title: strings.seoTitle,
 			description: strings.seoDescription,
@@ -126,7 +131,7 @@ export const Route = createFileRoute("/{-$locale}/skills/opentrends")({
 function OpenTrendsSkillRoute() {
 	const params = Route.useParams();
 	const locale = resolveLocale(params.locale);
-	const strings = STRINGS[locale];
+	const strings = getSkillPageStrings(locale);
 	const [copied, setCopied] = useState(false);
 
 	function copyPrompt() {
@@ -136,8 +141,8 @@ function OpenTrendsSkillRoute() {
 	}
 
 	return (
-		<ScrollArea className="h-full min-w-0 bg-[var(--surface-sidebar)] text-[var(--text-primary)]">
-			<div className="flex min-h-full items-center justify-center p-6 sm:p-12">
+		<ScrollArea className="min-w-0 flex-1 bg-[var(--surface-sidebar)] text-[var(--text-primary)]">
+			<div className="flex flex-1 items-center justify-center p-6 sm:p-12">
 				<div className="w-full max-w-2xl space-y-12">
 					{/* Hero Section */}
 					<header className="space-y-4">

@@ -9,11 +9,15 @@ import {
 import { ThemeProvider } from "next-themes";
 import { lazy, Suspense } from "react";
 
-import { getGithubRepositoryStats } from "@/functions/get-github-repository-stats";
+import {
+	GITHUB_REPOSITORY_URL,
+	type GitHubRepositoryStats,
+} from "@/functions/get-github-repository-stats";
 import { HTML_LANG, useLocale } from "@/lib/i18n";
 import { buildSeo } from "@/lib/seo";
 import type { orpc } from "@/utils/orpc";
 
+import Footer from "../components/footer";
 import Header from "../components/header";
 
 import appCss from "../index.css?url";
@@ -40,7 +44,10 @@ const QueryDevtools = import.meta.env.DEV
 	: null;
 
 export const Route = createRootRouteWithContext<RouterAppContext>()({
-	loader: () => getGithubRepositoryStats(),
+	loader: (): GitHubRepositoryStats => ({
+		stars: null,
+		url: GITHUB_REPOSITORY_URL,
+	}),
 	head: () => {
 		const seo = buildSeo();
 		return {
@@ -90,9 +97,12 @@ function RootDocument() {
 					disableTransitionOnChange
 					enableSystem
 				>
-					<div className="grid h-svh grid-rows-[auto_1fr]">
+					<div className="flex min-h-svh flex-col">
 						<Header initialGithubStats={githubStats} />
-						<Outlet />
+						<main className="flex min-w-0 flex-1 flex-col">
+							<Outlet />
+						</main>
+						<Footer />
 					</div>
 					<Toaster richColors />
 				</ThemeProvider>

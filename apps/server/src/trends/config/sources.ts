@@ -1,5 +1,55 @@
 import type { RefreshPolicyId, SourceId, SourcePreset } from "../types";
 
+const EVENT_ELIGIBLE_SOURCE_ID_LIST = [
+	"9to5mac",
+	"36kr-news",
+	"apnews-technology",
+	"appleinsider",
+	"ars-technica",
+	"big-think",
+	"cult-of-mac",
+	"engadget",
+	"engadget-robotics",
+	"freebuf",
+	"github-blog",
+	"gizmodo",
+	"ifanr",
+	"ieee-biomedical",
+	"ieee-robotics",
+	"infoq",
+	"liliputing",
+	"macrumors",
+	"mit-tech-review",
+	"mit-tech-review-ai",
+	"mit-tech-review-bio",
+	"new-atlas-robotics",
+	"neuroscience-news",
+	"quanta-magazine",
+	"robot-report",
+	"securityonline",
+	"singularity-hub",
+	"solidot",
+	"sspai",
+	"stackoverflow-blog",
+	"techcrunch",
+	"techcrunch-ai",
+	"techcrunch-robotics",
+	"techxplore-robotics",
+	"the-decoder",
+	"the-register",
+	"the-verge",
+	"the-verge-ai",
+	"the-verge-gadgets",
+	"toms-hardware",
+	"venturebeat-ai",
+	"wired",
+	"wired-science",
+] as const;
+
+const EVENT_ELIGIBLE_SOURCE_IDS = new Set<string>(
+	EVENT_ELIGIBLE_SOURCE_ID_LIST
+);
+
 function newsnowCnSource(
 	name: string,
 	homeUrl: string,
@@ -1846,5 +1896,19 @@ export const sourceNotes = {
 } as const satisfies Record<SourcePresetId, string>;
 
 export function getSourcePreset(id: SourceId): SourcePreset | undefined {
-	return (sourcePresets as Record<string, SourcePreset>)[id];
+	const preset = (sourcePresets as Record<string, SourcePreset>)[id];
+	if (!preset) {
+		return;
+	}
+	return isEventEligibleSource(id)
+		? { ...preset, eventEligible: true }
+		: preset;
+}
+
+export function isEventEligibleSource(id: SourceId | string): boolean {
+	return EVENT_ELIGIBLE_SOURCE_IDS.has(id);
+}
+
+export function getEventEligibleSourceIds(): string[] {
+	return [...EVENT_ELIGIBLE_SOURCE_ID_LIST];
 }

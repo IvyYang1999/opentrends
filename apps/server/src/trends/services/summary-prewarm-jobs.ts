@@ -4,10 +4,8 @@ import type { TranslationLanguage } from "./translate-news-items";
 
 const VOID_QUEUES_MODULE = ["void", "queues"].join("/");
 const SUMMARY_PREWARM_QUEUE_NAME = "summary-prewarm";
-const importRuntimeModule = new Function(
-	"specifier",
-	"return import(specifier)"
-) as (specifier: string) => Promise<unknown>;
+const importRuntimeModule = (specifier: string): Promise<unknown> =>
+	import(specifier);
 
 export interface SummaryPrewarmMessage {
 	lang: TranslationLanguage;

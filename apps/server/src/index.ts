@@ -10,10 +10,15 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 
+import { eventsRoutes } from "./routes/events";
 import { imageRoutes } from "./routes/images";
 import { skillsRoutes } from "./routes/skills";
 import { sourcesRoutes } from "./routes/sources";
 import { trendsRoutes } from "./routes/trends";
+import {
+	runTrendsRefreshTick,
+	scheduleTrendsRefreshTick,
+} from "./trends/services/refresh-scheduler";
 
 const app = new Hono();
 const PRODUCTION_WEB_ORIGINS = new Set([
@@ -31,6 +36,14 @@ app.use(
 		credentials: true,
 	})
 );
+
+interface ExecutionContextLike {
+	waitUntil?: (promise: Promise<unknown>) => void;
+}
+
+interface RequestContextWithExecution {
+	executionCtx?: ExecutionContextLike;
+}
 
 function resolveAllowedOrigin(origin: string | undefined): string | null {
 	if (!origin) {
@@ -67,7 +80,60 @@ app.on(["POST", "GET"], "/api/auth/*", async (c) => {
 	return getAuth().handler(c.req.raw);
 });
 
+function isBunRuntime(): boolean {
+	return typeof (globalThis as { Bun?: unknown }).Bun !== "undefined";
+}
+
+function isTrendsRefreshSchedulerEnabled(): boolean {
+	if (env.TRENDS_REFRESH_SCHEDULER === "enabled") {
+		return true;
+	}
+	if (env.TRENDS_REFRESH_SCHEDULER === "disabled") {
+		return false;
+	}
+	return env.NODE_ENV !== "test";
+}
+
+function getExecutionWaitUntil(c: RequestContextWithExecution) {
+	const waitUntil = c.executionCtx?.waitUntil;
+	return typeof waitUntil === "function"
+		? (promise: Promise<unknown>) => waitUntil.call(c.executionCtx, promise)
+		: undefined;
+}
+
+app.post("/__void/scheduled", async (c) => {
+	const runtimeEnv = c.env as
+		| Record<string, string | undefined>
+		| null
+		| undefined;
+	const expectedToken =
+		runtimeEnv?.__VOID_PROXY_TOKEN ?? runtimeEnv?.CRON_SECRET;
+	const token = c.req.header("x-void-internal");
+	if (expectedToken && token !== expectedToken) {
+		return c.json({ error: "unauthorized" }, 401);
+	}
+
+	const body = (await c.req.json().catch(() => ({}))) as {
+		cron?: string;
+		scheduledTime?: number;
+	};
+	if (body.cron && body.cron !== "*/5 * * * *") {
+		return c.json({ error: "unknown cron" }, 404);
+	}
+
+	await runTrendsRefreshTick(body.scheduledTime);
+	return c.json({ ok: true });
+});
+
+app.use("/*", async (c, next) => {
+	if (!isBunRuntime() && isTrendsRefreshSchedulerEnabled()) {
+		scheduleTrendsRefreshTick(getExecutionWaitUntil(c));
+	}
+	await next();
+});
+
 app.route("/api/image", imageRoutes);
+app.route("/api/events", eventsRoutes);
 app.route("/api/skills", skillsRoutes);
 app.route("/api/trends", trendsRoutes);
 app.route("/api/sources", sourcesRoutes);
@@ -120,16 +186,10 @@ app.use("/*", async (c, next) => {
 app.get("/", (c) => c.text("OK"));
 
 function shouldStartTrendsRefreshScheduler(): boolean {
-	if (typeof (globalThis as { Bun?: unknown }).Bun === "undefined") {
+	if (!isBunRuntime()) {
 		return false;
 	}
-	if (env.TRENDS_REFRESH_SCHEDULER === "enabled") {
-		return true;
-	}
-	if (env.TRENDS_REFRESH_SCHEDULER === "disabled") {
-		return false;
-	}
-	return env.NODE_ENV === "production";
+	return isTrendsRefreshSchedulerEnabled();
 }
 
 if (shouldStartTrendsRefreshScheduler()) {

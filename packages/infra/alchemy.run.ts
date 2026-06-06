@@ -4,9 +4,9 @@ import { config } from "dotenv";
 
 import { CloudflareZoneSetting } from "./cloudflare-zone-setting";
 
-config({ path: "./.env" });
-config({ path: "../../apps/web/.env" });
-config({ path: "../../apps/server/.env" });
+config({ path: "./.env.local" });
+config({ path: "../../apps/web/.env.local" });
+config({ path: "../../apps/server/.env.local" });
 
 const app = await alchemy("opentrends");
 

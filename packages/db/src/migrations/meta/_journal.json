@@ -64,6 +64,20 @@
       "when": 1778144246307,
       "tag": "0008_cleanup_source_model",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1778490000000,
+      "tag": "0009_event_feed",
+      "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1778563900000,
+      "tag": "0010_event_topic_links",
+      "breakpoints": true
     }
   ]
 }

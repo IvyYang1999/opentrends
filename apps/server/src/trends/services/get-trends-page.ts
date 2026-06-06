@@ -1,5 +1,9 @@
 import { type CacheEnvelope, hotCache } from "../cache/hot-cache";
-import { readSnapshot, readSnapshots } from "../cache/source-cache";
+import {
+	readSnapshot,
+	readSnapshotSummaries,
+	readSnapshots,
+} from "../cache/source-cache";
 import { getSourcePreset } from "../config/sources";
 import { getTopicPreset } from "../config/topics";
 import type {
@@ -25,9 +29,10 @@ export type TrendsPageCacheStatus =
 	| "stale";
 
 const TRENDS_PAGE_CACHE_FRESH_MS = 15 * 60_000;
+const TRENDS_PAGE_CACHE_MIN_FRESH_MS = 60_000;
 const TRENDS_PAGE_CACHE_STALE_MS = 6 * 60 * 60_000;
 const TRENDS_PAGE_CACHE_RETENTION_MS = 7 * 24 * 60 * 60_000;
-const TRENDS_PAGE_HOT_CACHE_SCHEMA_VERSION = 1;
+const TRENDS_PAGE_HOT_CACHE_SCHEMA_VERSION = 3;
 const TRENDS_PAGE_HOT_CACHE_TTL_SECONDS = Math.ceil(
 	TRENDS_PAGE_CACHE_RETENTION_MS / 1000
 );
@@ -171,35 +176,60 @@ async function refreshTrendsPage(
 		translationMode,
 		itemsPerSource
 	);
-	if (!hasMissingSnapshots(page)) {
-		const now = Date.now();
-		const freshUntil = now + TRENDS_PAGE_CACHE_FRESH_MS;
-		const staleUntil = now + TRENDS_PAGE_CACHE_STALE_MS;
-		writeMemoryTrendsPageCache(
-			cacheKey,
-			page,
-			freshUntil,
-			staleUntil,
-			lang,
-			translationMode
-		);
-		await hotCache.put<TrendsPageData>(
-			cacheKey,
-			{
-				createdAt: now,
-				freshUntil,
-				schemaVersion: TRENDS_PAGE_HOT_CACHE_SCHEMA_VERSION,
-				staleUntil,
-				value: page,
-			},
-			TRENDS_PAGE_HOT_CACHE_TTL_SECONDS
-		);
+	const now = Date.now();
+	let freshUntil = getPageFreshUntil(page, now);
+	if (hasMissingSnapshots(page)) {
+		freshUntil = now + TRENDS_PAGE_CACHE_MIN_FRESH_MS;
 	}
+	if (hasExpiredSnapshots(page, now)) {
+		freshUntil = now;
+	}
+	if (freshUntil <= now) {
+		return page;
+	}
+	const staleUntil = now + TRENDS_PAGE_CACHE_STALE_MS;
+	writeMemoryTrendsPageCache(
+		cacheKey,
+		page,
+		freshUntil,
+		staleUntil,
+		lang,
+		translationMode
+	);
+	await hotCache.put<TrendsPageData>(
+		cacheKey,
+		{
+			createdAt: now,
+			freshUntil,
+			schemaVersion: TRENDS_PAGE_HOT_CACHE_SCHEMA_VERSION,
+			staleUntil,
+			value: page,
+		},
+		TRENDS_PAGE_HOT_CACHE_TTL_SECONDS
+	);
 	return page;
 }
 
 function hasMissingSnapshots(page: TrendsPageData): boolean {
 	return getMissingSnapshotSourceIds(page).length > 0;
+}
+
+function hasExpiredSnapshots(page: TrendsPageData, now = Date.now()): boolean {
+	return getExpiredSnapshotSourceIds(page, now).length > 0;
+}
+
+function getPageFreshUntil(page: TrendsPageData, now: number): number {
+	const sourceFreshUntil = page.sections
+		.flatMap((section) => section.sources)
+		.map((source) => source.expiresAt)
+		.filter((expiresAt): expiresAt is number => typeof expiresAt === "number");
+	if (sourceFreshUntil.length === 0) {
+		return now + TRENDS_PAGE_CACHE_FRESH_MS;
+	}
+	return Math.max(
+		now + TRENDS_PAGE_CACHE_MIN_FRESH_MS,
+		Math.min(now + TRENDS_PAGE_CACHE_FRESH_MS, ...sourceFreshUntil)
+	);
 }
 
 function getMissingSnapshotSourceIds(page: TrendsPageData): SourceId[] {
@@ -214,11 +244,64 @@ function getMissingSnapshotSourceIds(page: TrendsPageData): SourceId[] {
 	return [...missing];
 }
 
-function refreshMissingSnapshotsInBackground(
+function getExpiredSnapshotSourceIds(
 	page: TrendsPageData,
+	now = Date.now()
+): SourceId[] {
+	const expired = new Set<SourceId>();
+	for (const section of page.sections) {
+		for (const source of section.sources) {
+			if (source.expiresAt !== undefined && source.expiresAt <= now) {
+				expired.add(source.sourceId);
+			}
+		}
+	}
+	return [...expired];
+}
+
+function refreshStaleTrendsPage(
+	cacheKey: string,
+	topicId: string,
+	lang: TranslationLanguage,
+	translationMode: TranslationMode,
+	itemsPerSource: number,
 	waitUntil: TrendsPageCacheOptions["waitUntil"]
 ): void {
-	const sourceIds = getMissingSnapshotSourceIds(page);
+	const refresh = startTrendsPageRefresh(
+		cacheKey,
+		topicId,
+		lang,
+		translationMode,
+		itemsPerSource
+	).catch((error) => {
+		console.warn("[trends-page] failed to refresh stale page", error);
+	});
+	if (waitUntil) {
+		waitUntil(refresh);
+	}
+}
+
+async function getExpiredTopicSourceIds(topicId: string): Promise<SourceId[]> {
+	const topic = getTopicPreset(topicId);
+	if (!topic) {
+		throw new TopicNotFoundError(topicId);
+	}
+	const sourceIds = [
+		...new Set(topic.sections.flatMap((section) => section.sourceIds)),
+	];
+	const summaries = await readSnapshotSummaries(sourceIds);
+	const now = Date.now();
+	return sourceIds.filter((sourceId) => {
+		const summary = summaries.get(sourceId);
+		return !summary || summary.expiresAt <= now;
+	});
+}
+
+function refreshSourceIdsInBackground(
+	sourceIds: SourceId[],
+	waitUntil: TrendsPageCacheOptions["waitUntil"],
+	label: string
+): void {
 	if (sourceIds.length === 0) {
 		return;
 	}
@@ -236,23 +319,44 @@ function refreshMissingSnapshotsInBackground(
 		}
 	})();
 	const observedRefresh = refresh.catch((error) => {
-		console.warn("[trends-page] missing source refresh failed", error);
+		console.warn(`[trends-page] ${label} source refresh failed`, error);
 	});
 	if (waitUntil) {
 		waitUntil(observedRefresh);
 	}
 }
 
-function refreshTrendsPageInBackground(
-	refresh: Promise<TrendsPageData>,
+function refreshMissingSnapshotsInBackground(
+	page: TrendsPageData,
 	waitUntil: TrendsPageCacheOptions["waitUntil"]
 ): void {
-	const observedRefresh = refresh.catch((error) => {
-		console.warn("[trends-page] background refresh failed", error);
-	});
-	if (waitUntil) {
-		waitUntil(observedRefresh);
-	}
+	refreshSourceIdsInBackground(
+		getMissingSnapshotSourceIds(page),
+		waitUntil,
+		"missing"
+	);
+}
+
+function refreshExpiredSnapshotsInBackground(
+	page: TrendsPageData,
+	waitUntil: TrendsPageCacheOptions["waitUntil"]
+): void {
+	refreshSourceIdsInBackground(
+		getExpiredSnapshotSourceIds(page),
+		waitUntil,
+		"expired"
+	);
+}
+
+export async function refreshExpiredTopicSourcesInBackground(
+	topicId: string,
+	waitUntil: TrendsPageCacheOptions["waitUntil"]
+): Promise<void> {
+	refreshSourceIdsInBackground(
+		await getExpiredTopicSourceIds(topicId),
+		waitUntil,
+		"expired"
+	);
 }
 
 function snapshotToCard(
@@ -268,6 +372,7 @@ function snapshotToCard(
 		return {
 			sourceId,
 			title,
+			eventEligible: preset?.eventEligible,
 			homeUrl,
 			status: "error",
 			errorMessage: NO_SNAPSHOT_MESSAGE,
@@ -279,6 +384,7 @@ function snapshotToCard(
 	return {
 		sourceId,
 		title,
+		eventEligible: preset?.eventEligible,
 		homeUrl,
 		status: snapshot.status,
 		updatedAt: snapshot.fetchedAt,
@@ -286,6 +392,8 @@ function snapshotToCard(
 		itemCount: snapshot.items.length,
 		items,
 		itemsTruncated: items.length < snapshot.items.length,
+		expiresAt: snapshot.expiresAt,
+		staleUntil: snapshot.staleUntil,
 	};
 }
 
@@ -343,6 +451,7 @@ export async function getTrendsPageWithCacheInfo(
 			itemsPerSource
 		);
 		refreshMissingSnapshotsInBackground(page, options.waitUntil);
+		refreshExpiredSnapshotsInBackground(page, options.waitUntil);
 		return {
 			cacheStatus: "bypass",
 			page,
@@ -361,20 +470,21 @@ export async function getTrendsPageWithCacheInfo(
 		? memoryTrendsPageCache.get(cacheKey)
 		: undefined;
 	if (cached && cached.freshUntil > now) {
+		refreshExpiredSnapshotsInBackground(cached.page, options.waitUntil);
 		return { cacheStatus: "hit", page: cached.page };
 	}
 
-	if (cached) {
-		refreshTrendsPageInBackground(
-			startTrendsPageRefresh(
-				cacheKey,
-				topicId,
-				lang,
-				translationMode,
-				itemsPerSource
-			),
+	if (cached && cached.staleUntil > now) {
+		refreshStaleTrendsPage(
+			cacheKey,
+			topicId,
+			lang,
+			translationMode,
+			itemsPerSource,
 			options.waitUntil
 		);
+		refreshMissingSnapshotsInBackground(cached.page, options.waitUntil);
+		refreshExpiredSnapshotsInBackground(cached.page, options.waitUntil);
 		return { cacheStatus: "stale", page: cached.page };
 	}
 
@@ -386,22 +496,25 @@ export async function getTrendsPageWithCacheInfo(
 	}
 	if (hotCached && hotCached.freshUntil > now) {
 		hydrateMemoryTrendsPageCache(cacheKey, hotCached, lang, translationMode);
+		refreshExpiredSnapshotsInBackground(hotCached.value, options.waitUntil);
 		return { cacheStatus: "hit", page: hotCached.value };
 	}
 
 	if (hotCached) {
 		hydrateMemoryTrendsPageCache(cacheKey, hotCached, lang, translationMode);
-		refreshTrendsPageInBackground(
-			startTrendsPageRefresh(
+		if (hotCached.staleUntil > now) {
+			refreshStaleTrendsPage(
 				cacheKey,
 				topicId,
 				lang,
 				translationMode,
-				itemsPerSource
-			),
-			options.waitUntil
-		);
-		return { cacheStatus: "stale", page: hotCached.value };
+				itemsPerSource,
+				options.waitUntil
+			);
+			refreshMissingSnapshotsInBackground(hotCached.value, options.waitUntil);
+			refreshExpiredSnapshotsInBackground(hotCached.value, options.waitUntil);
+			return { cacheStatus: "stale", page: hotCached.value };
+		}
 	}
 
 	const refresh = startTrendsPageRefresh(
@@ -413,6 +526,7 @@ export async function getTrendsPageWithCacheInfo(
 	);
 	const page = await refresh;
 	refreshMissingSnapshotsInBackground(page, options.waitUntil);
+	refreshExpiredSnapshotsInBackground(page, options.waitUntil);
 	return { cacheStatus: "miss", page };
 }
 

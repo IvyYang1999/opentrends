@@ -46,6 +46,10 @@ export const sourceItem = pgTable(
 		fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
 		lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
 		contentHash: text("content_hash").notNull(),
+		contentText: text("content_text"),
+		contentFetchedAt: timestamp("content_fetched_at", { withTimezone: true }),
+		contentStatus: text("content_status").default("pending").notNull(),
+		contentError: text("content_error"),
 		hotValue: jsonb("hot_value").$type<string | number | null>(),
 		original: jsonb("original").$type<{
 			description?: string;
@@ -64,6 +68,82 @@ export const sourceItem = pgTable(
 			table.sourceId,
 			table.publishedAt
 		),
+	]
+);
+
+export const sourceItemEmbedding = pgTable(
+	"source_item_embedding",
+	{
+		sourceId: text("source_id").notNull(),
+		itemId: text("item_id").notNull(),
+		textHash: text("text_hash").notNull(),
+		embedding: jsonb("embedding").$type<number[]>().notNull(),
+		model: text("model").notNull(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.sourceId, table.itemId] }),
+		index("source_item_embedding_model_idx").on(table.model),
+	]
+);
+
+export const trendEvent = pgTable(
+	"trend_event",
+	{
+		eventId: text("event_id").primaryKey(),
+		topicId: text("topic_id").notNull(),
+		title: text("title").notNull(),
+		summary: text("summary"),
+		score: integer("score").default(0).notNull(),
+		sourceCount: integer("source_count").default(0).notNull(),
+		firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
+		lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
+		primarySourceId: text("primary_source_id"),
+		primaryItemId: text("primary_item_id"),
+		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+	},
+	(table) => [
+		index("trend_event_topic_score_idx").on(table.topicId, table.score),
+		index("trend_event_topic_last_seen_idx").on(
+			table.topicId,
+			table.lastSeenAt
+		),
+		index("trend_event_topic_first_seen_idx").on(
+			table.topicId,
+			table.firstSeenAt
+		),
+	]
+);
+
+export const trendEventSourceItem = pgTable(
+	"trend_event_source_item",
+	{
+		eventId: text("event_id").notNull(),
+		sourceId: text("source_id").notNull(),
+		itemId: text("item_id").notNull(),
+		isPrimary: integer("is_primary").default(0).notNull(),
+		mergeConfidence: integer("merge_confidence").default(0).notNull(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.eventId, table.sourceId, table.itemId] }),
+		index("trend_event_source_item_source_item_idx").on(
+			table.sourceId,
+			table.itemId
+		),
+	]
+);
+
+export const trendEventTopic = pgTable(
+	"trend_event_topic",
+	{
+		eventId: text("event_id").notNull(),
+		topicId: text("topic_id").notNull(),
+		createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+	},
+	(table) => [
+		primaryKey({ columns: [table.eventId, table.topicId] }),
+		index("trend_event_topic_topic_idx").on(table.topicId),
 	]
 );
 

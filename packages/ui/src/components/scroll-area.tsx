@@ -6,8 +6,9 @@ import { cn } from "@opentrends/ui/lib/utils";
 function ScrollArea({
 	className,
 	children,
+	viewportClassName,
 	...props
-}: ScrollAreaPrimitive.Root.Props) {
+}: ScrollAreaPrimitive.Root.Props & { viewportClassName?: string }) {
 	return (
 		<ScrollAreaPrimitive.Root
 			className={cn("relative flex flex-col", className)}
@@ -15,7 +16,10 @@ function ScrollArea({
 			{...props}
 		>
 			<ScrollAreaPrimitive.Viewport
-				className="min-h-0 flex-1 rounded-[inherit] outline-none transition-[color,box-shadow] focus-visible:outline-1 focus-visible:ring-[3px] focus-visible:ring-ring/50"
+				className={cn(
+					"flex min-h-0 flex-1 flex-col rounded-[inherit] outline-none transition-[color,box-shadow] focus-visible:outline-1 focus-visible:ring-[3px] focus-visible:ring-ring/50",
+					viewportClassName
+				)}
 				data-slot="scroll-area-viewport"
 			>
 				{children}

@@ -13,12 +13,14 @@ import { Route as Char123LocaleChar125IndexRouteImport } from './routes/{-$local
 import { Route as Char123LocaleChar125TrendsRouteImport } from './routes/{-$locale}/trends'
 import { Route as Char123LocaleChar125SourcesRouteImport } from './routes/{-$locale}/sources'
 import { Route as Char123LocaleChar125LoginRouteImport } from './routes/{-$locale}/login'
+import { Route as Char123LocaleChar125EventsRouteImport } from './routes/{-$locale}/events'
 import { Route as Char123LocaleChar125DashboardRouteImport } from './routes/{-$locale}/dashboard'
 import { Route as _voidPrerenderPathsRouteImport } from './routes/[_][_]void/prerender-paths'
 import { Route as DotwellKnownApiCatalogRouteImport } from './routes/[.]well-known.api-catalog'
 import { Route as Char123LocaleChar125TrendsIndexRouteImport } from './routes/{-$locale}/trends.index'
 import { Route as Char123LocaleChar125TrendsTopicRouteImport } from './routes/{-$locale}/trends.$topic'
 import { Route as Char123LocaleChar125SkillsOpentrendsRouteImport } from './routes/{-$locale}/skills.opentrends'
+import { Route as Char123LocaleChar125EventsFlowRouteImport } from './routes/{-$locale}/events_.flow'
 
 const Char123LocaleChar125IndexRoute =
   Char123LocaleChar125IndexRouteImport.update({
@@ -42,6 +44,12 @@ const Char123LocaleChar125LoginRoute =
   Char123LocaleChar125LoginRouteImport.update({
     id: '/{-$locale}/login',
     path: '/{-$locale}/login',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const Char123LocaleChar125EventsRoute =
+  Char123LocaleChar125EventsRouteImport.update({
+    id: '/{-$locale}/events',
+    path: '/{-$locale}/events',
     getParentRoute: () => rootRouteImport,
   } as any)
 const Char123LocaleChar125DashboardRoute =
@@ -78,15 +86,23 @@ const Char123LocaleChar125SkillsOpentrendsRoute =
     path: '/{-$locale}/skills/opentrends',
     getParentRoute: () => rootRouteImport,
   } as any)
+const Char123LocaleChar125EventsFlowRoute =
+  Char123LocaleChar125EventsFlowRouteImport.update({
+    id: '/{-$locale}/events_/flow',
+    path: '/{-$locale}/events/flow',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/__void/prerender-paths': typeof _voidPrerenderPathsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
+  '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
   '/{-$locale}/sources': typeof Char123LocaleChar125SourcesRoute
   '/{-$locale}/trends': typeof Char123LocaleChar125TrendsRouteWithChildren
   '/{-$locale}/': typeof Char123LocaleChar125IndexRoute
+  '/{-$locale}/events/flow': typeof Char123LocaleChar125EventsFlowRoute
   '/{-$locale}/skills/opentrends': typeof Char123LocaleChar125SkillsOpentrendsRoute
   '/{-$locale}/trends/$topic': typeof Char123LocaleChar125TrendsTopicRoute
   '/{-$locale}/trends/': typeof Char123LocaleChar125TrendsIndexRoute
@@ -95,9 +111,11 @@ export interface FileRoutesByTo {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/__void/prerender-paths': typeof _voidPrerenderPathsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
+  '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
   '/{-$locale}/sources': typeof Char123LocaleChar125SourcesRoute
   '/{-$locale}': typeof Char123LocaleChar125IndexRoute
+  '/{-$locale}/events/flow': typeof Char123LocaleChar125EventsFlowRoute
   '/{-$locale}/skills/opentrends': typeof Char123LocaleChar125SkillsOpentrendsRoute
   '/{-$locale}/trends/$topic': typeof Char123LocaleChar125TrendsTopicRoute
   '/{-$locale}/trends': typeof Char123LocaleChar125TrendsIndexRoute
@@ -107,10 +125,12 @@ export interface FileRoutesById {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/__void/prerender-paths': typeof _voidPrerenderPathsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
+  '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
   '/{-$locale}/sources': typeof Char123LocaleChar125SourcesRoute
   '/{-$locale}/trends': typeof Char123LocaleChar125TrendsRouteWithChildren
   '/{-$locale}/': typeof Char123LocaleChar125IndexRoute
+  '/{-$locale}/events_/flow': typeof Char123LocaleChar125EventsFlowRoute
   '/{-$locale}/skills/opentrends': typeof Char123LocaleChar125SkillsOpentrendsRoute
   '/{-$locale}/trends/$topic': typeof Char123LocaleChar125TrendsTopicRoute
   '/{-$locale}/trends/': typeof Char123LocaleChar125TrendsIndexRoute
@@ -121,10 +141,12 @@ export interface FileRouteTypes {
     | '/.well-known/api-catalog'
     | '/__void/prerender-paths'
     | '/{-$locale}/dashboard'
+    | '/{-$locale}/events'
     | '/{-$locale}/login'
     | '/{-$locale}/sources'
     | '/{-$locale}/trends'
     | '/{-$locale}/'
+    | '/{-$locale}/events/flow'
     | '/{-$locale}/skills/opentrends'
     | '/{-$locale}/trends/$topic'
     | '/{-$locale}/trends/'
@@ -133,9 +155,11 @@ export interface FileRouteTypes {
     | '/.well-known/api-catalog'
     | '/__void/prerender-paths'
     | '/{-$locale}/dashboard'
+    | '/{-$locale}/events'
     | '/{-$locale}/login'
     | '/{-$locale}/sources'
     | '/{-$locale}'
+    | '/{-$locale}/events/flow'
     | '/{-$locale}/skills/opentrends'
     | '/{-$locale}/trends/$topic'
     | '/{-$locale}/trends'
@@ -144,10 +168,12 @@ export interface FileRouteTypes {
     | '/.well-known/api-catalog'
     | '/__void/prerender-paths'
     | '/{-$locale}/dashboard'
+    | '/{-$locale}/events'
     | '/{-$locale}/login'
     | '/{-$locale}/sources'
     | '/{-$locale}/trends'
     | '/{-$locale}/'
+    | '/{-$locale}/events_/flow'
     | '/{-$locale}/skills/opentrends'
     | '/{-$locale}/trends/$topic'
     | '/{-$locale}/trends/'
@@ -157,10 +183,12 @@ export interface RootRouteChildren {
   DotwellKnownApiCatalogRoute: typeof DotwellKnownApiCatalogRoute
   _voidPrerenderPathsRoute: typeof _voidPrerenderPathsRoute
   Char123LocaleChar125DashboardRoute: typeof Char123LocaleChar125DashboardRoute
+  Char123LocaleChar125EventsRoute: typeof Char123LocaleChar125EventsRoute
   Char123LocaleChar125LoginRoute: typeof Char123LocaleChar125LoginRoute
   Char123LocaleChar125SourcesRoute: typeof Char123LocaleChar125SourcesRoute
   Char123LocaleChar125TrendsRoute: typeof Char123LocaleChar125TrendsRouteWithChildren
   Char123LocaleChar125IndexRoute: typeof Char123LocaleChar125IndexRoute
+  Char123LocaleChar125EventsFlowRoute: typeof Char123LocaleChar125EventsFlowRoute
   Char123LocaleChar125SkillsOpentrendsRoute: typeof Char123LocaleChar125SkillsOpentrendsRoute
 }
 
@@ -192,6 +220,13 @@ declare module '@tanstack/react-router' {
       path: '/{-$locale}/login'
       fullPath: '/{-$locale}/login'
       preLoaderRoute: typeof Char123LocaleChar125LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/{-$locale}/events': {
+      id: '/{-$locale}/events'
+      path: '/{-$locale}/events'
+      fullPath: '/{-$locale}/events'
+      preLoaderRoute: typeof Char123LocaleChar125EventsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/{-$locale}/dashboard': {
@@ -236,6 +271,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof Char123LocaleChar125SkillsOpentrendsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/{-$locale}/events_/flow': {
+      id: '/{-$locale}/events_/flow'
+      path: '/{-$locale}/events/flow'
+      fullPath: '/{-$locale}/events/flow'
+      preLoaderRoute: typeof Char123LocaleChar125EventsFlowRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -259,10 +301,12 @@ const rootRouteChildren: RootRouteChildren = {
   DotwellKnownApiCatalogRoute: DotwellKnownApiCatalogRoute,
   _voidPrerenderPathsRoute: _voidPrerenderPathsRoute,
   Char123LocaleChar125DashboardRoute: Char123LocaleChar125DashboardRoute,
+  Char123LocaleChar125EventsRoute: Char123LocaleChar125EventsRoute,
   Char123LocaleChar125LoginRoute: Char123LocaleChar125LoginRoute,
   Char123LocaleChar125SourcesRoute: Char123LocaleChar125SourcesRoute,
   Char123LocaleChar125TrendsRoute: Char123LocaleChar125TrendsRouteWithChildren,
   Char123LocaleChar125IndexRoute: Char123LocaleChar125IndexRoute,
+  Char123LocaleChar125EventsFlowRoute: Char123LocaleChar125EventsFlowRoute,
   Char123LocaleChar125SkillsOpentrendsRoute:
     Char123LocaleChar125SkillsOpentrendsRoute,
 }

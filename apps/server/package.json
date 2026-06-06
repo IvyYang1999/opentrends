@@ -23,18 +23,21 @@
     "ai": "^6.0.175",
     "better-auth": "catalog:",
     "cheerio": "^1.2.0",
+    "defuddle": "^0.18.1",
     "dotenv": "catalog:",
     "drizzle-orm": "^0.45.1",
     "hono": "catalog:",
+    "jsdom": "^29.1.1",
     "rss-parser": "^3.13.0",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@opentrends/config": "workspace:*",
     "@types/bun": "catalog:",
+    "@types/jsdom": "^28.0.1",
     "tsdown": "^0.21.9",
     "typescript": "catalog:",
     "vite": "^8.0.8",
-    "void": "0.7.1"
+    "void": "0.7.3"
   }
 }

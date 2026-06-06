@@ -54,8 +54,8 @@ bun install
 从示例文件创建本地环境变量文件：
 
 ```bash
-cp apps/server/.env.example apps/server/.env
-cp apps/web/.env.example apps/web/.env
+cp apps/server/.env.example apps/server/.env.local
+cp apps/web/.env.example apps/web/.env.local
 ```
 
 启动 Postgres 并运行应用：

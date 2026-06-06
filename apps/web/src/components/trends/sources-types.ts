@@ -4,6 +4,8 @@ export type SourceLifecycleStatus = "ok" | "stale" | "error" | "missing";
 export interface SourceStatusEntry {
 	endpointUrl?: string;
 	errorCount: number;
+	eventEligible: boolean;
+	eventItemCount: number;
 	expiresAt?: number;
 	fetchedAt?: number;
 	homeUrl?: string;
@@ -29,5 +31,6 @@ export interface SourcesStatusResponse {
 		stale: number;
 		error: number;
 		missing: number;
+		eventItems: number;
 	};
 }

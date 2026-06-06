@@ -2,21 +2,12 @@ import { Hono } from "hono";
 
 const OPENTRENDS_SKILL_MANIFEST = {
 	name: "opentrends",
-	version: "2026.05.08.1",
-	updatedAt: "2026-05-08T04:20:00Z",
+	version: "2026.05.12.1",
+	updatedAt: "2026-05-12T04:20:00Z",
 	baseUrl: "https://api.opentrends.io",
 	installUrl: "https://opentrends.io/skills/opentrends",
 	skillUrl: "https://opentrends.io/skills/opentrends/SKILL.md",
-	topics: [
-		"ai",
-		"tech",
-		"programming",
-		"hardware",
-		"biotech",
-		"embodied",
-		"cn",
-		"indie",
-	],
+	topics: ["ai", "programming", "hardware", "biotech", "embodied", "cn"],
 	endpoints: {
 		topic: "/api/trends/:topic",
 		source: "/api/trends/:topic/sources/:sourceId",

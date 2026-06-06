@@ -2,7 +2,12 @@ import { env } from "@opentrends/env/web";
 
 import type { Locale } from "@/lib/i18n";
 
-import type { SourceCardData, TrendsPageData } from "./types";
+import type {
+	EventDetailData,
+	EventFeedData,
+	SourceCardData,
+	TrendsPageData,
+} from "./types";
 
 const TRENDS_FETCH_TIMEOUT_MS = 25_000;
 const TRENDS_TRANSLATION_FETCH_TIMEOUT_MS = 25_000;
@@ -15,6 +20,13 @@ export class TrendsTopicNotFoundError extends Error {
 	constructor(topic: string) {
 		super(`Unknown trends topic: ${topic}`);
 		this.name = "TrendsTopicNotFoundError";
+	}
+}
+
+export class TrendEventsEmbeddingNotConfiguredError extends Error {
+	constructor() {
+		super("Event embedding is not configured.");
+		this.name = "TrendEventsEmbeddingNotConfiguredError";
 	}
 }
 
@@ -96,6 +108,89 @@ export async function loadTrendSource(
 		throw new Error(`Failed to load trend source (${response.status})`);
 	}
 	return (await response.json()) as SourceCardData;
+}
+
+export async function loadTrendEvents(
+	topic?: string,
+	offset = 0,
+	limit = 30,
+	locale: Locale = "en"
+): Promise<EventFeedData> {
+	const search = new URLSearchParams();
+	if (topic) {
+		search.set("topic", topic);
+	}
+	search.set("offset", String(offset));
+	search.set("limit", String(limit));
+	search.set("lang", locale);
+	search.set("translations", "sync");
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), TRENDS_FETCH_TIMEOUT_MS);
+	let response: Response;
+	try {
+		const suffix = search.size > 0 ? `?${search}` : "";
+		response = await fetch(`${env.VITE_SERVER_URL}/api/events${suffix}`, {
+			credentials: "omit",
+			signal: controller.signal,
+		});
+	} finally {
+		clearTimeout(timeout);
+	}
+	if (response.status === 404) {
+		throw new TrendsTopicNotFoundError(topic ?? "events");
+	}
+	if (response.status === 503) {
+		const payload = (await response.json().catch(() => null)) as {
+			error?: string;
+		} | null;
+		if (payload?.error === "embedding_not_configured") {
+			throw new TrendEventsEmbeddingNotConfiguredError();
+		}
+	}
+	if (!response.ok) {
+		throw new Error(`Failed to load trend events (${response.status})`);
+	}
+	return (await response.json()) as EventFeedData;
+}
+
+export async function loadTrendEventDetail(
+	eventId: string,
+	topic?: string,
+	locale: Locale = "en"
+): Promise<EventDetailData> {
+	const search = new URLSearchParams();
+	if (topic) {
+		search.set("topic", topic);
+	}
+	search.set("lang", locale);
+	search.set("translations", "sync");
+	const controller = new AbortController();
+	const timeout = setTimeout(() => controller.abort(), TRENDS_FETCH_TIMEOUT_MS);
+	let response: Response;
+	try {
+		const suffix = search.size > 0 ? `?${search}` : "";
+		response = await fetch(
+			`${env.VITE_SERVER_URL}/api/events/${encodeURIComponent(eventId)}${suffix}`,
+			{
+				credentials: "omit",
+				signal: controller.signal,
+			}
+		);
+	} finally {
+		clearTimeout(timeout);
+	}
+	if (response.status === 503) {
+		const payload = (await response.json().catch(() => null)) as {
+			error?: string;
+		} | null;
+		if (payload?.error === "embedding_not_configured") {
+			throw new TrendEventsEmbeddingNotConfiguredError();
+		}
+	}
+	if (!response.ok) {
+		throw new Error(`Failed to load trend event (${response.status})`);
+	}
+	return (await response.json()) as EventDetailData;
 }
 
 export async function translateTrendsPageSnapshot(

@@ -37,10 +37,21 @@ interface SchedulerState {
 	schedule: ScheduledSource[];
 	summaryQueue: SummaryPrewarmJob[];
 	summaryQueuedKeys: Set<string>;
-	timer: ReturnType<typeof setInterval> & { unref?: () => void };
+	timer?: ReturnType<typeof setInterval> & { unref?: () => void };
 }
 
 let state: SchedulerState | undefined;
+let nextRequestDrivenTickAt = 0;
+
+function getOrCreateSchedulerState(now: number): SchedulerState {
+	state ??= {
+		running: false,
+		schedule: buildSchedule(now),
+		summaryQueue: [],
+		summaryQueuedKeys: new Set(),
+	};
+	return state;
+}
 
 function buildSchedule(now: number): ScheduledSource[] {
 	const entries = Object.entries(sourcePresets) as [
@@ -191,7 +202,7 @@ export function startTrendsRefreshScheduler(): () => void {
 			});
 		}, SCHEDULER_TICK_MS),
 	};
-	state.timer.unref?.();
+	state.timer?.unref?.();
 
 	console.log(
 		`[trends-refresh-scheduler] enabled for ${state.schedule.length} sources`
@@ -199,10 +210,34 @@ export function startTrendsRefreshScheduler(): () => void {
 	return stopTrendsRefreshScheduler;
 }
 
+export function scheduleTrendsRefreshTick(
+	waitUntil?: (promise: Promise<unknown>) => void
+): void {
+	const now = Date.now();
+	if (nextRequestDrivenTickAt > now) {
+		return;
+	}
+	nextRequestDrivenTickAt = now + SCHEDULER_TICK_MS;
+
+	const tick = runTrendsRefreshTick(now).catch((error) => {
+		console.error("[trends-refresh-scheduler]", error);
+	});
+	if (waitUntil) {
+		waitUntil(tick);
+	}
+}
+
+export async function runTrendsRefreshTick(now = Date.now()): Promise<void> {
+	await refreshDueSources(getOrCreateSchedulerState(now));
+}
+
 export function stopTrendsRefreshScheduler(): void {
 	if (!state) {
 		return;
 	}
-	clearInterval(state.timer);
+	if (state.timer) {
+		clearInterval(state.timer);
+	}
 	state = undefined;
+	nextRequestDrivenTickAt = 0;
 }

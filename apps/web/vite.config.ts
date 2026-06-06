@@ -31,9 +31,7 @@ function loadLocalWebEnv(mode: string): void {
 	}
 	loadDotenv({
 		path: [
-			fileURLToPath(new URL(".env", import.meta.url)),
 			fileURLToPath(new URL(".env.local", import.meta.url)),
-			fileURLToPath(new URL(`.env.${mode}`, import.meta.url)),
 			fileURLToPath(new URL(`.env.${mode}.local`, import.meta.url)),
 		],
 		override: true,
@@ -49,6 +47,9 @@ export default defineConfig(async ({ mode }) => {
 		: [];
 
 	return {
+		envDir: isVoidDeploy
+			? fileURLToPath(new URL(".void/empty-env", import.meta.url))
+			: undefined,
 		server: {
 			port: 3001,
 		},

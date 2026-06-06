@@ -9,8 +9,6 @@ const TOPIC_IDS = [
 	"hardware",
 	"biotech",
 	"programming",
-	"tech",
-	"indie",
 	"cn",
 ] as const;
 

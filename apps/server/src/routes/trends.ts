@@ -1,5 +1,6 @@
 import { Hono } from "hono";
-
+import { EventEmbeddingNotConfiguredError } from "../trends/services/event-embedding";
+import { getEventDetail, getEventFeed } from "../trends/services/event-feed";
 import {
 	DEFAULT_TRENDS_ITEMS_PER_SOURCE,
 	getTrendSourceCard,
@@ -54,7 +55,17 @@ function getWaitUntil(c: WaitUntilContext) {
 }
 
 const PUBLIC_TRENDS_CACHE_CONTROL =
-	"public, max-age=600, s-maxage=1800, stale-while-revalidate=3600";
+	"public, max-age=60, s-maxage=300, stale-while-revalidate=600";
+
+function parsePositiveInteger(value: string | undefined): number | undefined {
+	const parsed = Number.parseInt(value ?? "", 10);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
+function parseOffset(value: string | undefined): number | undefined {
+	const parsed = Number.parseInt(value ?? "", 10);
+	return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
+}
 
 function textStreamFromGenerator(
 	generator: AsyncGenerator<string, void, void>
@@ -199,6 +210,70 @@ export const trendsRoutes = new Hono()
 				"Access-Control-Expose-Headers": "X-Trends-Citations",
 			},
 		});
+	})
+	.get("/:topic/events", async (c) => {
+		const topic = c.req.param("topic");
+		const limit = parsePositiveInteger(c.req.query("limit"));
+		const offset = parseOffset(c.req.query("offset"));
+		const lang = normalizeTranslationLanguage(c.req.query("lang"));
+		const translationMode = parseTranslationMode(c.req.query("translations"));
+		try {
+			return withTrendsCacheHeaders(
+				c.json(
+					await getEventFeed(topic, {
+						lang,
+						limit,
+						offset,
+						translationMode,
+						waitUntil: getWaitUntil(c),
+					})
+				),
+				"background",
+				"miss"
+			);
+		} catch (error) {
+			if (error instanceof TopicNotFoundError) {
+				return c.json({ error: "topic_not_found", topic }, 404);
+			}
+			if (error instanceof TrendsSnapshotsUnavailableError) {
+				return c.json({ error: "snapshots_unavailable" }, 503, {
+					"Retry-After": "1",
+				});
+			}
+			if (error instanceof EventEmbeddingNotConfiguredError) {
+				return c.json({ error: "embedding_not_configured" }, 503);
+			}
+			throw error;
+		}
+	})
+	.get("/:topic/events/:eventId", async (c) => {
+		const topic = c.req.param("topic");
+		const eventId = c.req.param("eventId");
+		const lang = normalizeTranslationLanguage(c.req.query("lang"));
+		const translationMode = parseTranslationMode(c.req.query("translations"));
+		try {
+			const event = await getEventDetail(eventId, topic, {
+				lang,
+				translationMode,
+			});
+			if (!event) {
+				return c.json({ error: "event_not_found", eventId, topic }, 404);
+			}
+			return withTrendsCacheHeaders(c.json(event), "background", "hit");
+		} catch (error) {
+			if (error instanceof TopicNotFoundError) {
+				return c.json({ error: "topic_not_found", topic }, 404);
+			}
+			if (error instanceof TrendsSnapshotsUnavailableError) {
+				return c.json({ error: "snapshots_unavailable" }, 503, {
+					"Retry-After": "1",
+				});
+			}
+			if (error instanceof EventEmbeddingNotConfiguredError) {
+				return c.json({ error: "embedding_not_configured" }, 503);
+			}
+			throw error;
+		}
 	})
 	.post("/:topic/translations", async (c) => {
 		const topic = c.req.param("topic");

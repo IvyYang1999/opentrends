@@ -10,6 +10,8 @@ export default defineEnv({
 	LLM_API_KEY: string().optional().secret(),
 	LLM_BASE_URL: url(),
 	LLM_MODEL: string(),
+	SILICONFLOW_API_KEY: string().optional().secret(),
+	SILICONFLOW_EMBEDDING_MODEL: string().default("Qwen/Qwen3-VL-Embedding-8B"),
 	TRENDS_REFRESH_SCHEDULER: oneOf(["auto", "disabled", "enabled"]).default(
 		"auto"
 	),

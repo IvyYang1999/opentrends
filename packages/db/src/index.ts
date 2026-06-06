@@ -14,7 +14,11 @@ import {
 import {
 	source,
 	sourceItem,
+	sourceItemEmbedding,
 	sourceItemTranslation,
+	trendEvent,
+	trendEventSourceItem,
+	trendEventTopic,
 	trendsSummary,
 } from "./schema/trends";
 
@@ -24,8 +28,12 @@ const schema = {
 	session,
 	sessionRelations,
 	source,
+	sourceItemEmbedding,
 	sourceItem,
 	sourceItemTranslation,
+	trendEvent,
+	trendEventSourceItem,
+	trendEventTopic,
 	trendsSummary,
 	user,
 	userRelations,

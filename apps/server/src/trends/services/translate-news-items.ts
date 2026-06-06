@@ -37,10 +37,11 @@ type WritableTranslation = Omit<
 	"createdAt" | "updatedAt"
 >;
 
-const BATCH_SIZE = 12;
+const BATCH_SIZE = 6;
 const BACKGROUND_TRANSLATION_CACHE_TIMEOUT_MS = 1200;
-const SYNC_TRANSLATION_CONCURRENCY = 6;
-const SYNC_TRANSLATION_TIMEOUT_MS = 20_000;
+const SYNC_TRANSLATION_CONCURRENCY = 2;
+const SYNC_TRANSLATION_TIMEOUT_MS = 12_000;
+const MAX_SYNC_TRANSLATION_CANDIDATES = 48;
 const CJK_RE = /[\u3400-\u9fff]/;
 const CYRILLIC_RE = /\p{Script=Cyrillic}/u;
 const TRANSLATED_BATCH_SCHEMA = z.object({
@@ -293,7 +294,14 @@ async function translateBatch(
 		});
 	}
 
-	await writeItemTranslations(translations);
+	try {
+		await writeItemTranslations(translations);
+	} catch (error) {
+		console.warn(
+			"[trends-translation] failed to write cached translations",
+			error
+		);
+	}
 	return translations;
 }
 
@@ -402,6 +410,87 @@ function collectTranslationCandidates(
 	return [...candidates.values()];
 }
 
+type TranslationMap = Map<string, CachedItemTranslation | WritableTranslation>;
+
+async function readCachedTranslationsSafely(params: {
+	itemIds: string[];
+	lang: TranslationLanguage;
+	mode: TranslationMode;
+	sourceIds: string[];
+}): Promise<CachedItemTranslation[] | null> {
+	try {
+		return await readCachedTranslations(params);
+	} catch (error) {
+		if (params.mode === "background") {
+			if (
+				isMissingCacheSchemaError(error) ||
+				error instanceof TranslationCacheReadTimeoutError
+			) {
+				return null;
+			}
+			console.warn(
+				"[trends-translation] failed to read cached translations",
+				error
+			);
+			return null;
+		}
+		console.warn(
+			"[trends-translation] failed to read cached translations",
+			error
+		);
+		return [];
+	}
+}
+
+function buildTranslationMap(
+	uniqueCandidates: TranslationCandidate[],
+	cachedRows: CachedItemTranslation[]
+): { missing: TranslationCandidate[]; translations: TranslationMap } {
+	const cached = makeTranslationMap(cachedRows);
+	const translations: TranslationMap = new Map();
+	const missing: TranslationCandidate[] = [];
+
+	for (const candidate of uniqueCandidates) {
+		const cachedRow = cached.get(`${candidate.sourceId}:${candidate.item.id}`);
+		if (cachedRow?.textHash === candidate.textHash) {
+			translations.set(`${candidate.sourceId}:${candidate.item.id}`, cachedRow);
+		} else {
+			missing.push(candidate);
+		}
+	}
+
+	return { missing, translations };
+}
+
+async function fillSyncTranslations(
+	missing: TranslationCandidate[],
+	translations: TranslationMap,
+	lang: TranslationLanguage,
+	mode: TranslationMode
+): Promise<void> {
+	if (mode !== "sync") {
+		return;
+	}
+
+	const missingWithinRequestBudget = missing.slice(
+		0,
+		MAX_SYNC_TRANSLATION_CANDIDATES
+	);
+	if (missingWithinRequestBudget.length < missing.length) {
+		console.warn(
+			`[trends-translation] skipped ${missing.length - missingWithinRequestBudget.length} sync candidates to stay within request budget`
+		);
+	}
+	const translatedRows = await translateMissingWithinTimeout(
+		lang,
+		missingWithinRequestBudget,
+		SYNC_TRANSLATION_TIMEOUT_MS
+	);
+	for (const row of translatedRows) {
+		translations.set(`${row.sourceId}:${row.itemId}`, row);
+	}
+}
+
 export async function translateTrendsPage(
 	page: TrendsPageData,
 	lang: TranslationLanguage,
@@ -418,53 +507,20 @@ export async function translateTrendsPage(
 
 	const sourceIds = uniqueCandidates.map((candidate) => candidate.sourceId);
 	const itemIds = uniqueCandidates.map((candidate) => candidate.item.id);
-	let cachedRows: CachedItemTranslation[];
-	try {
-		cachedRows = await readCachedTranslations({
-			itemIds,
-			lang,
-			mode,
-			sourceIds,
-		});
-	} catch (error) {
-		if (isMissingCacheSchemaError(error)) {
-			return page;
-		}
-		if (error instanceof TranslationCacheReadTimeoutError) {
-			return page;
-		}
-		console.warn(
-			"[trends-translation] failed to read cached translations",
-			error
-		);
+	const cachedRows = await readCachedTranslationsSafely({
+		itemIds,
+		lang,
+		mode,
+		sourceIds,
+	});
+	if (cachedRows === null) {
 		return page;
 	}
-	const cached = makeTranslationMap(cachedRows);
-	const translations = new Map<
-		string,
-		CachedItemTranslation | WritableTranslation
-	>();
-	const missing: TranslationCandidate[] = [];
-
-	for (const candidate of uniqueCandidates) {
-		const cachedRow = cached.get(`${candidate.sourceId}:${candidate.item.id}`);
-		if (cachedRow?.textHash === candidate.textHash) {
-			translations.set(`${candidate.sourceId}:${candidate.item.id}`, cachedRow);
-		} else {
-			missing.push(candidate);
-		}
-	}
-
-	if (mode === "sync") {
-		const translatedRows = await translateMissingWithinTimeout(
-			lang,
-			missing,
-			SYNC_TRANSLATION_TIMEOUT_MS
-		);
-		for (const row of translatedRows) {
-			translations.set(`${row.sourceId}:${row.itemId}`, row);
-		}
-	}
+	const { missing, translations } = buildTranslationMap(
+		uniqueCandidates,
+		cachedRows
+	);
+	await fillSyncTranslations(missing, translations, lang, mode);
 
 	if (translations.size === 0) {
 		return page;
@@ -487,4 +543,59 @@ export async function translateTrendsPage(
 			),
 		})),
 	};
+}
+
+export async function translateNewsItems(
+	items: NewsItem[],
+	lang: TranslationLanguage,
+	mode: TranslationMode = "background"
+): Promise<NewsItem[]> {
+	if (!env.LLM_API_KEY) {
+		return items;
+	}
+
+	const candidates = new Map<string, TranslationCandidate>();
+	for (const item of items) {
+		if (item.original || !shouldTranslateItem(item, lang)) {
+			continue;
+		}
+		const textHash = hashItemText(item);
+		const cacheKey = makeCacheKey(lang, item.sourceId, item.id, textHash);
+		candidates.set(cacheKey, {
+			cacheKey,
+			item,
+			sourceId: item.sourceId,
+			textHash,
+		});
+	}
+	const uniqueCandidates = [...candidates.values()];
+	if (uniqueCandidates.length === 0) {
+		return items;
+	}
+
+	const sourceIds = uniqueCandidates.map((candidate) => candidate.sourceId);
+	const itemIds = uniqueCandidates.map((candidate) => candidate.item.id);
+	const cachedRows = await readCachedTranslationsSafely({
+		itemIds,
+		lang,
+		mode,
+		sourceIds,
+	});
+	if (cachedRows === null) {
+		return items;
+	}
+	const { missing, translations } = buildTranslationMap(
+		uniqueCandidates,
+		cachedRows
+	);
+	await fillSyncTranslations(missing, translations, lang, mode);
+
+	if (translations.size === 0) {
+		return items;
+	}
+
+	return items.map((item) => {
+		const translation = translations.get(`${item.sourceId}:${item.id}`);
+		return translation ? applyTranslation(item, translation) : item;
+	});
 }

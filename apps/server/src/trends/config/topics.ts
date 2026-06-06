@@ -277,45 +277,6 @@ export const topicPresets = {
 			},
 		],
 	},
-	tech: {
-		path: "/trends/tech",
-		title: "Tech",
-		description: "Mainstream tech news for general readers",
-		sections: [
-			{
-				id: "press",
-				title: "Mainstream Press",
-				sourceIds: [
-					"apnews-technology",
-					"the-verge",
-					"techcrunch",
-					"engadget",
-					"macrumors",
-					"9to5mac",
-					"appleinsider",
-					"cult-of-mac",
-					"wired",
-					"ars-technica",
-					"mit-tech-review",
-				],
-			},
-			{
-				id: "voices",
-				title: "Industry Voices",
-				sourceIds: [
-					"slashdot",
-					"securityonline",
-					"the-register",
-					"daring-fireball",
-				],
-			},
-			{
-				id: "crypto",
-				title: "Crypto & Web3",
-				sourceIds: ["coindesk-news", "cointelegraph"],
-			},
-		],
-	},
 	programming: {
 		path: "/trends/programming",
 		title: "Programming",
@@ -359,35 +320,6 @@ export const topicPresets = {
 					"smashing-mag",
 					"infoq",
 					"lwn",
-				],
-			},
-		],
-	},
-	indie: {
-		path: "/trends/indie",
-		title: "Indie",
-		description: "Indie hackers, SaaS and maker communities",
-		sections: [
-			{
-				id: "launch",
-				title: "Launch & Discovery",
-				sourceIds: [
-					"techcrunch",
-					"producthunt",
-					"hackernews-show",
-					"hackernews-ask",
-				],
-			},
-			{
-				id: "communities",
-				title: "Maker Communities",
-				sourceIds: [
-					"reddit-startups",
-					"reddit-entrepreneur",
-					"reddit-saas",
-					"reddit-sideproject",
-					"reddit-indiehackers",
-					"reddit-microsaas",
 				],
 			},
 		],

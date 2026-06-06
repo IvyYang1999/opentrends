@@ -1,9 +1,7 @@
 export type TopicId =
 	| "home"
 	| "ai"
-	| "tech"
 	| "programming"
-	| "indie"
 	| "cn"
 	| "embodied"
 	| "hardware"
@@ -43,11 +41,14 @@ export interface NewsItem {
 
 export interface SourceCardData {
 	errorMessage?: string;
+	eventEligible?: boolean;
+	expiresAt?: number;
 	homeUrl?: string;
 	itemCount?: number;
 	items: NewsItem[];
 	itemsTruncated?: boolean;
 	sourceId: SourceId;
+	staleUntil?: number;
 	status: SourceStatus;
 	title: string;
 	updatedAt?: number;
@@ -101,6 +102,7 @@ export type NativeAdapterId =
 
 export interface NativeSourcePreset {
 	adapter: NativeAdapterId;
+	eventEligible?: boolean;
 	homeUrl?: string;
 	name: string;
 	params?: Record<string, string | number | boolean>;
@@ -109,6 +111,7 @@ export interface NativeSourcePreset {
 }
 
 export interface RssHubSourcePreset {
+	eventEligible?: boolean;
 	homeUrl?: string;
 	name: string;
 	params?: Record<string, string | number | boolean>;
@@ -118,6 +121,7 @@ export interface RssHubSourcePreset {
 }
 
 export interface RssSourcePreset {
+	eventEligible?: boolean;
 	feedUrl: string;
 	homeUrl?: string;
 	name: string;

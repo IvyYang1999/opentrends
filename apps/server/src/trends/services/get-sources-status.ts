@@ -1,9 +1,16 @@
+import { db, schema } from "@opentrends/db";
+import { inArray, sql } from "drizzle-orm";
+
 import {
 	readSnapshotSummaries,
 	type SourceSnapshotSummary,
 } from "../cache/source-cache";
 import { getRssHubBaseUrls } from "../config/rsshub-instances";
-import { sourceNotes, sourcePresets } from "../config/sources";
+import {
+	isEventEligibleSource,
+	sourceNotes,
+	sourcePresets,
+} from "../config/sources";
 import { topicPresets } from "../config/topics";
 import type {
 	SourcePreset,
@@ -15,6 +22,8 @@ import type {
 export interface SourceStatusEntry {
 	endpointUrl?: string;
 	errorCount: number;
+	eventEligible: boolean;
+	eventItemCount: number;
 	expiresAt?: number;
 	fetchedAt?: number;
 	homeUrl?: string;
@@ -63,6 +72,7 @@ export interface SourcesStatusResponse {
 		stale: number;
 		error: number;
 		missing: number;
+		eventItems: number;
 	};
 }
 
@@ -73,6 +83,8 @@ export type SourcesStatusCacheStatus =
 	| "snapshot";
 
 let lastSourcesStatus: SourcesStatusResponse | undefined;
+
+const { trendEventSourceItem } = schema;
 
 function buildTopicIndex(): Map<string, TopicId[]> {
 	const index = new Map<string, TopicId[]>();
@@ -94,11 +106,19 @@ function buildTopicIndex(): Map<string, TopicId[]> {
 }
 
 function buildSourcesStatusFromSnapshots(
-	snapshots: ReadonlyMap<string, SourceSnapshotSummary>
+	snapshots: ReadonlyMap<string, SourceSnapshotSummary>,
+	eventItemCounts: ReadonlyMap<string, number> = new Map()
 ): SourcesStatusResponse {
 	const topicIndex = buildTopicIndex();
 	const entries: SourceStatusEntry[] = [];
-	const totals = { sources: 0, ok: 0, stale: 0, error: 0, missing: 0 };
+	const totals = {
+		sources: 0,
+		ok: 0,
+		stale: 0,
+		error: 0,
+		missing: 0,
+		eventItems: 0,
+	};
 
 	const presetEntries = Object.entries(sourcePresets) as [
 		keyof typeof sourcePresets,
@@ -114,14 +134,18 @@ function buildSourcesStatusFromSnapshots(
 		const status: SourceStatus | "missing" = snapshot
 			? snapshot.status
 			: "missing";
+		const eventItemCount = eventItemCounts.get(sourceId) ?? 0;
 
 		totals.sources += 1;
 		totals[status] += 1;
+		totals.eventItems += eventItemCount;
 
 		entries.push({
 			sourceId,
 			name: preset.name,
 			note: sourceNotes[sourceId],
+			eventEligible: isEventEligibleSource(sourceId),
+			eventItemCount,
 			provider: preset.provider,
 			homeUrl: "homeUrl" in preset ? preset.homeUrl : undefined,
 			endpointUrl: computeEndpointUrl(preset),
@@ -149,15 +173,38 @@ function buildSourcesStatusFromSnapshots(
 	};
 }
 
+async function readEventItemCounts(
+	sourceIds: string[]
+): Promise<ReadonlyMap<string, number>> {
+	if (sourceIds.length === 0) {
+		return new Map();
+	}
+
+	const rows = await db
+		.select({
+			sourceId: trendEventSourceItem.sourceId,
+			eventItemCount: sql<number>`count(*)::int`,
+		})
+		.from(trendEventSourceItem)
+		.where(inArray(trendEventSourceItem.sourceId, sourceIds))
+		.groupBy(trendEventSourceItem.sourceId);
+
+	return new Map(
+		rows.map((row) => [row.sourceId, Number(row.eventItemCount)] as const)
+	);
+}
+
 async function buildSourcesStatus(): Promise<SourcesStatusResponse> {
 	const presetEntries = Object.entries(sourcePresets) as [
 		keyof typeof sourcePresets,
 		(typeof sourcePresets)[keyof typeof sourcePresets],
 	][];
-	const snapshots = await readSnapshotSummaries(
-		presetEntries.map(([id]) => id)
-	);
-	return buildSourcesStatusFromSnapshots(snapshots);
+	const sourceIds = presetEntries.map(([id]) => id);
+	const [snapshots, eventItemCounts] = await Promise.all([
+		readSnapshotSummaries(sourceIds),
+		readEventItemCounts(sourceIds),
+	]);
+	return buildSourcesStatusFromSnapshots(snapshots, eventItemCounts);
 }
 
 export function getSourcesConfigStatus(): SourcesStatusResponse {

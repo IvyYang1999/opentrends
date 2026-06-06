@@ -8,8 +8,8 @@ import { fileURLToPath } from "node:url";
 
 const SELF_DIR = path.dirname(fileURLToPath(import.meta.url));
 const DB_DIR = path.resolve(SELF_DIR, "..");
-const SERVER_ENV = path.resolve(DB_DIR, "../../apps/server/.env");
-const WEB_ENV = path.resolve(DB_DIR, "../../apps/web/.env");
+const SERVER_ENV = path.resolve(DB_DIR, "../../apps/server/.env.local");
+const WEB_ENV = path.resolve(DB_DIR, "../../apps/web/.env.local");
 const POSTGRES_SERVICE = "postgres";
 const RSSHUB_SERVICE = "rsshub";
 const DEFAULT_POSTGRES_PORT = 5432;
