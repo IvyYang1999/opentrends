@@ -1,25 +1,13 @@
+import { getWorkerBindings } from "../../runtime";
 import { isEventEligibleSource } from "../config/sources";
 import { getTopicPreset, topicPresets } from "../config/topics";
 import type { SourceId, TopicId } from "../types";
 import type { EventSourceItemRef } from "./event-content-enrichment";
 import { rebuildTopicEvents } from "./event-feed";
 
-const VOID_QUEUES_MODULE = ["void", "queues"].join("/");
-const EVENT_MERGE_QUEUE_NAME = "event-merge";
-const importRuntimeModule = (specifier: string): Promise<unknown> =>
-	import(specifier);
-
 export interface EventMergeMessage {
 	items: EventSourceItemRef[];
 	sourceId?: SourceId;
-}
-
-interface VoidQueueProducer {
-	send: (message: EventMergeMessage) => Promise<void>;
-}
-
-interface VoidQueuesModule {
-	queues?: Record<string, VoidQueueProducer | undefined>;
 }
 
 function getTopicsForSource(sourceId: SourceId): TopicId[] {
@@ -53,30 +41,18 @@ export async function runEventMergeJob(
 	}
 }
 
-async function sendToVoidQueue(message: EventMergeMessage): Promise<boolean> {
-	let module: VoidQueuesModule;
-	try {
-		module = (await importRuntimeModule(
-			VOID_QUEUES_MODULE
-		)) as VoidQueuesModule;
-	} catch {
+async function sendToCloudflareQueue(
+	message: EventMergeMessage
+): Promise<boolean> {
+	const queue = getWorkerBindings()?.EVENT_MERGE_QUEUE;
+	if (!queue) {
 		return false;
 	}
 	try {
-		const queue = module.queues?.[EVENT_MERGE_QUEUE_NAME];
-		if (!queue) {
-			return false;
-		}
-		await queue.send(message);
+		await queue.send({ kind: "event-merge", payload: message });
 		return true;
 	} catch (error) {
-		if (
-			error instanceof Error &&
-			error.message.includes("Cloudflare env is unavailable")
-		) {
-			return false;
-		}
-		console.warn("[event-merge] void queue dispatch failed", error);
+		console.warn("[event-merge] Cloudflare queue dispatch failed", error);
 		return false;
 	}
 }
@@ -90,7 +66,7 @@ export async function dispatchEventMergeJob(
 	) {
 		return;
 	}
-	if (await sendToVoidQueue(message)) {
+	if (await sendToCloudflareQueue(message)) {
 		return;
 	}
 	await runEventMergeJob(message);

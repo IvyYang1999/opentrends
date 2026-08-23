@@ -15,7 +15,6 @@ import { Route as Char123LocaleChar125SourcesRouteImport } from './routes/{-$loc
 import { Route as Char123LocaleChar125LoginRouteImport } from './routes/{-$locale}/login'
 import { Route as Char123LocaleChar125EventsRouteImport } from './routes/{-$locale}/events'
 import { Route as Char123LocaleChar125DashboardRouteImport } from './routes/{-$locale}/dashboard'
-import { Route as _voidPrerenderPathsRouteImport } from './routes/[_][_]void/prerender-paths'
 import { Route as DotwellKnownApiCatalogRouteImport } from './routes/[.]well-known.api-catalog'
 import { Route as Char123LocaleChar125TrendsIndexRouteImport } from './routes/{-$locale}/trends.index'
 import { Route as Char123LocaleChar125TrendsTopicRouteImport } from './routes/{-$locale}/trends.$topic'
@@ -58,11 +57,6 @@ const Char123LocaleChar125DashboardRoute =
     path: '/{-$locale}/dashboard',
     getParentRoute: () => rootRouteImport,
   } as any)
-const _voidPrerenderPathsRoute = _voidPrerenderPathsRouteImport.update({
-  id: '/__void/prerender-paths',
-  path: '/__void/prerender-paths',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const DotwellKnownApiCatalogRoute = DotwellKnownApiCatalogRouteImport.update({
   id: '/.well-known/api-catalog',
   path: '/.well-known/api-catalog',
@@ -95,7 +89,6 @@ const Char123LocaleChar125EventsFlowRoute =
 
 export interface FileRoutesByFullPath {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
-  '/__void/prerender-paths': typeof _voidPrerenderPathsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
   '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
@@ -109,7 +102,6 @@ export interface FileRoutesByFullPath {
 }
 export interface FileRoutesByTo {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
-  '/__void/prerender-paths': typeof _voidPrerenderPathsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
   '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
@@ -123,7 +115,6 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
-  '/__void/prerender-paths': typeof _voidPrerenderPathsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
   '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
@@ -139,7 +130,6 @@ export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/.well-known/api-catalog'
-    | '/__void/prerender-paths'
     | '/{-$locale}/dashboard'
     | '/{-$locale}/events'
     | '/{-$locale}/login'
@@ -153,7 +143,6 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/.well-known/api-catalog'
-    | '/__void/prerender-paths'
     | '/{-$locale}/dashboard'
     | '/{-$locale}/events'
     | '/{-$locale}/login'
@@ -166,7 +155,6 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/.well-known/api-catalog'
-    | '/__void/prerender-paths'
     | '/{-$locale}/dashboard'
     | '/{-$locale}/events'
     | '/{-$locale}/login'
@@ -181,7 +169,6 @@ export interface FileRouteTypes {
 }
 export interface RootRouteChildren {
   DotwellKnownApiCatalogRoute: typeof DotwellKnownApiCatalogRoute
-  _voidPrerenderPathsRoute: typeof _voidPrerenderPathsRoute
   Char123LocaleChar125DashboardRoute: typeof Char123LocaleChar125DashboardRoute
   Char123LocaleChar125EventsRoute: typeof Char123LocaleChar125EventsRoute
   Char123LocaleChar125LoginRoute: typeof Char123LocaleChar125LoginRoute
@@ -234,13 +221,6 @@ declare module '@tanstack/react-router' {
       path: '/{-$locale}/dashboard'
       fullPath: '/{-$locale}/dashboard'
       preLoaderRoute: typeof Char123LocaleChar125DashboardRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/__void/prerender-paths': {
-      id: '/__void/prerender-paths'
-      path: '/__void/prerender-paths'
-      fullPath: '/__void/prerender-paths'
-      preLoaderRoute: typeof _voidPrerenderPathsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/.well-known/api-catalog': {
@@ -299,7 +279,6 @@ const Char123LocaleChar125TrendsRouteWithChildren =
 
 const rootRouteChildren: RootRouteChildren = {
   DotwellKnownApiCatalogRoute: DotwellKnownApiCatalogRoute,
-  _voidPrerenderPathsRoute: _voidPrerenderPathsRoute,
   Char123LocaleChar125DashboardRoute: Char123LocaleChar125DashboardRoute,
   Char123LocaleChar125EventsRoute: Char123LocaleChar125EventsRoute,
   Char123LocaleChar125LoginRoute: Char123LocaleChar125LoginRoute,

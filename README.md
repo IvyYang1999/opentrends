@@ -23,8 +23,8 @@ languages.
 - Source status endpoints and per-source refresh behavior
 - Hot trend page caching through the runtime cache/KV layer plus in-memory
   request caching
-- Docker Compose deployment for Postgres, RSSHub, API, migration, and web
-- Void and Cloudflare/Alchemy deployment configs
+- Native Cloudflare D1, KV, and Queues runtime
+- Alchemy-managed local Cloudflare development and deployment
 
 ## Repository Layout
 
@@ -48,40 +48,40 @@ opentrends/
 ## Requirements
 
 - Bun 1.3.x
-- Docker, for the local Postgres/RSSHub stack
-- PostgreSQL, if you do not use Docker Compose
+- A Cloudflare account (only required for cloud deployment)
 
 ## Local Development
 
 Install dependencies:
 
 ```bash
-bun install
-```
-
-Create local env files from the examples:
-
-```bash
+bun install --frozen-lockfile
 cp apps/server/.env.example apps/server/.env.local
 cp apps/web/.env.example apps/web/.env.local
+cp packages/infra/.env.example packages/infra/.env.local
 ```
 
-Start Postgres and run the app:
+Set `BETTER_AUTH_SECRET` to a random local value. Alchemy also needs
+`ALCHEMY_PASSWORD` to encrypt local state; inject it through a password manager
+or a temporary environment variable and never commit it. The Cloudflare values
+in the infra example are local Miniflare placeholders with no cloud access.
+
+Start the local Cloudflare stack:
 
 ```bash
-bun run db:start
 bun run dev
 ```
 
 The API runs on `http://localhost:3000`.
 The web app runs on `http://localhost:3001`.
+Alchemy creates local D1, KV, and Queues resources and applies the fresh D1
+schema to an empty database. No PostgreSQL data is imported.
 
 ## Environment
 
-Server env is validated in `apps/server/env.ts` and `packages/env/src/server.ts`.
+Server env is validated in `packages/env/src/server.ts`.
 At minimum, configure:
 
-- `DATABASE_URL`
 - `BETTER_AUTH_SECRET`
 - `BETTER_AUTH_URL`
 - `CORS_ORIGIN`
@@ -94,9 +94,8 @@ Optional trend and summary settings include:
 - `LLM_MODEL`
 - `TRENDS_REFRESH_SCHEDULER`
 
-Web env is validated in `apps/web/env.ts`. Configure:
+Alchemy injects `VITE_SERVER_URL` into the web app. Optionally configure:
 
-- `VITE_SERVER_URL`
 - `VITE_SITE_URL`
 
 ## Caching
@@ -112,11 +111,7 @@ backend.
 ## Useful Commands
 
 ```bash
-bun run dev            # Start DB and all apps
-bun run dev:web        # Start only the web app
-bun run dev:server     # Start only the API
-bun run db:start       # Start local database services
-bun run db:migrate     # Apply Drizzle migrations
+bun run dev            # Start local D1, KV, Queues, API, and web
 bun run db:generate    # Generate a Drizzle migration
 bun run check-types    # Typecheck workspaces
 bun test               # Run tests
@@ -124,91 +119,12 @@ bun run check          # Run Ultracite/Biome checks
 bun run build          # Build workspaces
 ```
 
-## Docker Compose
-
-Copy the example Docker environment file and fill in `BETTER_AUTH_SECRET`:
-
-```bash
-cp .env.docker.example .env
-perl -0pi -e "s|BETTER_AUTH_SECRET=|BETTER_AUTH_SECRET=$(openssl rand -base64 32)|" .env
-```
-
-For a public deployment, also replace the localhost values for
-`BETTER_AUTH_URL`, `CORS_ORIGIN`, `VITE_SERVER_URL`, and `VITE_SITE_URL`.
-
-Start the full stack:
-
-```bash
-docker compose up -d --build
-```
-
-This starts Postgres, RSSHub, a migration job, the API server, and the web app.
-
-## GitHub Container Registry Images
-
-The repository includes a GitHub Actions workflow that builds both Docker images
-and publishes them to GitHub Container Registry:
-
-- `ghcr.io/nexmoe/opentrends-server`
-- `ghcr.io/nexmoe/opentrends-web`
-
-The workflow runs on pull requests, pushes to `main`, version tags such as
-`v1.0.0`, and manual dispatch. Pull requests build the images without pushing.
-Pushes to `main` publish `main`, `latest`, and `sha-<commit>` tags. Version tags
-publish the matching tag.
-
-The published web image is built with these defaults:
-
-- `VITE_SERVER_URL=http://localhost:3000`
-- `VITE_SITE_URL=http://localhost:3001`
-
-Set repository variables named `VITE_SERVER_URL` and `VITE_SITE_URL` before
-running the workflow if the image should be built for a public deployment URL.
-
-Pull the published images:
-
-```bash
-docker pull ghcr.io/nexmoe/opentrends-server:latest
-docker pull ghcr.io/nexmoe/opentrends-web:latest
-```
-
-To use the published images with Compose, override the `server`, `migrate`, and
-`web` image names in a separate file:
-
-```yaml
-# docker-compose.ghcr.yml
-services:
-  migrate:
-    image: ghcr.io/nexmoe/opentrends-server:latest
-    build: !reset null
-
-  server:
-    image: ghcr.io/nexmoe/opentrends-server:latest
-    build: !reset null
-
-  web:
-    image: ghcr.io/nexmoe/opentrends-web:latest
-    build: !reset null
-```
-
-Then start the stack with the existing Compose file plus the override:
-
-```bash
-docker compose -f docker-compose.yml -f docker-compose.ghcr.yml up -d
-```
-
-This keeps the checked-in Postgres, RSSHub, migration, API, and web service
-configuration while replacing the locally built app images with GHCR images. Set
-the same environment variables documented in `.env.docker.example`.
-
 ## Deployment
 
-Void deployment configs live in `apps/server/void.json` and `apps/web/void.json`.
-Deploy the API first, then deploy the web app with `VITE_SERVER_URL` pointing at
-the API origin.
-
-Cloudflare/Alchemy deployment lives in `packages/infra/alchemy.run.ts` and uses
-secrets from the local environment or Alchemy secret env.
+The Cloudflare/Alchemy entrypoint is `packages/infra/alchemy.run.ts`. Run
+`bun run cloudflare:login`, inject production configuration securely, then run
+`bun run --filter @opentrends/infra deploy`. The definition does not modify the
+domain or DNS.
 
 ## License
 

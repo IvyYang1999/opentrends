@@ -1,37 +1,36 @@
+import { sql } from "drizzle-orm";
 import {
 	index,
 	integer,
-	jsonb,
-	pgTable,
 	primaryKey,
+	sqliteTable,
 	text,
-	timestamp,
-} from "drizzle-orm/pg-core";
+} from "drizzle-orm/sqlite-core";
 
-export const source = pgTable("source", {
+const now = sql`(unixepoch())`;
+
+export const source = sqliteTable("source", {
 	sourceId: text("source_id").primaryKey(),
 	status: text("status").default("error").notNull(),
 	generation: integer("generation").default(0).notNull(),
-	fetchedAt: timestamp("fetched_at", { withTimezone: true }),
-	lastSuccessAt: timestamp("last_success_at", { withTimezone: true }),
-	expiresAt: timestamp("expires_at", { withTimezone: true }),
-	staleUntil: timestamp("stale_until", { withTimezone: true }),
+	fetchedAt: integer("fetched_at", { mode: "timestamp" }),
+	lastSuccessAt: integer("last_success_at", { mode: "timestamp" }),
+	expiresAt: integer("expires_at", { mode: "timestamp" }),
+	staleUntil: integer("stale_until", { mode: "timestamp" }),
 	itemCount: integer("item_count").default(0).notNull(),
 	errorCount: integer("error_count").default(0).notNull(),
 	lastError: text("last_error"),
 	refreshOwner: text("refresh_owner"),
-	refreshLockedUntil: timestamp("refresh_locked_until", {
-		withTimezone: true,
-	}),
-	createdAt: timestamp("created_at", { withTimezone: true })
-		.defaultNow()
+	refreshLockedUntil: integer("refresh_locked_until", { mode: "timestamp" }),
+	createdAt: integer("created_at", { mode: "timestamp" })
+		.default(now)
 		.notNull(),
-	updatedAt: timestamp("updated_at", { withTimezone: true })
-		.defaultNow()
+	updatedAt: integer("updated_at", { mode: "timestamp" })
+		.default(now)
 		.notNull(),
 });
 
-export const sourceItem = pgTable(
+export const sourceItem = sqliteTable(
 	"source_item",
 	{
 		sourceId: text("source_id").notNull(),
@@ -42,16 +41,18 @@ export const sourceItem = pgTable(
 		description: text("description"),
 		imageUrl: text("image_url"),
 		rank: integer("rank").notNull(),
-		publishedAt: timestamp("published_at", { withTimezone: true }),
-		fetchedAt: timestamp("fetched_at", { withTimezone: true }).notNull(),
-		lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
+		publishedAt: integer("published_at", { mode: "timestamp" }),
+		fetchedAt: integer("fetched_at", { mode: "timestamp" }).notNull(),
+		lastSeenAt: integer("last_seen_at", { mode: "timestamp" }).notNull(),
 		contentHash: text("content_hash").notNull(),
 		contentText: text("content_text"),
-		contentFetchedAt: timestamp("content_fetched_at", { withTimezone: true }),
+		contentFetchedAt: integer("content_fetched_at", { mode: "timestamp" }),
 		contentStatus: text("content_status").default("pending").notNull(),
 		contentError: text("content_error"),
-		hotValue: jsonb("hot_value").$type<string | number | null>(),
-		original: jsonb("original").$type<{
+		hotValue: text("hot_value", { mode: "json" }).$type<
+			string | number | null
+		>(),
+		original: text("original", { mode: "json" }).$type<{
 			description?: string;
 			title: string;
 		} | null>(),
@@ -71,15 +72,15 @@ export const sourceItem = pgTable(
 	]
 );
 
-export const sourceItemEmbedding = pgTable(
+export const sourceItemEmbedding = sqliteTable(
 	"source_item_embedding",
 	{
 		sourceId: text("source_id").notNull(),
 		itemId: text("item_id").notNull(),
 		textHash: text("text_hash").notNull(),
-		embedding: jsonb("embedding").$type<number[]>().notNull(),
+		embedding: text("embedding", { mode: "json" }).$type<number[]>().notNull(),
 		model: text("model").notNull(),
-		createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	},
 	(table) => [
 		primaryKey({ columns: [table.sourceId, table.itemId] }),
@@ -87,7 +88,7 @@ export const sourceItemEmbedding = pgTable(
 	]
 );
 
-export const trendEvent = pgTable(
+export const trendEvent = sqliteTable(
 	"trend_event",
 	{
 		eventId: text("event_id").primaryKey(),
@@ -96,11 +97,11 @@ export const trendEvent = pgTable(
 		summary: text("summary"),
 		score: integer("score").default(0).notNull(),
 		sourceCount: integer("source_count").default(0).notNull(),
-		firstSeenAt: timestamp("first_seen_at", { withTimezone: true }).notNull(),
-		lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull(),
+		firstSeenAt: integer("first_seen_at", { mode: "timestamp" }).notNull(),
+		lastSeenAt: integer("last_seen_at", { mode: "timestamp" }).notNull(),
 		primarySourceId: text("primary_source_id"),
 		primaryItemId: text("primary_item_id"),
-		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 	},
 	(table) => [
 		index("trend_event_topic_score_idx").on(table.topicId, table.score),
@@ -115,7 +116,7 @@ export const trendEvent = pgTable(
 	]
 );
 
-export const trendEventSourceItem = pgTable(
+export const trendEventSourceItem = sqliteTable(
 	"trend_event_source_item",
 	{
 		eventId: text("event_id").notNull(),
@@ -123,7 +124,7 @@ export const trendEventSourceItem = pgTable(
 		itemId: text("item_id").notNull(),
 		isPrimary: integer("is_primary").default(0).notNull(),
 		mergeConfidence: integer("merge_confidence").default(0).notNull(),
-		createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	},
 	(table) => [
 		primaryKey({ columns: [table.eventId, table.sourceId, table.itemId] }),
@@ -134,12 +135,12 @@ export const trendEventSourceItem = pgTable(
 	]
 );
 
-export const trendEventTopic = pgTable(
+export const trendEventTopic = sqliteTable(
 	"trend_event_topic",
 	{
 		eventId: text("event_id").notNull(),
 		topicId: text("topic_id").notNull(),
-		createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
 	},
 	(table) => [
 		primaryKey({ columns: [table.eventId, table.topicId] }),
@@ -147,21 +148,21 @@ export const trendEventTopic = pgTable(
 	]
 );
 
-export const trendsSummary = pgTable(
+export const trendsSummary = sqliteTable(
 	"trends_summary",
 	{
 		topicId: text("topic_id").notNull(),
 		lang: text("lang").notNull(),
 		prompt: text("prompt").notNull(),
 		text: text("text").notNull(),
-		citations: jsonb("citations").$type<unknown[]>().notNull(),
-		createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-		expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+		citations: text("citations", { mode: "json" }).$type<unknown[]>().notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+		expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
 	},
 	(table) => [primaryKey({ columns: [table.topicId, table.lang] })]
 );
 
-export const sourceItemTranslation = pgTable(
+export const sourceItemTranslation = sqliteTable(
 	"source_item_translation",
 	{
 		sourceId: text("source_id").notNull(),
@@ -171,8 +172,8 @@ export const sourceItemTranslation = pgTable(
 		title: text("title").notNull(),
 		description: text("description"),
 		model: text("model").notNull(),
-		createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-		updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
+		createdAt: integer("created_at", { mode: "timestamp" }).notNull(),
+		updatedAt: integer("updated_at", { mode: "timestamp" }).notNull(),
 	},
 	(table) => [
 		primaryKey({ columns: [table.sourceId, table.itemId, table.lang] }),

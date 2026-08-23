@@ -1,6 +1,7 @@
-import { env } from "@opentrends/env/server";
-import { drizzle } from "drizzle-orm/node-postgres";
-import pg from "pg";
+/// <reference types="@cloudflare/workers-types" />
+
+import { AsyncLocalStorage } from "node:async_hooks";
+import { drizzle } from "drizzle-orm/d1";
 
 import {
 	account,
@@ -40,27 +41,40 @@ const schema = {
 	verification,
 };
 
-const DB_QUERY_TIMEOUT_MS = 8000;
-const DB_IDLE_TIMEOUT_MS = 30_000;
-
-export function createDb() {
-	const pool = new pg.Pool({
-		allowExitOnIdle: true,
-		connectionString: env.DATABASE_URL,
-		connectionTimeoutMillis: DB_QUERY_TIMEOUT_MS,
-		idleTimeoutMillis: DB_IDLE_TIMEOUT_MS,
-		max: 4,
-		query_timeout: DB_QUERY_TIMEOUT_MS,
-		statement_timeout: DB_QUERY_TIMEOUT_MS,
-	});
-	return drizzle({ client: pool, schema });
+function createD1Client(database: D1Database) {
+	return drizzle(database, { schema });
 }
 
-let dbInstance: ReturnType<typeof createDb> | undefined;
+export type AppDatabase = ReturnType<typeof createD1Client>;
 
-export function getDb(): ReturnType<typeof createDb> {
-	dbInstance ??= createDb();
-	return dbInstance;
+const databaseContext = new AsyncLocalStorage<AppDatabase>();
+
+export function runWithDbClient<T>(
+	database: AppDatabase,
+	callback: () => T
+): T {
+	return databaseContext.run(database, callback);
+}
+
+export function runWithD1Database<T>(
+	database: D1Database,
+	callback: () => T
+): T {
+	return runWithDbClient(createD1Client(database), callback);
+}
+
+export function getDb(): AppDatabase {
+	const database = databaseContext.getStore();
+	if (!database) {
+		throw new Error(
+			"D1 database binding is unavailable outside a Cloudflare Worker request"
+		);
+	}
+	return database;
+}
+
+export function createDb(): AppDatabase {
+	return getDb();
 }
 
 export const db = new Proxy(
@@ -70,5 +84,6 @@ export const db = new Proxy(
 			return Reflect.get(getDb(), property, receiver);
 		},
 	}
-) as ReturnType<typeof createDb>;
+) as AppDatabase;
+
 export { schema };

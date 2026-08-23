@@ -63,15 +63,28 @@ async function writeSourcesStatusToEdgeCache(
 	}
 }
 
-function withSourcesCacheHeaders(
+export function withSourcesCacheHeaders(
 	response: Response,
 	cacheStatus: SourcesStatusCacheStatus
 ): Response {
-	response.headers.set(
+	const responseWithMutableHeaders = new Response(response.body, response);
+	responseWithMutableHeaders.headers.set(
 		"Cache-Control",
 		"public, max-age=60, s-maxage=300, stale-while-revalidate=600"
 	);
-	response.headers.set("X-Sources-Cache", cacheStatus);
-	response.headers.append("Access-Control-Expose-Headers", "X-Sources-Cache");
-	return response;
+	responseWithMutableHeaders.headers.set("X-Sources-Cache", cacheStatus);
+	const exposedHeaders =
+		responseWithMutableHeaders.headers
+			.get("Access-Control-Expose-Headers")
+			?.split(",")
+			.map((header) => header.trim())
+			.filter(
+				(header) =>
+					header.length > 0 && header.toLowerCase() !== "x-sources-cache"
+			) ?? [];
+	responseWithMutableHeaders.headers.set(
+		"Access-Control-Expose-Headers",
+		[...exposedHeaders, "X-Sources-Cache"].join(", ")
+	);
+	return responseWithMutableHeaders;
 }

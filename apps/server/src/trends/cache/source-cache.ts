@@ -1,5 +1,6 @@
 import { db, schema } from "@opentrends/db";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 
 import type {
 	NewsItem,
@@ -368,15 +369,14 @@ export async function writeSnapshotSuccess(params: {
 		}
 	}
 
-	await db.transaction(async (tx) => {
-		const existing = await tx
-			.select({ generation: source.generation })
-			.from(source)
-			.where(eq(source.sourceId, sourceId))
-			.limit(1);
-		const generation = (existing[0]?.generation ?? 0) + 1;
-
-		await tx
+	const existing = await db
+		.select({ generation: source.generation })
+		.from(source)
+		.where(eq(source.sourceId, sourceId))
+		.limit(1);
+	const generation = (existing[0]?.generation ?? 0) + 1;
+	const writes: BatchItem<"sqlite">[] = [
+		db
 			.insert(source)
 			.values({
 				sourceId,
@@ -409,40 +409,41 @@ export async function writeSnapshotSuccess(params: {
 					refreshLockedUntil: null,
 					updatedAt: fetchedAtDate,
 				},
-			});
+			}),
+	];
 
-		if (items.length === 0) {
-			return;
-		}
-
-		await tx
-			.insert(sourceItem)
-			.values(
-				itemRows.map((item) => ({
-					...item,
-					generation,
-				}))
-			)
-			.onConflictDoUpdate({
-				target: [sourceItem.sourceId, sourceItem.itemId],
-				set: {
-					generation: sql`excluded.generation`,
-					url: sql`excluded.url`,
-					title: sql`excluded.title`,
-					description: sql`excluded.description`,
-					imageUrl: sql`excluded.image_url`,
-					rank: sql`excluded.rank`,
-					publishedAt: sql`excluded.published_at`,
-					fetchedAt: sql`excluded.fetched_at`,
-					lastSeenAt: sql`excluded.last_seen_at`,
-					contentHash: sql`excluded.content_hash`,
-					contentStatus: sql`CASE WHEN ${sourceItem.contentHash} IS DISTINCT FROM excluded.content_hash THEN 'pending' ELSE ${sourceItem.contentStatus} END`,
-					contentError: sql`CASE WHEN ${sourceItem.contentHash} IS DISTINCT FROM excluded.content_hash THEN NULL ELSE ${sourceItem.contentError} END`,
-					hotValue: sql`excluded.hot_value`,
-					original: sql`excluded.original`,
-				},
-			});
-	});
+	if (items.length > 0) {
+		writes.push(
+			db
+				.insert(sourceItem)
+				.values(
+					itemRows.map((item) => ({
+						...item,
+						generation,
+					}))
+				)
+				.onConflictDoUpdate({
+					target: [sourceItem.sourceId, sourceItem.itemId],
+					set: {
+						generation: sql`excluded.generation`,
+						url: sql`excluded.url`,
+						title: sql`excluded.title`,
+						description: sql`excluded.description`,
+						imageUrl: sql`excluded.image_url`,
+						rank: sql`excluded.rank`,
+						publishedAt: sql`excluded.published_at`,
+						fetchedAt: sql`excluded.fetched_at`,
+						lastSeenAt: sql`excluded.last_seen_at`,
+						contentHash: sql`excluded.content_hash`,
+						contentStatus: sql`CASE WHEN ${sourceItem.contentHash} IS NOT excluded.content_hash THEN 'pending' ELSE ${sourceItem.contentStatus} END`,
+						contentError: sql`CASE WHEN ${sourceItem.contentHash} IS NOT excluded.content_hash THEN NULL ELSE ${sourceItem.contentError} END`,
+						hotValue: sql`excluded.hot_value`,
+						original: sql`excluded.original`,
+					},
+				})
+		);
+	}
+	await db.batch(writes as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
 	return delta;
 }
 

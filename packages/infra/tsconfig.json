@@ -1,0 +1,8 @@
+{
+  "extends": "@opentrends/config/tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "strictNullChecks": true
+  },
+  "include": ["alchemy.run.ts"]
+}

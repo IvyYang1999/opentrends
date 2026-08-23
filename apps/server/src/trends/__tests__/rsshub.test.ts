@@ -17,8 +17,6 @@ afterEach(() => {
 });
 
 function setServerEnv(): void {
-	process.env.DATABASE_URL =
-		"postgresql://postgres:password@localhost:5432/test";
 	process.env.BETTER_AUTH_SECRET = "x".repeat(32);
 	process.env.BETTER_AUTH_URL = "http://localhost:3000";
 	process.env.CORS_ORIGIN = "http://localhost:3001";

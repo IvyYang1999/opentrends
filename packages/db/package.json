@@ -10,24 +10,15 @@
     }
   },
   "scripts": {
-    "db:generate": "drizzle-kit generate",
-    "db:studio": "drizzle-kit studio",
-    "db:migrate": "drizzle-kit migrate",
-    "db:start": "bun run scripts/dev-up.ts",
-    "db:watch": "docker compose up",
-    "db:stop": "docker compose stop",
-    "db:down": "docker compose down"
+    "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@opentrends/env": "workspace:*",
     "dotenv": "catalog:",
     "drizzle-orm": "^0.45.1",
-    "pg": "^8.17.1",
     "zod": "catalog:"
   },
   "devDependencies": {
     "@opentrends/config": "workspace:*",
-    "@types/pg": "^8.16.0",
     "drizzle-kit": "^0.31.8",
     "typescript": "catalog:"
   }

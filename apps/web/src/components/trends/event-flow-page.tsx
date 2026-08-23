@@ -777,7 +777,7 @@ function buildWorkflowNodes(
 			icon: ServerCog,
 			title: "5. event-merge queue",
 			description:
-				"Refresh dispatches EventMergeMessage; Void queue retries failures and falls back to inline execution locally.",
+				"Refresh dispatches EventMergeMessage; Cloudflare Queue retries failures and falls back to inline execution locally.",
 			evidence: `${snapshot.sources.totals.eventItems} candidate items available for queueing`,
 			input: `${snapshot.sources.totals.eventItems} candidate items`,
 			nextStep: isChinese
@@ -1092,7 +1092,7 @@ function EventFlowSidebar({
 				</div>
 				<div className="grid gap-2 p-3 text-[12px] text-[var(--text-secondary)]">
 					<ControlLine label="Scheduler" value="request-driven tick" />
-					<ControlLine label="Queue" value="event-merge / Void" />
+					<ControlLine label="Queue" value="event-merge / Cloudflare" />
 					<ControlLine label="Embedding" value="SILICONFLOW_API_KEY" />
 					<ControlLine label="Merge rules" value="event-feed.ts" />
 				</div>

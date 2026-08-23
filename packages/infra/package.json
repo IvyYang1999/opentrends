@@ -3,7 +3,10 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "check-types": "tsc -p tsconfig.json",
+    "dev": "alchemy dev",
     "dev:cloud": "alchemy dev",
+    "login": "alchemy login",
     "deploy": "alchemy deploy",
     "destroy": "alchemy destroy"
   },

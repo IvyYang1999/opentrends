@@ -1,5 +1,6 @@
 import { db, schema } from "@opentrends/db";
-import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import { and, desc, eq, inArray, isNotNull, ne, or, sql } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 
 import {
 	getEventEligibleSourceIds,
@@ -1027,61 +1028,79 @@ export async function rebuildTopicEvents(
 		.from(trendEventTopic)
 		.where(eq(trendEventTopic.topicId, topicId));
 	const previousEventIds = previousTopicEvents.map((event) => event.eventId);
-	await db.transaction(async (tx) => {
-		await tx
-			.delete(trendEventTopic)
-			.where(eq(trendEventTopic.topicId, topicId));
-		await tx
+	const otherTopicLinks =
+		previousEventIds.length === 0
+			? []
+			: await db
+					.select({ eventId: trendEventTopic.eventId })
+					.from(trendEventTopic)
+					.where(
+						and(
+							inArray(trendEventTopic.eventId, previousEventIds),
+							ne(trendEventTopic.topicId, topicId)
+						)
+					);
+	const retainedEventIds = new Set([
+		...otherTopicLinks.map(({ eventId }) => eventId),
+		...clusters.map(({ eventId }) => eventId),
+	]);
+	const orphanEventIds = previousEventIds.filter(
+		(eventId) => !retainedEventIds.has(eventId)
+	);
+	const writes: BatchItem<"sqlite">[] = [
+		db.delete(trendEventTopic).where(eq(trendEventTopic.topicId, topicId)),
+		db
 			.delete(trendEventSourceItem)
 			.where(sql`${trendEventSourceItem.eventId} IN (
 			SELECT ${trendEvent.eventId}
 			FROM ${trendEvent}
 			WHERE ${trendEvent.topicId} = ${topicId}
 				AND ${trendEvent.eventId} LIKE ${`${topicId}-%`}
-		)`);
-		await tx
+		)`),
+		db
 			.delete(trendEvent)
 			.where(
 				and(
 					eq(trendEvent.topicId, topicId),
 					sql`${trendEvent.eventId} LIKE ${`${topicId}-%`}`
 				)
-			);
-		for (const cluster of clusters) {
-			const score = scoreCluster(cluster);
-			await tx
+			),
+	];
+	if (clusters.length > 0) {
+		writes.push(
+			db
 				.insert(trendEvent)
-				.values({
-					eventId: cluster.eventId,
-					topicId,
-					title: cluster.primary.title,
-					summary: summarizeCluster(cluster),
-					score,
-					sourceCount: independentSourceCount(cluster.items),
-					firstSeenAt: cluster.firstSeenAt,
-					lastSeenAt: cluster.lastSeenAt,
-					primarySourceId: cluster.primary.sourceId,
-					primaryItemId: cluster.primary.itemId,
-					updatedAt: now,
-				})
-				.onConflictDoUpdate({
-					target: trendEvent.eventId,
-					set: {
+				.values(
+					clusters.map((cluster) => ({
+						eventId: cluster.eventId,
 						topicId,
 						title: cluster.primary.title,
 						summary: summarizeCluster(cluster),
-						score: sql`GREATEST(${trendEvent.score}, ${score})`,
-						sourceCount: sql`GREATEST(${trendEvent.sourceCount}, ${independentSourceCount(cluster.items)})`,
-						firstSeenAt: sql`LEAST(${trendEvent.firstSeenAt}, ${cluster.firstSeenAt})`,
-						lastSeenAt: sql`GREATEST(${trendEvent.lastSeenAt}, ${cluster.lastSeenAt})`,
+						score: scoreCluster(cluster),
+						sourceCount: independentSourceCount(cluster.items),
+						firstSeenAt: cluster.firstSeenAt,
+						lastSeenAt: cluster.lastSeenAt,
 						primarySourceId: cluster.primary.sourceId,
 						primaryItemId: cluster.primary.itemId,
 						updatedAt: now,
+					}))
+				)
+				.onConflictDoUpdate({
+					target: trendEvent.eventId,
+					set: {
+						topicId: sql`excluded.topic_id`,
+						title: sql`excluded.title`,
+						summary: sql`excluded.summary`,
+						score: sql`max(${trendEvent.score}, excluded.score)`,
+						sourceCount: sql`max(${trendEvent.sourceCount}, excluded.source_count)`,
+						firstSeenAt: sql`min(${trendEvent.firstSeenAt}, excluded.first_seen_at)`,
+						lastSeenAt: sql`max(${trendEvent.lastSeenAt}, excluded.last_seen_at)`,
+						primarySourceId: sql`excluded.primary_source_id`,
+						primaryItemId: sql`excluded.primary_item_id`,
+						updatedAt: sql`excluded.updated_at`,
 					},
-				});
-		}
-		if (clusters.length > 0) {
-			await tx
+				}),
+			db
 				.insert(trendEventTopic)
 				.values(
 					clusters.map((cluster) => ({
@@ -1090,36 +1109,27 @@ export async function rebuildTopicEvents(
 						createdAt: now,
 					}))
 				)
-				.onConflictDoNothing();
-		}
-		const eventSourceItemRows = uniqueEventSourceItemRows(clusters, now);
-		if (eventSourceItemRows.length > 0) {
-			await tx
+				.onConflictDoNothing()
+		);
+	}
+	const eventSourceItemRows = uniqueEventSourceItemRows(clusters, now);
+	if (eventSourceItemRows.length > 0) {
+		writes.push(
+			db
 				.insert(trendEventSourceItem)
 				.values(eventSourceItemRows)
-				.onConflictDoNothing();
-		}
-		if (previousEventIds.length > 0) {
-			const linkedEvents = await tx
-				.select({ eventId: trendEventTopic.eventId })
-				.from(trendEventTopic)
-				.where(inArray(trendEventTopic.eventId, previousEventIds));
-			const linkedEventIds = new Set(
-				linkedEvents.map((event) => event.eventId)
-			);
-			const orphanEventIds = previousEventIds.filter(
-				(eventId) => !linkedEventIds.has(eventId)
-			);
-			if (orphanEventIds.length > 0) {
-				await tx
-					.delete(trendEventSourceItem)
-					.where(inArray(trendEventSourceItem.eventId, orphanEventIds));
-				await tx
-					.delete(trendEvent)
-					.where(inArray(trendEvent.eventId, orphanEventIds));
-			}
-		}
-	});
+				.onConflictDoNothing()
+		);
+	}
+	if (orphanEventIds.length > 0) {
+		writes.push(
+			db
+				.delete(trendEventSourceItem)
+				.where(inArray(trendEventSourceItem.eventId, orphanEventIds)),
+			db.delete(trendEvent).where(inArray(trendEvent.eventId, orphanEventIds))
+		);
+	}
+	await db.batch(writes as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
 }
 
 interface EventFeedRow {
