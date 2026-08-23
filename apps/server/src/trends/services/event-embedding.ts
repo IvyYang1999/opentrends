@@ -1,6 +1,7 @@
 import { env } from "@opentrends/env/server";
 
 const SILICONFLOW_EMBEDDINGS_URL = "https://api.siliconflow.cn/v1/embeddings";
+const SILICONFLOW_EMBEDDING_BATCH_SIZE = 8;
 const EMBEDDING_INPUT_MAX_CHARS = 4200;
 
 export interface EventEmbeddingInput {
@@ -64,12 +65,7 @@ export function buildCanonicalEmbeddingText(
 		.join("\n\n");
 }
 
-export async function embedTexts(texts: string[]): Promise<number[][]> {
-	if (texts.length === 0) {
-		return [];
-	}
-	assertEventEmbeddingConfigured();
-
+async function embedTextBatch(texts: string[]): Promise<number[][]> {
 	const response = await fetch(SILICONFLOW_EMBEDDINGS_URL, {
 		body: JSON.stringify({
 			input: texts,
@@ -102,4 +98,25 @@ export async function embedTexts(texts: string[]): Promise<number[][]> {
 		}
 		return vector;
 	});
+}
+
+export async function embedTexts(texts: string[]): Promise<number[][]> {
+	if (texts.length === 0) {
+		return [];
+	}
+	assertEventEmbeddingConfigured();
+
+	const vectors: number[][] = [];
+	for (
+		let index = 0;
+		index < texts.length;
+		index += SILICONFLOW_EMBEDDING_BATCH_SIZE
+	) {
+		vectors.push(
+			...(await embedTextBatch(
+				texts.slice(index, index + SILICONFLOW_EMBEDDING_BATCH_SIZE)
+			))
+		);
+	}
+	return vectors;
 }

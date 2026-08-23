@@ -40,6 +40,10 @@ const EVENT_ITEM_LIMIT = 1400;
 const EVENT_FEED_DEFAULT_LIMIT = 30;
 const EVENT_FEED_MAX_LIMIT = 80;
 const EVENT_DETAIL_SOURCE_LIMIT = 160;
+const D1_EVENT_WRITE_BATCH_SIZE = 8;
+const D1_TOPIC_LINK_WRITE_BATCH_SIZE = 30;
+const D1_SOURCE_LINK_WRITE_BATCH_SIZE = 15;
+const D1_ID_QUERY_BATCH_SIZE = 80;
 const EVENT_SIMILARITY_THRESHOLD = 0.72;
 const EVENT_RELATED_SIMILARITY_THRESHOLD = 0.68;
 const EVENT_STRONG_SIMILARITY_THRESHOLD = 0.84;
@@ -58,6 +62,14 @@ const LOW_VALUE_SINGLE_SOURCE_RE =
 const DEAL_TITLE_RE = /\bdeals?\b/i;
 const CONSUMER_TECH_NEWS_RE =
 	/\b(?:launch(?:es|ed)?|release(?:s|d)?|roll(?:s|ed)? out|announce(?:s|d)?|unveil(?:s|ed)?|introduce(?:s|d)?|ship(?:s|ped)?|preview(?:s|ed)?|upgrade(?:s|d)?|funding|raises?|acquir(?:es|ed|ing)|merger|ipo|lawsuit|sues?|regulat(?:e|es|ed|ion|ory)|ban(?:s|ned)?|deal|partnership|partners?|customer|users?|consumer|app|apps|phone|browser|device|robot|startup|company|market|pricing|subscription|api|assistant|chatbot|search|voice|video|image generator|agent|agents)\b/i;
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+	const chunks: T[][] = [];
+	for (let index = 0; index < items.length; index += size) {
+		chunks.push(items.slice(index, index + size));
+	}
+	return chunks;
+}
 const EXPERT_EVENT_FAMILIES = new Set([
 	"anthropic-engineering",
 	"anthropic-research",
@@ -878,7 +890,7 @@ async function readCurrentTopicItems(
 	if (predicates.length === 0) {
 		return [];
 	}
-	const cutoff = new Date(Date.now() - EVENT_LOOKBACK_MS);
+	const cutoff = Math.floor((Date.now() - EVENT_LOOKBACK_MS) / 1000);
 	return db
 		.select({
 			sourceId: sourceItem.sourceId,
@@ -1028,18 +1040,20 @@ export async function rebuildTopicEvents(
 		.from(trendEventTopic)
 		.where(eq(trendEventTopic.topicId, topicId));
 	const previousEventIds = previousTopicEvents.map((event) => event.eventId);
-	const otherTopicLinks =
-		previousEventIds.length === 0
-			? []
-			: await db
-					.select({ eventId: trendEventTopic.eventId })
-					.from(trendEventTopic)
-					.where(
-						and(
-							inArray(trendEventTopic.eventId, previousEventIds),
-							ne(trendEventTopic.topicId, topicId)
-						)
-					);
+	const otherTopicLinks: Array<{ eventId: string }> = [];
+	for (const eventIdBatch of chunk(previousEventIds, D1_ID_QUERY_BATCH_SIZE)) {
+		otherTopicLinks.push(
+			...(await db
+				.select({ eventId: trendEventTopic.eventId })
+				.from(trendEventTopic)
+				.where(
+					and(
+						inArray(trendEventTopic.eventId, eventIdBatch),
+						ne(trendEventTopic.topicId, topicId)
+					)
+				))
+		);
+	}
 	const retainedEventIds = new Set([
 		...otherTopicLinks.map(({ eventId }) => eventId),
 		...clusters.map(({ eventId }) => eventId),
@@ -1067,67 +1081,80 @@ export async function rebuildTopicEvents(
 			),
 	];
 	if (clusters.length > 0) {
-		writes.push(
-			db
-				.insert(trendEvent)
-				.values(
-					clusters.map((cluster) => ({
-						eventId: cluster.eventId,
-						topicId,
-						title: cluster.primary.title,
-						summary: summarizeCluster(cluster),
-						score: scoreCluster(cluster),
-						sourceCount: independentSourceCount(cluster.items),
-						firstSeenAt: cluster.firstSeenAt,
-						lastSeenAt: cluster.lastSeenAt,
-						primarySourceId: cluster.primary.sourceId,
-						primaryItemId: cluster.primary.itemId,
-						updatedAt: now,
-					}))
-				)
-				.onConflictDoUpdate({
-					target: trendEvent.eventId,
-					set: {
-						topicId: sql`excluded.topic_id`,
-						title: sql`excluded.title`,
-						summary: sql`excluded.summary`,
-						score: sql`max(${trendEvent.score}, excluded.score)`,
-						sourceCount: sql`max(${trendEvent.sourceCount}, excluded.source_count)`,
-						firstSeenAt: sql`min(${trendEvent.firstSeenAt}, excluded.first_seen_at)`,
-						lastSeenAt: sql`max(${trendEvent.lastSeenAt}, excluded.last_seen_at)`,
-						primarySourceId: sql`excluded.primary_source_id`,
-						primaryItemId: sql`excluded.primary_item_id`,
-						updatedAt: sql`excluded.updated_at`,
-					},
-				}),
-			db
-				.insert(trendEventTopic)
-				.values(
-					clusters.map((cluster) => ({
-						eventId: cluster.eventId,
-						topicId,
-						createdAt: now,
-					}))
-				)
-				.onConflictDoNothing()
-		);
+		for (const clusterBatch of chunk(clusters, D1_EVENT_WRITE_BATCH_SIZE)) {
+			writes.push(
+				db
+					.insert(trendEvent)
+					.values(
+						clusterBatch.map((cluster) => ({
+							eventId: cluster.eventId,
+							topicId,
+							title: cluster.primary.title,
+							summary: summarizeCluster(cluster),
+							score: scoreCluster(cluster),
+							sourceCount: independentSourceCount(cluster.items),
+							firstSeenAt: cluster.firstSeenAt,
+							lastSeenAt: cluster.lastSeenAt,
+							primarySourceId: cluster.primary.sourceId,
+							primaryItemId: cluster.primary.itemId,
+							updatedAt: now,
+						}))
+					)
+					.onConflictDoUpdate({
+						target: trendEvent.eventId,
+						set: {
+							topicId: sql`excluded.topic_id`,
+							title: sql`excluded.title`,
+							summary: sql`excluded.summary`,
+							score: sql`max(${trendEvent.score}, excluded.score)`,
+							sourceCount: sql`max(${trendEvent.sourceCount}, excluded.source_count)`,
+							firstSeenAt: sql`min(${trendEvent.firstSeenAt}, excluded.first_seen_at)`,
+							lastSeenAt: sql`max(${trendEvent.lastSeenAt}, excluded.last_seen_at)`,
+							primarySourceId: sql`excluded.primary_source_id`,
+							primaryItemId: sql`excluded.primary_item_id`,
+							updatedAt: sql`excluded.updated_at`,
+						},
+					})
+			);
+		}
+		for (const clusterBatch of chunk(
+			clusters,
+			D1_TOPIC_LINK_WRITE_BATCH_SIZE
+		)) {
+			writes.push(
+				db
+					.insert(trendEventTopic)
+					.values(
+						clusterBatch.map((cluster) => ({
+							eventId: cluster.eventId,
+							topicId,
+							createdAt: now,
+						}))
+					)
+					.onConflictDoNothing()
+			);
+		}
 	}
 	const eventSourceItemRows = uniqueEventSourceItemRows(clusters, now);
 	if (eventSourceItemRows.length > 0) {
-		writes.push(
-			db
-				.insert(trendEventSourceItem)
-				.values(eventSourceItemRows)
-				.onConflictDoNothing()
-		);
+		for (const rowBatch of chunk(
+			eventSourceItemRows,
+			D1_SOURCE_LINK_WRITE_BATCH_SIZE
+		)) {
+			writes.push(
+				db.insert(trendEventSourceItem).values(rowBatch).onConflictDoNothing()
+			);
+		}
 	}
 	if (orphanEventIds.length > 0) {
-		writes.push(
-			db
-				.delete(trendEventSourceItem)
-				.where(inArray(trendEventSourceItem.eventId, orphanEventIds)),
-			db.delete(trendEvent).where(inArray(trendEvent.eventId, orphanEventIds))
-		);
+		for (const eventIdBatch of chunk(orphanEventIds, D1_ID_QUERY_BATCH_SIZE)) {
+			writes.push(
+				db
+					.delete(trendEventSourceItem)
+					.where(inArray(trendEventSourceItem.eventId, eventIdBatch)),
+				db.delete(trendEvent).where(inArray(trendEvent.eventId, eventIdBatch))
+			);
+		}
 	}
 	await db.batch(writes as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
 }

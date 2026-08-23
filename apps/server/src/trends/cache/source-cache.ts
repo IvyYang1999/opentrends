@@ -12,6 +12,7 @@ import type {
 const { source, sourceItem } = schema;
 const SOURCE_SNAPSHOT_ITEM_READ_LIMIT = 30;
 const SNAPSHOT_READ_BATCH_SIZE = 24;
+const SNAPSHOT_WRITE_BATCH_SIZE = 6;
 
 export interface SourceSnapshotSummary {
 	errorCount: number;
@@ -414,33 +415,35 @@ export async function writeSnapshotSuccess(params: {
 
 	if (items.length > 0) {
 		writes.push(
-			db
-				.insert(sourceItem)
-				.values(
-					itemRows.map((item) => ({
-						...item,
-						generation,
-					}))
-				)
-				.onConflictDoUpdate({
-					target: [sourceItem.sourceId, sourceItem.itemId],
-					set: {
-						generation: sql`excluded.generation`,
-						url: sql`excluded.url`,
-						title: sql`excluded.title`,
-						description: sql`excluded.description`,
-						imageUrl: sql`excluded.image_url`,
-						rank: sql`excluded.rank`,
-						publishedAt: sql`excluded.published_at`,
-						fetchedAt: sql`excluded.fetched_at`,
-						lastSeenAt: sql`excluded.last_seen_at`,
-						contentHash: sql`excluded.content_hash`,
-						contentStatus: sql`CASE WHEN ${sourceItem.contentHash} IS NOT excluded.content_hash THEN 'pending' ELSE ${sourceItem.contentStatus} END`,
-						contentError: sql`CASE WHEN ${sourceItem.contentHash} IS NOT excluded.content_hash THEN NULL ELSE ${sourceItem.contentError} END`,
-						hotValue: sql`excluded.hot_value`,
-						original: sql`excluded.original`,
-					},
-				})
+			...chunk(itemRows, SNAPSHOT_WRITE_BATCH_SIZE).map((itemBatch) =>
+				db
+					.insert(sourceItem)
+					.values(
+						itemBatch.map((item) => ({
+							...item,
+							generation,
+						}))
+					)
+					.onConflictDoUpdate({
+						target: [sourceItem.sourceId, sourceItem.itemId],
+						set: {
+							generation: sql`excluded.generation`,
+							url: sql`excluded.url`,
+							title: sql`excluded.title`,
+							description: sql`excluded.description`,
+							imageUrl: sql`excluded.image_url`,
+							rank: sql`excluded.rank`,
+							publishedAt: sql`excluded.published_at`,
+							fetchedAt: sql`excluded.fetched_at`,
+							lastSeenAt: sql`excluded.last_seen_at`,
+							contentHash: sql`excluded.content_hash`,
+							contentStatus: sql`CASE WHEN ${sourceItem.contentHash} IS NOT excluded.content_hash THEN 'pending' ELSE ${sourceItem.contentStatus} END`,
+							contentError: sql`CASE WHEN ${sourceItem.contentHash} IS NOT excluded.content_hash THEN NULL ELSE ${sourceItem.contentError} END`,
+							hotValue: sql`excluded.hot_value`,
+							original: sql`excluded.original`,
+						},
+					})
+			)
 		);
 	}
 	await db.batch(writes as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);

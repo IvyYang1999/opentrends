@@ -44,10 +44,7 @@ function parseItemsPerSource(value: string | undefined): number {
 	return Math.min(Math.max(parsed, 1), DEFAULT_TRENDS_ITEMS_PER_SOURCE);
 }
 
-function getWaitUntil(c: WaitUntilContext) {
-	if (typeof (globalThis as { Bun?: unknown }).Bun !== "undefined") {
-		return;
-	}
+export function getWaitUntil(c: WaitUntilContext) {
 	const waitUntil = c.executionCtx?.waitUntil;
 	return typeof waitUntil === "function"
 		? (promise: Promise<unknown>) => waitUntil.call(c.executionCtx, promise)
