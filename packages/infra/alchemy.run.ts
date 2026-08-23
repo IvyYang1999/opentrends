@@ -14,6 +14,10 @@ config({ path: "../../apps/server/.env.local" });
 
 const app = await alchemy("opentrends");
 
+const refreshCron = process.env.TRENDS_REFRESH_CRON;
+const refreshCrons =
+	refreshCron === "disabled" ? [] : [refreshCron ?? "*/5 * * * *"];
+
 function required<T>(value: T | undefined, key: string): T {
 	if (!value) {
 		throw new Error(`Missing required configuration field: ${key}`);
@@ -73,7 +77,7 @@ export const api = await Worker("api", {
 			process.env.SILICONFLOW_EMBEDDING_MODEL ?? "Qwen/Qwen3-VL-Embedding-8B",
 		TRENDS_REFRESH_SCHEDULER: process.env.TRENDS_REFRESH_SCHEDULER ?? "auto",
 	},
-	crons: ["*/5 * * * *"],
+	crons: refreshCrons,
 	eventSources: [
 		{
 			queue: eventMergeQueue,
