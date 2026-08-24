@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { captureWorkerContext } from "../runtime";
 import { EventEmbeddingNotConfiguredError } from "../trends/services/event-embedding";
 import { getEventDetail, getEventFeed } from "../trends/services/event-feed";
 import {
@@ -64,10 +65,11 @@ function parseOffset(value: string | undefined): number | undefined {
 	return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
-function textStreamFromGenerator(
+export function textStreamFromGenerator(
 	generator: AsyncGenerator<string, void, void>
 ): ReadableStream<Uint8Array> {
 	const encoder = new TextEncoder();
+	const runInWorkerContext = captureWorkerContext();
 	let closed = false;
 	let primed = false;
 	return new ReadableStream({
@@ -79,7 +81,7 @@ function textStreamFromGenerator(
 			}
 			try {
 				while (true) {
-					const next = await generator.next();
+					const next = await runInWorkerContext(() => generator.next());
 					if (next.done) {
 						closed = true;
 						controller.close();
@@ -97,7 +99,7 @@ function textStreamFromGenerator(
 		},
 		async cancel() {
 			if (!closed) {
-				await generator.return?.();
+				await runInWorkerContext(() => generator.return?.());
 			}
 		},
 	});

@@ -42,3 +42,13 @@ export function runWithWorkerBindings<T>(
 		runWithD1Database(bindings.DB, () => workerContext.run(bindings, callback))
 	);
 }
+
+export type WorkerContextRunner = <T>(callback: () => T) => T;
+
+export function captureWorkerContext(): WorkerContextRunner {
+	const bindings = getWorkerBindings();
+	if (!bindings) {
+		return (callback) => callback();
+	}
+	return (callback) => runWithWorkerBindings(bindings, callback);
+}
