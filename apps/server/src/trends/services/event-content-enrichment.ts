@@ -2,6 +2,7 @@ import { db, schema } from "@opentrends/db";
 import { and, eq, or } from "drizzle-orm";
 
 import type { SourceId } from "../types";
+import { EVENT_CONTENT_REDIRECT_LIMIT } from "./event-work-budget";
 
 const { sourceItem } = schema;
 const CONTENT_FETCH_TIMEOUT_MS = 12_000;
@@ -36,29 +37,46 @@ function getFallbackText(row: {
 }
 
 async function fetchHtml(url: string): Promise<string> {
-	const controller = new AbortController();
-	const timeout = setTimeout(
-		() => controller.abort(),
-		CONTENT_FETCH_TIMEOUT_MS
-	);
-	try {
-		const response = await fetch(url, {
-			headers: {
-				"User-Agent":
-					"OpenTrendsBot/1.0 (+https://opentrends.x-cmd.com; event aggregation)",
-			},
-			signal: controller.signal,
-		});
-		if (response.status === 401 || response.status === 403) {
-			throw new Error("restricted");
+	let currentUrl = url;
+	for (
+		let redirectCount = 0;
+		redirectCount <= EVENT_CONTENT_REDIRECT_LIMIT;
+		redirectCount += 1
+	) {
+		const controller = new AbortController();
+		const timeout = setTimeout(
+			() => controller.abort(),
+			CONTENT_FETCH_TIMEOUT_MS
+		);
+		try {
+			const response = await fetch(currentUrl, {
+				headers: {
+					"User-Agent":
+						"OpenTrendsBot/1.0 (+https://opentrends.x-cmd.com; event aggregation)",
+				},
+				redirect: "manual",
+				signal: controller.signal,
+			});
+			if (response.status === 401 || response.status === 403) {
+				throw new Error("restricted");
+			}
+			if (response.status >= 300 && response.status < 400) {
+				const location = response.headers.get("Location");
+				if (!(location && redirectCount < EVENT_CONTENT_REDIRECT_LIMIT)) {
+					throw new Error("redirect_limit");
+				}
+				currentUrl = new URL(location, currentUrl).toString();
+				continue;
+			}
+			if (!response.ok) {
+				throw new Error(`HTTP ${response.status}`);
+			}
+			return await response.text();
+		} finally {
+			clearTimeout(timeout);
 		}
-		if (!response.ok) {
-			throw new Error(`HTTP ${response.status}`);
-		}
-		return await response.text();
-	} finally {
-		clearTimeout(timeout);
 	}
+	throw new Error("redirect_limit");
 }
 
 async function extractContentText(

@@ -31,7 +31,10 @@ const database = await D1Database("database", {
 	primaryLocationHint: "apac",
 });
 const hotCache = await KVNamespace("hot-cache");
-const eventMergeQueue = await Queue("event-merge");
+const eventMergeDeadLetterQueue = await Queue("event-merge-dlq");
+const eventMergeQueue = await Queue("event-merge", {
+	dlq: eventMergeDeadLetterQueue,
+});
 const summaryPrewarmQueue = await Queue("summary-prewarm");
 
 export const api = await Worker("api", {
@@ -83,6 +86,8 @@ export const api = await Worker("api", {
 			queue: eventMergeQueue,
 			settings: {
 				batchSize: 1,
+				deadLetterQueue: eventMergeDeadLetterQueue,
+				maxConcurrency: 1,
 				maxRetries: 3,
 				maxWaitTimeMs: 5000,
 				retryDelay: 120,

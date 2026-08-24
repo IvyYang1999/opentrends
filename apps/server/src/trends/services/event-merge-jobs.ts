@@ -4,11 +4,16 @@ import { getTopicPreset, topicPresets } from "../config/topics";
 import type { SourceId, TopicId } from "../types";
 import type { EventSourceItemRef } from "./event-content-enrichment";
 import { rebuildTopicEvents } from "./event-feed";
+import { takeEventContentBatch } from "./event-work-budget";
 
-export interface EventMergeMessage {
+export interface EventSourceRefreshMessage {
 	items: EventSourceItemRef[];
-	sourceId?: SourceId;
+	sourceId: SourceId;
 }
+
+export type EventMergeMessage =
+	| (EventSourceRefreshMessage & { task?: "enrich-source-items" })
+	| { task: "rebuild-topic"; topicId: TopicId };
 
 function getTopicsForSource(sourceId: SourceId): TopicId[] {
 	const topicIds: TopicId[] = [];
@@ -28,16 +33,29 @@ function getTopicsForSource(sourceId: SourceId): TopicId[] {
 export async function runEventMergeJob(
 	message: EventMergeMessage
 ): Promise<void> {
-	if (message.sourceId && !isEventEligibleSource(message.sourceId)) {
+	if (message.task === "rebuild-topic") {
+		const complete = await rebuildTopicEvents(message.topicId);
+		if (!complete) {
+			await scheduleOrRun({ task: "rebuild-topic", topicId: message.topicId });
+		}
+		return;
+	}
+	if (!isEventEligibleSource(message.sourceId)) {
 		return;
 	}
 	const { enrichEventSourceItems } = await import("./event-content-enrichment");
-	await enrichEventSourceItems(message.items);
-	const topicIds = message.sourceId
-		? getTopicsForSource(message.sourceId)
-		: (Object.keys(topicPresets) as TopicId[]);
-	for (const topicId of topicIds) {
-		await rebuildTopicEvents(topicId);
+	const itemBatch = takeEventContentBatch(message.items);
+	await enrichEventSourceItems(itemBatch.current);
+	if (itemBatch.remaining.length > 0) {
+		await scheduleOrRun({
+			items: itemBatch.remaining,
+			sourceId: message.sourceId,
+			task: "enrich-source-items",
+		});
+		return;
+	}
+	for (const topicId of getTopicsForSource(message.sourceId)) {
+		await scheduleOrRun({ task: "rebuild-topic", topicId });
 	}
 }
 
@@ -48,26 +66,26 @@ async function sendToCloudflareQueue(
 	if (!queue) {
 		return false;
 	}
-	try {
-		await queue.send({ kind: "event-merge", payload: message });
-		return true;
-	} catch (error) {
-		console.warn("[event-merge] Cloudflare queue dispatch failed", error);
-		return false;
-	}
+	await queue.send({ kind: "event-merge", payload: message });
+	return true;
 }
 
-export async function dispatchEventMergeJob(
-	message: EventMergeMessage
-): Promise<void> {
-	if (
-		message.items.length === 0 ||
-		(message.sourceId && !isEventEligibleSource(message.sourceId))
-	) {
-		return;
-	}
+async function scheduleOrRun(message: EventMergeMessage): Promise<void> {
 	if (await sendToCloudflareQueue(message)) {
 		return;
 	}
 	await runEventMergeJob(message);
+}
+
+export async function dispatchEventMergeJob(
+	message: EventSourceRefreshMessage
+): Promise<void> {
+	if (message.items.length === 0 || !isEventEligibleSource(message.sourceId)) {
+		return;
+	}
+	await scheduleOrRun({
+		items: message.items,
+		sourceId: message.sourceId,
+		task: "enrich-source-items",
+	});
 }
