@@ -1,12 +1,10 @@
 import alchemy from "alchemy";
 import {
 	D1Database,
-	DnsRecords,
 	KVNamespace,
 	Queue,
 	TanStackStart,
 	Worker,
-	Zone,
 } from "alchemy/cloudflare";
 import { config } from "dotenv";
 
@@ -17,7 +15,7 @@ config({ path: "../../apps/server/.env.local" });
 const app = await alchemy("opentrends");
 
 const apiCustomDomain = process.env.API_CUSTOM_DOMAIN?.trim();
-const cloudflareZone = process.env.CLOUDFLARE_ZONE?.trim();
+const cloudflareZoneId = process.env.CLOUDFLARE_ZONE_ID?.trim();
 const webCustomDomain = process.env.WEB_CUSTOM_DOMAIN?.trim();
 const refreshCron = process.env.TRENDS_REFRESH_CRON;
 const refreshCrons =
@@ -30,31 +28,10 @@ function required<T>(value: T | undefined, key: string): T {
 	return value;
 }
 
-const zone = cloudflareZone
-	? await Zone("zone", {
-			delete: false,
-			jumpStart: true,
-			name: cloudflareZone,
-			type: "full",
-		})
-	: undefined;
-
-if (zone) {
-	await DnsRecords("zone-verification-records", {
-		delete: false,
-		records: [
-			{
-				content:
-					"google-site-verification=XNJ7FfSm6Bkjj4iJKynU2BQ5RxpbmMnAO33vcjut1yg",
-				name: zone.name,
-				proxied: false,
-				ttl: 3600,
-				type: "TXT",
-			},
-		],
-		zoneId: zone.id,
-	});
-}
+const customDomainZoneId =
+	apiCustomDomain || webCustomDomain
+		? required(cloudflareZoneId, "CLOUDFLARE_ZONE_ID")
+		: undefined;
 
 const database = await D1Database("database", {
 	migrationsDir: "../db/src/d1-migrations",
@@ -89,7 +66,7 @@ export const api = await Worker("api", {
 					{
 						adopt: true,
 						domainName: apiCustomDomain,
-						...(zone ? { zoneId: zone.id } : {}),
+						zoneId: customDomainZoneId,
 					},
 				],
 			}
@@ -155,7 +132,7 @@ export const web = await TanStackStart("web", {
 					{
 						adopt: true,
 						domainName: webCustomDomain,
-						...(zone ? { zoneId: zone.id } : {}),
+						zoneId: customDomainZoneId,
 					},
 				],
 			}
@@ -176,8 +153,5 @@ export const web = await TanStackStart("web", {
 
 console.log(`API -> ${api.url}`);
 console.log(`Web -> ${web.url}`);
-if (zone) {
-	console.log(`Zone nameservers -> ${zone.nameservers.join(", ")}`);
-}
 
 await app.finalize();
