@@ -14,6 +14,8 @@ config({ path: "../../apps/server/.env.local" });
 
 const app = await alchemy("opentrends");
 
+const apiCustomDomain = process.env.API_CUSTOM_DOMAIN?.trim();
+const webCustomDomain = process.env.WEB_CUSTOM_DOMAIN?.trim();
 const refreshCron = process.env.TRENDS_REFRESH_CRON;
 const refreshCrons =
 	refreshCron === "disabled" ? [] : [refreshCron ?? "*/5 * * * *"];
@@ -52,6 +54,11 @@ export const api = await Worker("api", {
 	},
 	compatibility: "node",
 	url: true,
+	...(apiCustomDomain
+		? {
+				domains: [{ domainName: apiCustomDomain, adopt: true }],
+			}
+		: {}),
 	bindings: {
 		DB: database,
 		HOT_CACHE: hotCache,
@@ -107,9 +114,16 @@ export const api = await Worker("api", {
 
 export const web = await TanStackStart("web", {
 	cwd: "../../apps/web",
+	...(webCustomDomain
+		? {
+				domains: [{ domainName: webCustomDomain, adopt: true }],
+			}
+		: {}),
 	bindings: {
 		API: api,
-		VITE_SERVER_URL: required(api.url, "api.url"),
+		VITE_SERVER_URL: process.env.VITE_SERVER_URL
+			? required(alchemy.env.VITE_SERVER_URL, "VITE_SERVER_URL")
+			: required(api.url, "api.url"),
 		...(process.env.VITE_SITE_URL
 			? { VITE_SITE_URL: alchemy.env.VITE_SITE_URL }
 			: {}),
