@@ -1,12 +1,13 @@
 import { db, schema } from "@opentrends/db";
 import { and, desc, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 
 import {
 	getEventEligibleSourceIds,
 	getSourcePreset,
 	isEventEligibleSource,
 } from "../config/sources";
-import { getTopicPreset, topicPresets } from "../config/topics";
+import { getTopicPreset } from "../config/topics";
 import type { TopicId } from "../types";
 import {
 	assertEventEmbeddingConfigured,
@@ -15,6 +16,13 @@ import {
 	getEventEmbeddingModel,
 	hashText,
 } from "./event-embedding";
+import {
+	D1_EVENT_WRITE_BATCH_SIZE,
+	D1_SOURCE_LINK_WRITE_BATCH_SIZE,
+	D1_TOPIC_LINK_WRITE_BATCH_SIZE,
+	EVENT_EMBEDDING_ITEM_LIMIT,
+	EVENT_ITEM_LIMIT,
+} from "./event-work-budget";
 import {
 	refreshExpiredTopicSourcesInBackground,
 	TopicNotFoundError,
@@ -35,7 +43,6 @@ const {
 	trendEventTopic,
 } = schema;
 const EVENT_LOOKBACK_MS = 7 * 24 * 60 * 60_000;
-const EVENT_ITEM_LIMIT = 1400;
 const EVENT_FEED_DEFAULT_LIMIT = 30;
 const EVENT_FEED_MAX_LIMIT = 80;
 const EVENT_DETAIL_SOURCE_LIMIT = 160;
@@ -57,6 +64,14 @@ const LOW_VALUE_SINGLE_SOURCE_RE =
 const DEAL_TITLE_RE = /\bdeals?\b/i;
 const CONSUMER_TECH_NEWS_RE =
 	/\b(?:launch(?:es|ed)?|release(?:s|d)?|roll(?:s|ed)? out|announce(?:s|d)?|unveil(?:s|ed)?|introduce(?:s|d)?|ship(?:s|ped)?|preview(?:s|ed)?|upgrade(?:s|d)?|funding|raises?|acquir(?:es|ed|ing)|merger|ipo|lawsuit|sues?|regulat(?:e|es|ed|ion|ory)|ban(?:s|ned)?|deal|partnership|partners?|customer|users?|consumer|app|apps|phone|browser|device|robot|startup|company|market|pricing|subscription|api|assistant|chatbot|search|voice|video|image generator|agent|agents)\b/i;
+
+function chunk<T>(items: readonly T[], size: number): T[][] {
+	const chunks: T[][] = [];
+	for (let index = 0; index < items.length; index += size) {
+		chunks.push(items.slice(index, index + size));
+	}
+	return chunks;
+}
 const EXPERT_EVENT_FAMILIES = new Set([
 	"anthropic-engineering",
 	"anthropic-research",
@@ -292,10 +307,6 @@ export interface EventDetailResponse {
 	summary?: string;
 	title: string;
 	topicId: string;
-}
-
-function getAllTopicIds(): TopicId[] {
-	return Object.keys(topicPresets) as TopicId[];
 }
 
 function sourceName(sourceId: string): string {
@@ -877,7 +888,7 @@ async function readCurrentTopicItems(
 	if (predicates.length === 0) {
 		return [];
 	}
-	const cutoff = new Date(Date.now() - EVENT_LOOKBACK_MS);
+	const cutoff = Math.floor((Date.now() - EVENT_LOOKBACK_MS) / 1000);
 	return db
 		.select({
 			sourceId: sourceItem.sourceId,
@@ -914,7 +925,7 @@ async function readCurrentTopicItems(
 
 async function ensureEmbeddings(
 	items: CurrentItemRow[]
-): Promise<CurrentItemRow[]> {
+): Promise<{ complete: boolean; items: CurrentItemRow[] }> {
 	const model = getEventEmbeddingModel();
 	const pending: Array<{ index: number; text: string; textHash: string }> = [];
 	for (let index = 0; index < items.length; index += 1) {
@@ -936,13 +947,14 @@ async function ensureEmbeddings(
 		pending.push({ index, text, textHash });
 	}
 	if (pending.length === 0) {
-		return items;
+		return { complete: true, items };
 	}
 
-	const embeddings = await embedTexts(pending.map((item) => item.text));
+	const currentBatch = pending.slice(0, EVENT_EMBEDDING_ITEM_LIMIT);
+	const embeddings = await embedTexts(currentBatch.map((item) => item.text));
 	const createdAt = new Date();
-	for (let index = 0; index < pending.length; index += 1) {
-		const pendingItem = pending[index];
+	for (let index = 0; index < currentBatch.length; index += 1) {
+		const pendingItem = currentBatch[index];
 		const embedding = embeddings[index];
 		if (!(pendingItem && embedding)) {
 			continue;
@@ -973,7 +985,10 @@ async function ensureEmbeddings(
 				},
 			});
 	}
-	return items;
+	return {
+		complete: pending.length <= EVENT_EMBEDDING_ITEM_LIMIT,
+		items,
+	};
 }
 
 function clusterItems(items: CurrentItemRow[]): EventCluster[] {
@@ -1009,7 +1024,7 @@ function clusterItems(items: CurrentItemRow[]): EventCluster[] {
 
 export async function rebuildTopicEvents(
 	topicId: TopicId | string
-): Promise<void> {
+): Promise<boolean> {
 	let items: CurrentItemRow[];
 	try {
 		items = await readCurrentTopicItems(topicId);
@@ -1019,107 +1034,110 @@ export async function rebuildTopicEvents(
 		}
 		throw new TrendsSnapshotsUnavailableError(error);
 	}
-	const itemsWithEmbeddings = await ensureEmbeddings(items);
+	const embeddingResult = await ensureEmbeddings(items);
+	if (!embeddingResult.complete) {
+		return false;
+	}
+	const itemsWithEmbeddings = embeddingResult.items;
 	const clusters = clusterItems(itemsWithEmbeddings);
 	const now = new Date();
-	const previousTopicEvents = await db
-		.select({ eventId: trendEventTopic.eventId })
-		.from(trendEventTopic)
-		.where(eq(trendEventTopic.topicId, topicId));
-	const previousEventIds = previousTopicEvents.map((event) => event.eventId);
-	await db.transaction(async (tx) => {
-		await tx
-			.delete(trendEventTopic)
-			.where(eq(trendEventTopic.topicId, topicId));
-		await tx
+	const writes: BatchItem<"sqlite">[] = [
+		db.delete(trendEventTopic).where(eq(trendEventTopic.topicId, topicId)),
+		db
 			.delete(trendEventSourceItem)
 			.where(sql`${trendEventSourceItem.eventId} IN (
 			SELECT ${trendEvent.eventId}
 			FROM ${trendEvent}
 			WHERE ${trendEvent.topicId} = ${topicId}
 				AND ${trendEvent.eventId} LIKE ${`${topicId}-%`}
-		)`);
-		await tx
+		)`),
+		db
 			.delete(trendEvent)
 			.where(
 				and(
 					eq(trendEvent.topicId, topicId),
 					sql`${trendEvent.eventId} LIKE ${`${topicId}-%`}`
 				)
+			),
+	];
+	if (clusters.length > 0) {
+		for (const clusterBatch of chunk(clusters, D1_EVENT_WRITE_BATCH_SIZE)) {
+			writes.push(
+				db
+					.insert(trendEvent)
+					.values(
+						clusterBatch.map((cluster) => ({
+							eventId: cluster.eventId,
+							topicId,
+							title: cluster.primary.title,
+							summary: summarizeCluster(cluster),
+							score: scoreCluster(cluster),
+							sourceCount: independentSourceCount(cluster.items),
+							firstSeenAt: cluster.firstSeenAt,
+							lastSeenAt: cluster.lastSeenAt,
+							primarySourceId: cluster.primary.sourceId,
+							primaryItemId: cluster.primary.itemId,
+							updatedAt: now,
+						}))
+					)
+					.onConflictDoUpdate({
+						target: trendEvent.eventId,
+						set: {
+							topicId: sql`excluded.topic_id`,
+							title: sql`excluded.title`,
+							summary: sql`excluded.summary`,
+							score: sql`max(${trendEvent.score}, excluded.score)`,
+							sourceCount: sql`max(${trendEvent.sourceCount}, excluded.source_count)`,
+							firstSeenAt: sql`min(${trendEvent.firstSeenAt}, excluded.first_seen_at)`,
+							lastSeenAt: sql`max(${trendEvent.lastSeenAt}, excluded.last_seen_at)`,
+							primarySourceId: sql`excluded.primary_source_id`,
+							primaryItemId: sql`excluded.primary_item_id`,
+							updatedAt: sql`excluded.updated_at`,
+						},
+					})
 			);
-		for (const cluster of clusters) {
-			const score = scoreCluster(cluster);
-			await tx
-				.insert(trendEvent)
-				.values({
-					eventId: cluster.eventId,
-					topicId,
-					title: cluster.primary.title,
-					summary: summarizeCluster(cluster),
-					score,
-					sourceCount: independentSourceCount(cluster.items),
-					firstSeenAt: cluster.firstSeenAt,
-					lastSeenAt: cluster.lastSeenAt,
-					primarySourceId: cluster.primary.sourceId,
-					primaryItemId: cluster.primary.itemId,
-					updatedAt: now,
-				})
-				.onConflictDoUpdate({
-					target: trendEvent.eventId,
-					set: {
-						topicId,
-						title: cluster.primary.title,
-						summary: summarizeCluster(cluster),
-						score: sql`GREATEST(${trendEvent.score}, ${score})`,
-						sourceCount: sql`GREATEST(${trendEvent.sourceCount}, ${independentSourceCount(cluster.items)})`,
-						firstSeenAt: sql`LEAST(${trendEvent.firstSeenAt}, ${cluster.firstSeenAt})`,
-						lastSeenAt: sql`GREATEST(${trendEvent.lastSeenAt}, ${cluster.lastSeenAt})`,
-						primarySourceId: cluster.primary.sourceId,
-						primaryItemId: cluster.primary.itemId,
-						updatedAt: now,
-					},
-				});
 		}
-		if (clusters.length > 0) {
-			await tx
-				.insert(trendEventTopic)
-				.values(
-					clusters.map((cluster) => ({
-						eventId: cluster.eventId,
-						topicId,
-						createdAt: now,
-					}))
-				)
-				.onConflictDoNothing();
-		}
-		const eventSourceItemRows = uniqueEventSourceItemRows(clusters, now);
-		if (eventSourceItemRows.length > 0) {
-			await tx
-				.insert(trendEventSourceItem)
-				.values(eventSourceItemRows)
-				.onConflictDoNothing();
-		}
-		if (previousEventIds.length > 0) {
-			const linkedEvents = await tx
-				.select({ eventId: trendEventTopic.eventId })
-				.from(trendEventTopic)
-				.where(inArray(trendEventTopic.eventId, previousEventIds));
-			const linkedEventIds = new Set(
-				linkedEvents.map((event) => event.eventId)
+		for (const clusterBatch of chunk(
+			clusters,
+			D1_TOPIC_LINK_WRITE_BATCH_SIZE
+		)) {
+			writes.push(
+				db
+					.insert(trendEventTopic)
+					.values(
+						clusterBatch.map((cluster) => ({
+							eventId: cluster.eventId,
+							topicId,
+							createdAt: now,
+						}))
+					)
+					.onConflictDoNothing()
 			);
-			const orphanEventIds = previousEventIds.filter(
-				(eventId) => !linkedEventIds.has(eventId)
-			);
-			if (orphanEventIds.length > 0) {
-				await tx
-					.delete(trendEventSourceItem)
-					.where(inArray(trendEventSourceItem.eventId, orphanEventIds));
-				await tx
-					.delete(trendEvent)
-					.where(inArray(trendEvent.eventId, orphanEventIds));
-			}
 		}
-	});
+	}
+	const eventSourceItemRows = uniqueEventSourceItemRows(clusters, now);
+	if (eventSourceItemRows.length > 0) {
+		for (const rowBatch of chunk(
+			eventSourceItemRows,
+			D1_SOURCE_LINK_WRITE_BATCH_SIZE
+		)) {
+			writes.push(
+				db.insert(trendEventSourceItem).values(rowBatch).onConflictDoNothing()
+			);
+		}
+	}
+	writes.push(
+		db.delete(trendEventSourceItem).where(sql`NOT EXISTS (
+			SELECT 1 FROM ${trendEventTopic}
+			WHERE ${trendEventTopic.eventId} = ${trendEventSourceItem.eventId}
+		)`),
+		db.delete(trendEvent).where(sql`NOT EXISTS (
+			SELECT 1 FROM ${trendEventTopic}
+			WHERE ${trendEventTopic.eventId} = ${trendEvent.eventId}
+		)`)
+	);
+	await db.batch(writes as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
+	return true;
 }
 
 interface EventFeedRow {
@@ -1433,17 +1451,7 @@ export async function getEventFeed(
 	);
 	const offset = Math.max(options.offset ?? 0, 0);
 	const readLimit = limit + 25;
-	let rows = await readEventFeedRows(topicId, readLimit, offset);
-	if (rows.length === 0 && offset === 0) {
-		if (topicId) {
-			await rebuildTopicEvents(topicId);
-		} else {
-			for (const id of getAllTopicIds()) {
-				await rebuildTopicEvents(id);
-			}
-		}
-		rows = await readEventFeedRows(topicId, readLimit, offset);
-	}
+	const rows = await readEventFeedRows(topicId, readLimit, offset);
 	const visibleRows = rows
 		.map((row, index) => ({ index, row }))
 		.filter(({ row }) => !isLowValueEventFeedRow(row));

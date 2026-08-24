@@ -1,26 +1,19 @@
+import { getWorkerBindings } from "../../runtime";
 import { isEventEligibleSource } from "../config/sources";
 import { getTopicPreset, topicPresets } from "../config/topics";
 import type { SourceId, TopicId } from "../types";
 import type { EventSourceItemRef } from "./event-content-enrichment";
 import { rebuildTopicEvents } from "./event-feed";
+import { takeEventContentBatch } from "./event-work-budget";
 
-const VOID_QUEUES_MODULE = ["void", "queues"].join("/");
-const EVENT_MERGE_QUEUE_NAME = "event-merge";
-const importRuntimeModule = (specifier: string): Promise<unknown> =>
-	import(specifier);
-
-export interface EventMergeMessage {
+export interface EventSourceRefreshMessage {
 	items: EventSourceItemRef[];
-	sourceId?: SourceId;
+	sourceId: SourceId;
 }
 
-interface VoidQueueProducer {
-	send: (message: EventMergeMessage) => Promise<void>;
-}
-
-interface VoidQueuesModule {
-	queues?: Record<string, VoidQueueProducer | undefined>;
-}
+export type EventMergeMessage =
+	| (EventSourceRefreshMessage & { task?: "enrich-source-items" })
+	| { task: "rebuild-topic"; topicId: TopicId };
 
 function getTopicsForSource(sourceId: SourceId): TopicId[] {
 	const topicIds: TopicId[] = [];
@@ -40,58 +33,59 @@ function getTopicsForSource(sourceId: SourceId): TopicId[] {
 export async function runEventMergeJob(
 	message: EventMergeMessage
 ): Promise<void> {
-	if (message.sourceId && !isEventEligibleSource(message.sourceId)) {
+	if (message.task === "rebuild-topic") {
+		const complete = await rebuildTopicEvents(message.topicId);
+		if (!complete) {
+			await scheduleOrRun({ task: "rebuild-topic", topicId: message.topicId });
+		}
+		return;
+	}
+	if (!isEventEligibleSource(message.sourceId)) {
 		return;
 	}
 	const { enrichEventSourceItems } = await import("./event-content-enrichment");
-	await enrichEventSourceItems(message.items);
-	const topicIds = message.sourceId
-		? getTopicsForSource(message.sourceId)
-		: (Object.keys(topicPresets) as TopicId[]);
-	for (const topicId of topicIds) {
-		await rebuildTopicEvents(topicId);
-	}
-}
-
-async function sendToVoidQueue(message: EventMergeMessage): Promise<boolean> {
-	let module: VoidQueuesModule;
-	try {
-		module = (await importRuntimeModule(
-			VOID_QUEUES_MODULE
-		)) as VoidQueuesModule;
-	} catch {
-		return false;
-	}
-	try {
-		const queue = module.queues?.[EVENT_MERGE_QUEUE_NAME];
-		if (!queue) {
-			return false;
-		}
-		await queue.send(message);
-		return true;
-	} catch (error) {
-		if (
-			error instanceof Error &&
-			error.message.includes("Cloudflare env is unavailable")
-		) {
-			return false;
-		}
-		console.warn("[event-merge] void queue dispatch failed", error);
-		return false;
-	}
-}
-
-export async function dispatchEventMergeJob(
-	message: EventMergeMessage
-): Promise<void> {
-	if (
-		message.items.length === 0 ||
-		(message.sourceId && !isEventEligibleSource(message.sourceId))
-	) {
+	const itemBatch = takeEventContentBatch(message.items);
+	await enrichEventSourceItems(itemBatch.current);
+	if (itemBatch.remaining.length > 0) {
+		await scheduleOrRun({
+			items: itemBatch.remaining,
+			sourceId: message.sourceId,
+			task: "enrich-source-items",
+		});
 		return;
 	}
-	if (await sendToVoidQueue(message)) {
+	for (const topicId of getTopicsForSource(message.sourceId)) {
+		await scheduleOrRun({ task: "rebuild-topic", topicId });
+	}
+}
+
+async function sendToCloudflareQueue(
+	message: EventMergeMessage
+): Promise<boolean> {
+	const queue = getWorkerBindings()?.EVENT_MERGE_QUEUE;
+	if (!queue) {
+		return false;
+	}
+	await queue.send({ kind: "event-merge", payload: message });
+	return true;
+}
+
+async function scheduleOrRun(message: EventMergeMessage): Promise<void> {
+	if (await sendToCloudflareQueue(message)) {
 		return;
 	}
 	await runEventMergeJob(message);
+}
+
+export async function dispatchEventMergeJob(
+	message: EventSourceRefreshMessage
+): Promise<void> {
+	if (message.items.length === 0 || !isEventEligibleSource(message.sourceId)) {
+		return;
+	}
+	await scheduleOrRun({
+		items: message.items,
+		sourceId: message.sourceId,
+		task: "enrich-source-items",
+	});
 }

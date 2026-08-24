@@ -20,26 +20,20 @@
       "next-themes": "^0.4.6",
       "@orpc/client": "^1.13.14",
       "@types/react-dom": "^19.2.3",
-      "alchemy": "^0.91.2"
+      "alchemy": "0.91.2"
     }
   },
   "type": "module",
   "scripts": {
-    "dev": "bun run db:start && bun run --filter '*' dev",
+    "dev": "bun run --filter @opentrends/infra dev",
     "build": "bun run --filter '*' build",
     "check-types": "bun run --filter '*' check-types",
     "dev:web": "bun run --filter web dev",
     "dev:server": "bun run --filter server dev",
-    "db:studio": "bun run --filter @opentrends/db db:studio",
     "db:generate": "bun run --filter @opentrends/db db:generate",
-    "db:migrate": "bun run --filter @opentrends/db db:migrate",
-    "db:start": "bun run --filter @opentrends/db db:start",
-    "db:watch": "bun run --filter @opentrends/db db:watch",
-    "db:stop": "bun run --filter @opentrends/db db:stop",
-    "db:down": "bun run --filter @opentrends/db db:down",
+    "cloudflare:login": "bun run --filter @opentrends/infra login",
     "deploy": "bun run --filter @opentrends/infra deploy",
     "destroy": "bun run --filter @opentrends/infra destroy",
-    "void": "bun --cwd apps/web void",
     "check": "ultracite check",
     "fix": "ultracite fix",
     "prepare": "husky"

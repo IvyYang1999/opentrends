@@ -19,6 +19,8 @@ import type {
 	TopicId,
 } from "../types";
 
+const D1_QUERY_PARAMETER_BATCH_SIZE = 80;
+
 export interface SourceStatusEntry {
 	endpointUrl?: string;
 	errorCount: number;
@@ -180,14 +182,27 @@ async function readEventItemCounts(
 		return new Map();
 	}
 
-	const rows = await db
-		.select({
-			sourceId: trendEventSourceItem.sourceId,
-			eventItemCount: sql<number>`count(*)::int`,
-		})
-		.from(trendEventSourceItem)
-		.where(inArray(trendEventSourceItem.sourceId, sourceIds))
-		.groupBy(trendEventSourceItem.sourceId);
+	const rows = (
+		await Promise.all(
+			Array.from(
+				{ length: Math.ceil(sourceIds.length / D1_QUERY_PARAMETER_BATCH_SIZE) },
+				(_, index) =>
+					sourceIds.slice(
+						index * D1_QUERY_PARAMETER_BATCH_SIZE,
+						(index + 1) * D1_QUERY_PARAMETER_BATCH_SIZE
+					)
+			).map((batch) =>
+				db
+					.select({
+						sourceId: trendEventSourceItem.sourceId,
+						eventItemCount: sql<number>`count(*)`,
+					})
+					.from(trendEventSourceItem)
+					.where(inArray(trendEventSourceItem.sourceId, batch))
+					.groupBy(trendEventSourceItem.sourceId)
+			)
+		)
+	).flat();
 
 	return new Map(
 		rows.map((row) => [row.sourceId, Number(row.eventItemCount)] as const)

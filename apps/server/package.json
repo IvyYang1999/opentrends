@@ -6,10 +6,10 @@
     "build": "tsdown",
     "check-types": "tsc -b",
     "compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server",
-    "dev": "bun run --hot src/index.ts",
+    "dev": "bun run --filter @opentrends/infra dev",
     "start": "bun run dist/index.mjs",
     "test": "bun test src/trends/__tests__",
-    "void": "void"
+    "test:runtime": "bun test src/runtime.test.ts"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.46",
@@ -29,6 +29,7 @@
     "hono": "catalog:",
     "jsdom": "^29.1.1",
     "rss-parser": "^3.13.0",
+    "undici": "^7.16.0",
     "zod": "catalog:"
   },
   "devDependencies": {
@@ -37,7 +38,6 @@
     "@types/jsdom": "^28.0.1",
     "tsdown": "^0.21.9",
     "typescript": "catalog:",
-    "vite": "^8.0.8",
-    "void": "0.7.3"
+    "vite": "^8.0.8"
   }
 }
