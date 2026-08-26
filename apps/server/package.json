@@ -23,7 +23,7 @@
     "ai": "^6.0.175",
     "better-auth": "catalog:",
     "cheerio": "^1.2.0",
-    "defuddle": "^0.18.1",
+    "defuddle": "^0.19.3",
     "dotenv": "catalog:",
     "drizzle-orm": "^0.45.1",
     "hono": "catalog:",
