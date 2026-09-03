@@ -23,10 +23,7 @@ import { runTrendsRefreshTick } from "./trends/services/refresh-scheduler";
 import { runSummaryPrewarmJob } from "./trends/services/summary-prewarm-jobs";
 
 const app = new Hono<{ Bindings: WorkerBindings }>();
-const PRODUCTION_WEB_ORIGINS = new Set([
-	"https://opentrends-web.void.app",
-	"https://opentrends.io",
-]);
+const PRODUCTION_WEB_ORIGINS = new Set(["https://opentrends.io"]);
 
 app.use(logger());
 app.use("/*", async (context, next) =>
