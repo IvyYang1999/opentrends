@@ -1,11 +1,12 @@
 import { createServerFn } from "@tanstack/react-start";
 
-export const GITHUB_REPOSITORY_URL = "https://github.com/nexmoe/opentrends";
+export const GITHUB_REPOSITORY_URL =
+	"https://github.com/IvyYang1999/opentrends";
 
 const GITHUB_REPOSITORY_API_URL =
-	"https://api.github.com/repos/nexmoe/opentrends";
+	"https://api.github.com/repos/IvyYang1999/opentrends";
 const GITHUB_STARS_BADGE_API_URL =
-	"https://img.shields.io/github/stars/nexmoe/opentrends.json";
+	"https://img.shields.io/github/stars/IvyYang1999/opentrends.json";
 
 interface GitHubRepositoryApiResponse {
 	html_url?: unknown;

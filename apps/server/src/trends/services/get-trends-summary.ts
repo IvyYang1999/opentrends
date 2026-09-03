@@ -2,7 +2,6 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { env } from "@opentrends/env/server";
 import { streamText } from "ai";
 
-import { isMissingCacheSchemaError } from "../cache/cache-errors";
 import { type CacheEnvelope, hotCache } from "../cache/hot-cache";
 import { readSummary, writeSummary } from "../cache/summary-cache";
 import { getSourcePreset } from "../config/sources";
@@ -381,12 +380,7 @@ async function readAnyCachedSummary(
 			return entry;
 		}
 	} catch (error) {
-		if (
-			!(
-				isMissingCacheSchemaError(error) ||
-				error instanceof SummaryCacheReadTimeoutError
-			)
-		) {
+		if (!(error instanceof SummaryCacheReadTimeoutError)) {
 			console.warn("[trends-summary] failed to read cached summary", error);
 		}
 	}
@@ -524,9 +518,7 @@ async function writeCachedSummary(params: {
 			"Timed out writing cached trends summary."
 		);
 	} catch (error) {
-		if (!isMissingCacheSchemaError(error)) {
-			console.warn("[trends-summary] failed to write cached summary", error);
-		}
+		console.warn("[trends-summary] failed to write cached summary", error);
 	}
 }
 

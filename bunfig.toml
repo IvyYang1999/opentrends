@@ -1,0 +1,5 @@
+# bun.lock integrity hashes are generated against the official npm registry.
+# Mirrors (e.g. npmmirror) serve tarballs that fail the integrity check and
+# make `bun install --frozen-lockfile` retry forever, so pin the registry here.
+[install]
+registry = "https://registry.npmjs.org"

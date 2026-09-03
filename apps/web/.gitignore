@@ -23,7 +23,6 @@
 .nitro/
 
 # Deployment
-.void
 .vercel
 .netlify
 .wrangler

@@ -1,5 +1,13 @@
 # OpenTrends Trends Page and Source Preset Design
 
+> **Historical document (2026-05).** This design predates the migration to
+> Cloudflare Workers + D1. References to PostgreSQL, Hyperdrive, and a
+> Postgres-backed `packages/db` no longer match the code: the runtime now uses
+> Cloudflare D1 (SQLite via Drizzle, see `packages/db/src/schema/trends.ts`),
+> KV for the hot cache, and Queues for async work, all declared in
+> `packages/infra/alchemy.run.ts`. The route layout, adapter contract, and
+> topic/source preset model described below are still accurate.
+
 This document defines the v1 trends feature for the current OpenTrends repository.
 
 The architecture boundary is explicit:

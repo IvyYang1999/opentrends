@@ -8,8 +8,7 @@
     "compile": "bun build --compile --minify --sourcemap --bytecode ./src/index.ts --outfile server",
     "dev": "bun run --filter @opentrends/infra dev",
     "start": "bun run dist/index.mjs",
-    "test": "bun test src/trends/__tests__",
-    "test:runtime": "bun test src/runtime.test.ts"
+    "test": "bun test src/trends/__tests__"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^2.0.46",

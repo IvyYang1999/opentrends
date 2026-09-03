@@ -4,7 +4,6 @@ import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { env } from "@opentrends/env/server";
 import { generateText, Output } from "ai";
 import { z } from "zod";
-import { isMissingCacheSchemaError } from "../cache/cache-errors";
 import {
 	type CachedItemTranslation,
 	readItemTranslations,
@@ -422,10 +421,7 @@ async function readCachedTranslationsSafely(params: {
 		return await readCachedTranslations(params);
 	} catch (error) {
 		if (params.mode === "background") {
-			if (
-				isMissingCacheSchemaError(error) ||
-				error instanceof TranslationCacheReadTimeoutError
-			) {
+			if (error instanceof TranslationCacheReadTimeoutError) {
 				return null;
 			}
 			console.warn(
