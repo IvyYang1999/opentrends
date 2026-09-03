@@ -1,5 +1,13 @@
 # OpenTrends Cache Strategy
 
+> **Historical document (2026-05).** This strategy was written for the
+> previous PostgreSQL deployment. The storage layer has since moved to
+> Cloudflare D1 (`packages/db`), with KV as the shared hot cache
+> (`apps/server/src/trends/cache/hot-cache.ts`) and Cloudflare Queues for
+> background work. The layering idea (durable rows + short-lived hot cache +
+> per-source refresh locks) still describes the current implementation; the
+> Postgres-specific details do not.
+
 This document defines a KISS cache strategy for OpenTrends. The goal is to use Void where it clearly improves request performance, while keeping the durable trends model understandable and Docker-compatible.
 
 ## Goal
