@@ -82,6 +82,13 @@ function RootDocument() {
 			<head>
 				<HeadContent />
 				<script
+					data-ga-id="G-XJR14VWEGN"
+					data-hosts="opentrends.io,www.opentrends.io"
+					data-site="opentrends"
+					defer
+					src="/dc-analytics.js"
+				/>
+				<script
 					async
 					data-key={AHREFS_ANALYTICS_KEY}
 					src={AHREFS_ANALYTICS_SRC}
