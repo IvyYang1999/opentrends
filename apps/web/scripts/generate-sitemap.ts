@@ -66,7 +66,6 @@ if (!rawSiteUrl) {
 	process.exit(0);
 }
 
-
 const basePaths = [
 	...STATIC_PATHS.map((path) => ({
 		path,

@@ -14,7 +14,7 @@ export const Route = createFileRoute("/{-$locale}/trends")({
 			path: "/trends",
 			locale,
 		});
-        return {meta:seo.meta};
+		return { meta: seo.meta };
 	},
 });
 

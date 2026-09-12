@@ -47,7 +47,9 @@ const QueryDevtools = import.meta.env.DEV
 export const Route = createRootRouteWithContext<RouterAppContext>()({
 	beforeLoad: ({ params }) => {
 		const locale = (params as { locale?: string }).locale;
-		if (locale && !isLocale(locale)) throw notFound();
+		if (locale && !isLocale(locale)) {
+			throw notFound();
+		}
 	},
 	loader: (): GitHubRepositoryStats => ({
 		stars: null,
@@ -85,7 +87,18 @@ function RootDocument() {
 		<html lang={HTML_LANG[locale]} suppressHydrationWarning>
 			<head>
 				<HeadContent />
-                <script type="application/ld+json" dangerouslySetInnerHTML={{__html: JSON.stringify({'@context':'https://schema.org','@type':'WebSite',name:'OpenTrends',url:'https://opentrends.io/'})}} />
+				<script
+					// biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a static object with no user or remote input.
+					dangerouslySetInnerHTML={{
+						__html: JSON.stringify({
+							"@context": "https://schema.org",
+							"@type": "WebSite",
+							name: "OpenTrends",
+							url: "https://opentrends.io/",
+						}),
+					}}
+					type="application/ld+json"
+				/>
 				<script
 					data-ga-id="G-XJR14VWEGN"
 					data-hosts="opentrends.io,www.opentrends.io"

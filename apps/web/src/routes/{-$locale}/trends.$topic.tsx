@@ -86,7 +86,9 @@ function buildTopicKeywords(
 export const Route = createFileRoute("/{-$locale}/trends/$topic")({
 	component: TrendsTopicComponent,
 	loader: async ({ context, params }) => {
-        if (params.locale && !isLocale(params.locale)) throw notFound();
+		if (params.locale && !isLocale(params.locale)) {
+			throw notFound();
+		}
 		if (params.topic === "brain") {
 			throw redirect({
 				to: "/{-$locale}/trends/$topic",
