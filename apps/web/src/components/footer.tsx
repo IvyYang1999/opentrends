@@ -86,6 +86,12 @@ export default function Footer() {
 							<span>{t("footer.github")}</span>
 							<ArrowUpRight className="size-3" />
 						</a>
+						<a
+							className={footerLinkClassName}
+							href="mailto:support@opentrends.io"
+						>
+							support@opentrends.io
+						</a>
 					</div>
 				</nav>
 			</div>
