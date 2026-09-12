@@ -8,6 +8,7 @@ import { TrendsPage } from "@/components/trends/trends-page";
 import { trendsPageQueryOptions } from "@/components/trends/trends-query";
 import type { TrendsPageData } from "@/components/trends/types";
 import {
+	isLocale,
 	type Locale,
 	resolveLocale,
 	type TranslationKey,
@@ -85,6 +86,7 @@ function buildTopicKeywords(
 export const Route = createFileRoute("/{-$locale}/trends/$topic")({
 	component: TrendsTopicComponent,
 	loader: async ({ context, params }) => {
+        if (params.locale && !isLocale(params.locale)) throw notFound();
 		if (params.topic === "brain") {
 			throw redirect({
 				to: "/{-$locale}/trends/$topic",

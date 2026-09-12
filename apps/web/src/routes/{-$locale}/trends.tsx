@@ -7,13 +7,14 @@ export const Route = createFileRoute("/{-$locale}/trends")({
 	component: TrendsLayout,
 	head: ({ params }) => {
 		const locale = resolveLocale(params.locale);
-		return buildSeo({
+		const seo = buildSeo({
 			title: "Trends",
 			description:
 				"Browse curated trending news streams across AI, embodied AI, biological science, smart hardware, tech, indie maker and Chinese-language communities.",
 			path: "/trends",
 			locale,
 		});
+        return {meta:seo.meta};
 	},
 });
 
