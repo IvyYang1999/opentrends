@@ -10,6 +10,7 @@ import {
 	writeItemTranslations,
 } from "../cache/item-translation-cache";
 import type { NewsItem, SourceCardData, TrendsPageData } from "../types";
+import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
 
 export const TRANSLATION_LANGUAGES = [
 	"en",
@@ -207,8 +208,13 @@ function providerModel() {
 		name: "llm",
 		apiKey: env.LLM_API_KEY ?? "",
 		baseURL: env.LLM_BASE_URL,
+		includeUsage: isSiliconFlow(env.LLM_BASE_URL),
 	});
-	return provider(env.LLM_MODEL);
+	return trackSiliconFlowModel(
+		provider(env.LLM_MODEL),
+		"translation",
+		env.LLM_BASE_URL
+	);
 }
 
 function targetLanguageName(lang: TranslationLanguage): string {

@@ -8,6 +8,7 @@ import { getSourcePreset } from "../config/sources";
 import { getTopicPreset } from "../config/topics";
 import type { NewsItem, TopicPreset, TrendsPageData } from "../types";
 import { getTrendsPage, TopicNotFoundError } from "./get-trends-page";
+import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
 import type { TranslationLanguage } from "./translate-news-items";
 
 const ITEMS_PER_SOURCE = 6;
@@ -576,13 +577,18 @@ async function* streamGeneratedSummary(params: {
 		name: "llm",
 		apiKey: env.LLM_API_KEY ?? "",
 		baseURL: env.LLM_BASE_URL,
+		includeUsage: isSiliconFlow(env.LLM_BASE_URL),
 	});
 	const chunks: string[] = [];
 	let iterator: AsyncIterator<string> | undefined;
 	try {
 		const result = streamText({
 			abortSignal: params.abortSignal,
-			model: provider(env.LLM_MODEL),
+			model: trackSiliconFlowModel(
+				provider(env.LLM_MODEL),
+				"summary",
+				env.LLM_BASE_URL
+			),
 			system: buildSystemPrompt(params.lang),
 			prompt: params.prompt,
 		});
