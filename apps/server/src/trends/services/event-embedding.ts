@@ -91,14 +91,13 @@ async function embedTextBatch(texts: string[]): Promise<number[][]> {
 		}
 		const payload = (await response.json()) as SiliconFlowEmbeddingResponse;
 		usage = payload.usage;
-		outcome = "ok";
 		const vectors = new Array<number[]>(texts.length);
 		for (const item of payload.data ?? []) {
 			if (typeof item.index === "number" && item.embedding) {
 				vectors[item.index] = item.embedding;
 			}
 		}
-		return texts.map((_, index) => {
+		const result = texts.map((_, index) => {
 			const vector = vectors[index];
 			if (!vector) {
 				throw new Error(
@@ -107,6 +106,8 @@ async function embedTextBatch(texts: string[]): Promise<number[][]> {
 			}
 			return vector;
 		});
+		outcome = "ok";
+		return result;
 	} finally {
 		await recordEmbeddingUsage(
 			usageId,
