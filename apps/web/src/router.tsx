@@ -5,7 +5,7 @@ import "./index.css";
 import Loader from "./components/loader";
 import { useT } from "./lib/i18n";
 import { routeTree } from "./routeTree.gen";
-import { orpc, queryClient } from "./utils/orpc";
+import { createQueryClient, orpc } from "./utils/orpc";
 
 function NotFound() {
 	const t = useT();
@@ -13,6 +13,7 @@ function NotFound() {
 }
 
 export const getRouter = () => {
+	const queryClient = createQueryClient();
 	const router = createTanStackRouter({
 		routeTree,
 		scrollRestoration: true,

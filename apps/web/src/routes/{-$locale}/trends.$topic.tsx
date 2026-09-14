@@ -4,6 +4,7 @@ import { createFileRoute, notFound, redirect } from "@tanstack/react-router";
 
 import Loader from "@/components/loader";
 import { TrendsTopicNotFoundError } from "@/components/trends/load-trends";
+import { loadTrendsForSsr } from "@/components/trends/load-trends-ssr";
 import { TrendsPage } from "@/components/trends/trends-page";
 import { trendsPageQueryOptions } from "@/components/trends/trends-query";
 import type { TrendsPageData } from "@/components/trends/types";
@@ -96,11 +97,18 @@ export const Route = createFileRoute("/{-$locale}/trends/$topic")({
 			});
 		}
 
+		const locale = resolveLocale(params.locale);
 		if (import.meta.env.SSR) {
+			const page = await loadTrendsForSsr(params.topic, locale);
+			if (page) {
+				context.queryClient.setQueryData(
+					trendsPageQueryOptions(params.topic, locale).queryKey,
+					page
+				);
+			}
 			return;
 		}
 
-		const locale = resolveLocale(params.locale);
 		await context.queryClient.ensureQueryData(
 			trendsPageQueryOptions(params.topic, locale)
 		);
