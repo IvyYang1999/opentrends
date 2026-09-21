@@ -247,6 +247,11 @@ interface SourceWithSection {
 }
 
 const SOURCE_CARD_HEIGHT = "h-[480px]";
+// A topic page holds dozens of cards and hundreds of rows. Skipping layout and
+// paint for cards far from the viewport also keeps their lazy cover images
+// from being fetched until the reader scrolls near them.
+const SOURCE_CARD_OFFSCREEN =
+	"[content-visibility:auto] [contain-intrinsic-size:auto_480px]";
 const SOURCE_SECTION_GRID =
 	"grid grid-cols-1 items-stretch sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 min-[1800px]:grid-cols-8";
 
@@ -338,7 +343,7 @@ function SourceCard({
 
 	return (
 		<article
-			className={`flex min-w-0 flex-col overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-card)] sm:border-r ${hasItems ? `${SOURCE_CARD_HEIGHT} max-sm:h-auto max-sm:max-h-none` : "h-auto"}`}
+			className={`flex min-w-0 flex-col overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-card)] sm:border-r ${SOURCE_CARD_OFFSCREEN} ${hasItems ? `${SOURCE_CARD_HEIGHT} max-sm:h-auto max-sm:max-h-none` : "h-auto"}`}
 		>
 			<SourceCardHeader source={source} t={t} />
 			{hasItems ? (
