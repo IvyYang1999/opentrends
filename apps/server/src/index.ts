@@ -21,6 +21,7 @@ import {
 import { runEventMergeJob } from "./trends/services/event-merge-jobs";
 import { runTrendsRefreshTick } from "./trends/services/refresh-scheduler";
 import { runSummaryPrewarmJob } from "./trends/services/summary-prewarm-jobs";
+import { runTranslationPrewarmJob } from "./trends/services/translation-prewarm-jobs";
 
 const app = new Hono<{ Bindings: WorkerBindings }>();
 const PRODUCTION_WEB_ORIGINS = new Set(["https://opentrends.io"]);
@@ -126,6 +127,10 @@ app.get("/", (context) => context.text("OK"));
 async function processQueueMessage(message: WorkerQueueMessage): Promise<void> {
 	if (message.kind === "event-merge") {
 		await runEventMergeJob(message.payload);
+		return;
+	}
+	if (message.kind === "translation-prewarm") {
+		await runTranslationPrewarmJob(message.payload);
 		return;
 	}
 	await runSummaryPrewarmJob(message.payload);

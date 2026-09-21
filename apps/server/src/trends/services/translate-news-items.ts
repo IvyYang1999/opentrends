@@ -112,6 +112,17 @@ function shouldTranslateText(
 	return hasCjk(value) || hasCyrillic(value);
 }
 
+export function isTranslationConfigured(): boolean {
+	return Boolean(env.LLM_API_KEY);
+}
+
+export function needsTranslation(
+	item: NewsItem,
+	lang: TranslationLanguage
+): boolean {
+	return !item.original && shouldTranslateItem(item, lang);
+}
+
 function shouldTranslateItem(
 	item: NewsItem,
 	lang: TranslationLanguage
@@ -571,6 +582,47 @@ export async function translateTrendsPage(
 			),
 		})),
 	};
+}
+
+const PREWARM_TRANSLATION_TIMEOUT_MS = 120_000;
+const MAX_PREWARM_TRANSLATION_CANDIDATES = 60;
+
+// Translates whatever a source's current items are still missing in `lang` and
+// stores it, without a reader waiting on the result. Returns how many items
+// were translated.
+export async function prewarmItemTranslations(
+	items: NewsItem[],
+	lang: TranslationLanguage
+): Promise<number> {
+	if (!env.LLM_API_KEY) {
+		return 0;
+	}
+	const candidates = items
+		.filter((item) => needsTranslation(item, lang))
+		.map((item): TranslationCandidate => {
+			const textHash = hashItemText(item);
+			return {
+				cacheKey: makeCacheKey(lang, item.sourceId, item.id, textHash),
+				item,
+				sourceId: item.sourceId,
+				textHash,
+			};
+		});
+	if (candidates.length === 0) {
+		return 0;
+	}
+	const cachedRows = await readItemTranslations({
+		itemIds: candidates.map((candidate) => candidate.item.id),
+		lang,
+		sourceIds: candidates.map((candidate) => candidate.sourceId),
+	});
+	const { missing } = buildTranslationMap(candidates, cachedRows);
+	const translated = await translateMissingWithinTimeout(
+		lang,
+		missing.slice(0, MAX_PREWARM_TRANSLATION_CANDIDATES),
+		PREWARM_TRANSLATION_TIMEOUT_MS
+	);
+	return translated.length;
 }
 
 export async function translateNewsItems(

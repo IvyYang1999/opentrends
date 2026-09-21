@@ -12,6 +12,7 @@ import {
 import { getSourcePreset } from "../config/sources";
 import type { SourceId, SourceSnapshot } from "../types";
 import { dispatchEventMergeJob } from "./event-merge-jobs";
+import { dispatchTranslationPrewarmJobs } from "./translation-prewarm-jobs";
 
 export type RefreshOutcome =
 	| { kind: "ok"; snapshot: SourceSnapshot }
@@ -63,6 +64,16 @@ export async function refreshSource(
 				);
 			}
 		);
+		const changedItemIds = new Set(itemsToProcess.map((item) => item.itemId));
+		await dispatchTranslationPrewarmJobs(
+			sourceId,
+			items.filter((item) => changedItemIds.has(item.id))
+		).catch((error) => {
+			console.warn(
+				"[trends-translation] dispatch failed after source refresh",
+				error
+			);
+		});
 		return {
 			kind: "ok",
 			snapshot: {

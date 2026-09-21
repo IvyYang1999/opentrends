@@ -4,10 +4,12 @@ import { runWithServerEnv } from "@opentrends/env/server";
 
 import type { EventMergeMessage } from "./trends/services/event-merge-jobs";
 import type { SummaryPrewarmMessage } from "./trends/services/summary-prewarm-jobs";
+import type { TranslationPrewarmMessage } from "./trends/services/translation-prewarm-jobs";
 
 export type WorkerQueueMessage =
 	| { kind: "event-merge"; payload: EventMergeMessage }
-	| { kind: "summary-prewarm"; payload: SummaryPrewarmMessage };
+	| { kind: "summary-prewarm"; payload: SummaryPrewarmMessage }
+	| { kind: "translation-prewarm"; payload: TranslationPrewarmMessage };
 
 export interface WorkerBindings {
 	BETTER_AUTH_SECRET: string;
