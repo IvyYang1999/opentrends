@@ -160,11 +160,17 @@ export async function readSnapshots(
 		return new Map();
 	}
 
+	// Batches are independent, and a topic page needs four of them with two
+	// D1 round trips each; reading them one after another made the uncached
+	// page wait for eight sequential round trips.
+	const batches = await Promise.all(
+		chunk(sourceIds, SNAPSHOT_READ_BATCH_SIZE).map((batch) =>
+			readSnapshotBatch(batch)
+		)
+	);
 	const snapshots = new Map<SourceId, SourceSnapshot>();
-	for (const batch of chunk(sourceIds, SNAPSHOT_READ_BATCH_SIZE)) {
-		for (const snapshot of await readSnapshotBatch(batch)) {
-			snapshots.set(snapshot.sourceId, snapshot);
-		}
+	for (const snapshot of batches.flat()) {
+		snapshots.set(snapshot.sourceId, snapshot);
 	}
 	return snapshots;
 }

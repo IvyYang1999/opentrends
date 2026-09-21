@@ -178,14 +178,11 @@ async function refreshTrendsPage(
 	);
 	const now = Date.now();
 	let freshUntil = getPageFreshUntil(page, now);
-	if (hasMissingSnapshots(page)) {
+	// Missing or expired snapshots are refreshed in the background. The page is
+	// still cached briefly: leaving it uncached made every request rebuild it
+	// from D1 for as long as a single source stayed expired.
+	if (hasMissingSnapshots(page) || hasExpiredSnapshots(page, now)) {
 		freshUntil = now + TRENDS_PAGE_CACHE_MIN_FRESH_MS;
-	}
-	if (hasExpiredSnapshots(page, now)) {
-		freshUntil = now;
-	}
-	if (freshUntil <= now) {
-		return page;
 	}
 	const staleUntil = now + TRENDS_PAGE_CACHE_STALE_MS;
 	writeMemoryTrendsPageCache(
