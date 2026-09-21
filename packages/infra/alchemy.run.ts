@@ -92,6 +92,9 @@ export const api = await Worker("api", {
 		LLM_BASE_URL:
 			process.env.LLM_BASE_URL ?? "https://dashboard.thorbase.com/v1",
 		LLM_MODEL: process.env.LLM_MODEL ?? "deepseek/deepseek-v4-pro",
+		...(process.env.LLM_ENABLE_THINKING
+			? { LLM_ENABLE_THINKING: process.env.LLM_ENABLE_THINKING }
+			: {}),
 		...(process.env.SILICONFLOW_API_KEY
 			? { SILICONFLOW_API_KEY: alchemy.secret.env.SILICONFLOW_API_KEY }
 			: {}),

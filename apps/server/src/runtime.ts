@@ -18,6 +18,7 @@ export interface WorkerBindings {
 	HOT_CACHE: KVNamespace;
 	LLM_API_KEY?: string;
 	LLM_BASE_URL: string;
+	LLM_ENABLE_THINKING?: "true" | "false";
 	LLM_MODEL: string;
 	NODE_ENV: "development" | "production" | "test";
 	RSSHUB_BASE_URLS?: string;

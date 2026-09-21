@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { env } from "@opentrends/env/server";
 import { generateText, Output } from "ai";
 import { z } from "zod";
@@ -11,6 +10,7 @@ import {
 } from "../cache/item-translation-cache";
 import type { NewsItem, SourceCardData, TrendsPageData } from "../types";
 import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
+import { llmProviderOptions } from "./llm";
 
 export const TRANSLATION_LANGUAGES = [
 	"en",
@@ -267,6 +267,7 @@ async function translateBatch(
 	const { output } = await generateText({
 		abortSignal,
 		model: providerModel(),
+		providerOptions: llmProviderOptions(),
 		output: Output.object({
 			schema: TRANSLATED_BATCH_SCHEMA,
 		}),

@@ -1,4 +1,3 @@
-import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { env } from "@opentrends/env/server";
 import { streamText } from "ai";
 
@@ -10,6 +9,7 @@ import { getTopicPreset } from "../config/topics";
 import type { NewsItem, SourceId, TopicPreset, TrendsPageData } from "../types";
 import { getTrendsPage, TopicNotFoundError } from "./get-trends-page";
 import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
+import { llmProviderOptions } from "./llm";
 import type { TranslationLanguage } from "./translate-news-items";
 
 // Clients that still read citations from the response header only get this
@@ -883,6 +883,7 @@ async function* streamGeneratedSummary(params: {
 			onError: ({ error }) => {
 				providerError = error;
 			},
+			providerOptions: llmProviderOptions(),
 			system: buildSystemPrompt(params.lang, params.window),
 			prompt: params.prompt,
 		});
