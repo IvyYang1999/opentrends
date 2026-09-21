@@ -869,6 +869,10 @@ async function* streamGeneratedSummary(params: {
 	const chunks: string[] = [];
 	let iterator: AsyncIterator<string> | undefined;
 	try {
+		// streamText reports provider failures through onError and then simply
+		// ends the text stream, so a rejected key would otherwise look like an
+		// empty summary.
+		let providerError: unknown;
 		const result = streamText({
 			abortSignal: params.abortSignal,
 			model: trackSiliconFlowModel(
@@ -876,6 +880,9 @@ async function* streamGeneratedSummary(params: {
 				"summary",
 				env.LLM_BASE_URL
 			),
+			onError: ({ error }) => {
+				providerError = error;
+			},
 			system: buildSystemPrompt(params.lang, params.window),
 			prompt: params.prompt,
 		});
@@ -895,11 +902,10 @@ async function* streamGeneratedSummary(params: {
 			yield chunk;
 		}
 		const text = chunks.join("").trim();
-		if (text && !isWrittenInTargetLanguage(text, params.lang)) {
-			console.warn(
-				`[trends-summary] discarded ${params.cacheTopicId} summary not written in ${params.lang}`
-			);
-		} else if (text) {
+		if (!text) {
+			throw providerError ?? new Error("The model returned an empty summary.");
+		}
+		if (isWrittenInTargetLanguage(text, params.lang)) {
 			await writeCachedSummary({
 				citations: params.citations,
 				lang: params.lang,
@@ -908,6 +914,10 @@ async function* streamGeneratedSummary(params: {
 				topicId: params.cacheTopicId,
 				window: params.window,
 			});
+		} else {
+			console.warn(
+				`[trends-summary] discarded ${params.cacheTopicId} summary not written in ${params.lang}`
+			);
 		}
 	} catch (error) {
 		try {
