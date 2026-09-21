@@ -125,6 +125,7 @@ const MESSAGE_IDS = {
 	"events.embeddingRequired": "events_embedding_required",
 	"events.empty": "events_empty",
 	"events.loadMore": "events_load_more",
+	"events.loading": "events_loading",
 	"events.loadingMore": "events_loading_more",
 	"events.end": "events_end",
 	"events.sources": "events_sources",

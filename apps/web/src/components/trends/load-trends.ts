@@ -123,7 +123,7 @@ export async function loadTrendEvents(
 	search.set("offset", String(offset));
 	search.set("limit", String(limit));
 	search.set("lang", locale);
-	search.set("translations", "sync");
+	search.set("translations", "background");
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), TRENDS_FETCH_TIMEOUT_MS);
 	let response: Response;
@@ -163,7 +163,7 @@ export async function loadTrendEventDetail(
 		search.set("topic", topic);
 	}
 	search.set("lang", locale);
-	search.set("translations", "sync");
+	search.set("translations", "background");
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), TRENDS_FETCH_TIMEOUT_MS);
 	let response: Response;

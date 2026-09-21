@@ -73,6 +73,7 @@
   "events_embedding_required": "配置 SILICONFLOW_API_KEY 后才能生成事件流 embedding。",
   "events_empty": "暂无合并后的事件。来源刷新产生文章后会出现事件。",
   "events_load_more": "加载更多",
+  "events_loading": "正在汇总事件…",
   "events_loading_more": "加载更多事件…",
   "events_end": "没有更多事件",
   "events_sources": "{count} 个来源",

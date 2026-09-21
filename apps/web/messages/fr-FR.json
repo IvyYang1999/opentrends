@@ -73,6 +73,7 @@
   "events_embedding_required": "Configure SILICONFLOW_API_KEY to generate event feed embeddings.",
   "events_empty": "No merged events yet. Events appear after source refreshes produce articles.",
   "events_load_more": "Load more",
+  "events_loading": "Chargement des événements…",
   "events_loading_more": "Loading more events…",
   "events_end": "No more events",
   "events_sources": "{count} sources",

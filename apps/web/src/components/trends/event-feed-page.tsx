@@ -16,6 +16,7 @@ import {
 	ExternalLink,
 	GitBranch,
 	Layers,
+	LoaderCircle,
 } from "lucide-react";
 import type { ReactNode } from "react";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
@@ -55,6 +56,7 @@ const EVENT_SKELETON_KEYS = [
 	"event-skeleton-7",
 	"event-skeleton-8",
 	"event-skeleton-9",
+	"event-skeleton-10",
 ] as const;
 
 const EVENT_PAGE_SIZE = 30;
@@ -178,16 +180,7 @@ export function EventFeedPage({ selectedTopic }: EventFeedPageProps) {
 			</div>
 		);
 	} else if (eventsQuery.isPending && events.length === 0) {
-		eventContent = (
-			<div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-				{EVENT_SKELETON_KEYS.map((key) => (
-					<div
-						className="h-44 animate-pulse rounded border border-[var(--border-default)] bg-[var(--surface-card)]"
-						key={key}
-					/>
-				))}
-			</div>
-		);
+		eventContent = <EventFeedSkeleton label={t("events.loading")} />;
 	} else if (events.length === 0) {
 		eventContent = (
 			<div className="flex min-h-[260px] items-center justify-center rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-6 text-center text-[13px] text-[var(--text-secondary)]">
@@ -232,9 +225,19 @@ export function EventFeedPage({ selectedTopic }: EventFeedPageProps) {
 							<GitBranch className="size-3.5" />
 							{flowLabel}
 						</Link>
-						<span className="text-[11px] text-[var(--text-muted)]">
-							{t("events.count", { count: events.length })}
-						</span>
+						{eventsQuery.isPending && events.length === 0 ? (
+							<span
+								aria-live="polite"
+								className="inline-flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]"
+							>
+								<LoaderCircle className="size-3.5 text-[var(--accent-blue)] motion-safe:animate-spin" />
+								{t("events.loading")}
+							</span>
+						) : (
+							<span className="text-[11px] text-[var(--text-muted)]">
+								{t("events.count", { count: events.length })}
+							</span>
+						)}
 					</div>
 				</div>
 				<div className="mt-2 flex gap-1 overflow-x-auto pb-0.5 text-[12px] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
@@ -270,6 +273,48 @@ export function EventFeedPage({ selectedTopic }: EventFeedPageProps) {
 				open={Boolean(selectedEventId)}
 				topicId={selectedEvent?.topicId}
 			/>
+		</div>
+	);
+}
+
+function EventFeedSkeleton({ label }: { label: string }) {
+	return (
+		<div aria-busy="true" aria-label={label} role="status">
+			<div
+				aria-hidden="true"
+				className="columns-1 gap-3 md:columns-2 lg:columns-3 xl:columns-4 2xl:columns-5"
+			>
+				{EVENT_SKELETON_KEYS.map((key, index) => (
+					<div
+						className="mb-3 break-inside-avoid overflow-hidden rounded border border-[var(--border-default)] bg-[var(--surface-card)]"
+						key={key}
+					>
+						{index % 3 === 2 ? null : (
+							<div className="aspect-[16/9] border-[var(--border-subtle)] border-b bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+						)}
+						<div className="space-y-3 p-3">
+							<div className="space-y-2">
+								<div className="h-4 w-[88%] rounded bg-[var(--state-hover)] motion-safe:animate-pulse" />
+								<div className="h-4 w-[64%] rounded bg-[var(--state-hover)] motion-safe:animate-pulse" />
+							</div>
+							<div className="space-y-1.5">
+								<div className="h-2.5 w-full rounded bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+								<div className="h-2.5 w-[78%] rounded bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+							</div>
+							<div className="h-6 w-20 rounded border border-[var(--border-default)] bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+							<div className="flex items-center gap-2">
+								<div className="h-5 w-10 rounded bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+								<div className="h-2.5 w-16 rounded bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+								<div className="h-2.5 w-12 rounded bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+							</div>
+						</div>
+						<div className="border-[var(--border-subtle)] border-t px-3 py-2">
+							<div className="h-3 w-24 rounded bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+						</div>
+					</div>
+				))}
+			</div>
+			<span className="sr-only">{label}</span>
 		</div>
 	);
 }
