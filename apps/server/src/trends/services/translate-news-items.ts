@@ -10,7 +10,7 @@ import {
 } from "../cache/item-translation-cache";
 import type { NewsItem, SourceCardData, TrendsPageData } from "../types";
 import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
-import { llmProviderOptions } from "./llm";
+import { llmProviderOptions, translationModelId } from "./llm";
 
 export const TRANSLATION_LANGUAGES = [
 	"en",
@@ -25,7 +25,7 @@ export const TRANSLATION_LANGUAGES = [
 export type TranslationLanguage = (typeof TRANSLATION_LANGUAGES)[number];
 export type TranslationMode = "background" | "sync";
 
-interface TranslationCandidate {
+export interface TranslationCandidate {
 	cacheKey: string;
 	item: NewsItem;
 	sourceId: string;
@@ -41,6 +41,7 @@ const BATCH_SIZE = 6;
 const BACKGROUND_TRANSLATION_CACHE_TIMEOUT_MS = 1200;
 const SYNC_TRANSLATION_CONCURRENCY = 2;
 const SYNC_TRANSLATION_TIMEOUT_MS = 12_000;
+const SYNC_TRANSLATION_STRAGGLER_MS = 25_000;
 const MAX_SYNC_TRANSLATION_CANDIDATES = 48;
 const CJK_RE = /[\u3400-\u9fff]/;
 const CYRILLIC_RE = /\p{Script=Cyrillic}/u;
@@ -211,7 +212,7 @@ function providerModel() {
 		includeUsage: isSiliconFlow(env.LLM_BASE_URL),
 	});
 	return trackSiliconFlowModel(
-		provider(env.LLM_MODEL),
+		provider(translationModelId()),
 		"translation",
 		env.LLM_BASE_URL
 	);
@@ -293,7 +294,7 @@ async function translateBatch(
 			description: cleanDescription(row.description),
 			itemId: candidate.item.id,
 			lang,
-			model: env.LLM_MODEL,
+			model: translationModelId(),
 			sourceId: candidate.sourceId,
 			textHash: candidate.textHash,
 			title,
@@ -335,25 +336,35 @@ async function translateBatchResilient(
 	}
 }
 
-async function translateMissingWithinTimeout(
+export interface TranslationOptions {
+	// Lets batches that outlive the response finish and reach the cache. Without
+	// it a slow model loses every batch it has not completed at the deadline,
+	// and each new request starts the same work again.
+	waitUntil?: (promise: Promise<unknown>) => void;
+}
+
+// Translates until `timeoutMs`, then returns what is finished. Batches still
+// in flight keep running for a grace period so their result is cached for the
+// next request instead of being thrown away.
+export async function translateMissingWithinTimeout(
 	lang: TranslationLanguage,
 	candidates: TranslationCandidate[],
-	timeoutMs: number
+	timeoutMs: number,
+	options: TranslationOptions = {},
+	translate: typeof translateBatchResilient = translateBatchResilient
 ): Promise<WritableTranslation[]> {
 	if (candidates.length === 0) {
 		return [];
 	}
 
-	const controller = new AbortController();
-	const timeout = setTimeout(() => {
-		controller.abort();
-	}, timeoutMs);
+	const stragglerLimit = new AbortController();
 	const batches = chunk(candidates, BATCH_SIZE);
 	const translations: WritableTranslation[] = [];
 	let nextBatch = 0;
+	let deadlineReached = false;
 
 	async function worker(): Promise<void> {
-		while (!controller.signal.aborted && nextBatch < batches.length) {
+		while (!deadlineReached && nextBatch < batches.length) {
 			const batch = batches[nextBatch];
 			nextBatch += 1;
 			if (!batch) {
@@ -361,31 +372,42 @@ async function translateMissingWithinTimeout(
 			}
 			try {
 				translations.push(
-					...(await translateBatchResilient(lang, batch, controller.signal))
+					...(await translate(lang, batch, stragglerLimit.signal))
 				);
 			} catch (error) {
-				if (!controller.signal.aborted) {
+				if (!stragglerLimit.signal.aborted) {
 					console.warn("[trends-translation] failed to translate batch", error);
 				}
 			}
 		}
 	}
 
-	try {
-		if (!controller.signal.aborted) {
-			await Promise.all(
-				Array.from(
-					{
-						length: Math.min(SYNC_TRANSLATION_CONCURRENCY, batches.length),
-					},
-					() => worker()
-				)
-			);
-		}
-	} finally {
-		clearTimeout(timeout);
+	const workers = Promise.all(
+		Array.from(
+			{ length: Math.min(SYNC_TRANSLATION_CONCURRENCY, batches.length) },
+			() => worker()
+		)
+	);
+	let deadline: ReturnType<typeof setTimeout> | undefined;
+	await Promise.race([
+		workers,
+		new Promise<void>((resolve) => {
+			deadline = setTimeout(() => {
+				deadlineReached = true;
+				resolve();
+			}, timeoutMs);
+		}),
+	]);
+	clearTimeout(deadline);
+
+	if (deadlineReached) {
+		const stragglerTimer = setTimeout(
+			() => stragglerLimit.abort(),
+			SYNC_TRANSLATION_STRAGGLER_MS
+		);
+		options.waitUntil?.(workers.finally(() => clearTimeout(stragglerTimer)));
 	}
-	return translations;
+	return [...translations];
 }
 
 function collectTranslationCandidates(
@@ -469,7 +491,8 @@ async function fillSyncTranslations(
 	missing: TranslationCandidate[],
 	translations: TranslationMap,
 	lang: TranslationLanguage,
-	mode: TranslationMode
+	mode: TranslationMode,
+	options: TranslationOptions
 ): Promise<void> {
 	if (mode !== "sync") {
 		return;
@@ -487,7 +510,8 @@ async function fillSyncTranslations(
 	const translatedRows = await translateMissingWithinTimeout(
 		lang,
 		missingWithinRequestBudget,
-		SYNC_TRANSLATION_TIMEOUT_MS
+		SYNC_TRANSLATION_TIMEOUT_MS,
+		options
 	);
 	for (const row of translatedRows) {
 		translations.set(`${row.sourceId}:${row.itemId}`, row);
@@ -497,7 +521,8 @@ async function fillSyncTranslations(
 export async function translateTrendsPage(
 	page: TrendsPageData,
 	lang: TranslationLanguage,
-	mode: TranslationMode = "background"
+	mode: TranslationMode = "background",
+	options: TranslationOptions = {}
 ): Promise<TrendsPageData> {
 	if (!env.LLM_API_KEY) {
 		return page;
@@ -523,7 +548,7 @@ export async function translateTrendsPage(
 		uniqueCandidates,
 		cachedRows
 	);
-	await fillSyncTranslations(missing, translations, lang, mode);
+	await fillSyncTranslations(missing, translations, lang, mode, options);
 
 	if (translations.size === 0) {
 		return page;
@@ -551,7 +576,8 @@ export async function translateTrendsPage(
 export async function translateNewsItems(
 	items: NewsItem[],
 	lang: TranslationLanguage,
-	mode: TranslationMode = "background"
+	mode: TranslationMode = "background",
+	options: TranslationOptions = {}
 ): Promise<NewsItem[]> {
 	if (!env.LLM_API_KEY) {
 		return items;
@@ -591,7 +617,7 @@ export async function translateNewsItems(
 		uniqueCandidates,
 		cachedRows
 	);
-	await fillSyncTranslations(missing, translations, lang, mode);
+	await fillSyncTranslations(missing, translations, lang, mode, options);
 
 	if (translations.size === 0) {
 		return items;

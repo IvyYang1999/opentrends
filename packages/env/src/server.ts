@@ -22,6 +22,7 @@ const serverEnvSchema = z.object({
 	LLM_API_KEY: z.string().min(1).optional(),
 	LLM_BASE_URL: z.url().default("https://dashboard.thorbase.com/v1"),
 	LLM_MODEL: z.string().min(1).default("deepseek/deepseek-v4-pro"),
+	LLM_TRANSLATION_MODEL: z.string().min(1).optional(),
 	LLM_ENABLE_THINKING: z.enum(["true", "false"]).optional(),
 	SILICONFLOW_API_KEY: z.string().min(1).optional(),
 	SILICONFLOW_EMBEDDING_MODEL: z

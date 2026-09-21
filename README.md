@@ -92,6 +92,7 @@ Optional trend and summary settings include:
 - `LLM_BASE_URL`
 - `LLM_API_KEY`
 - `LLM_MODEL`
+- `LLM_TRANSLATION_MODEL`
 - `LLM_ENABLE_THINKING`
 - `TRENDS_REFRESH_SCHEDULER`
 

@@ -301,7 +301,9 @@ export const trendsRoutes = new Hono()
 		}
 		let translatedPage: TrendsPageData;
 		try {
-			translatedPage = await translateTrendsPage(page, lang, "sync");
+			translatedPage = await translateTrendsPage(page, lang, "sync", {
+				waitUntil: getWaitUntil(c),
+			});
 		} catch (error) {
 			console.warn("[trends-translation] failed to translate page", error);
 			translatedPage = page;
@@ -320,7 +322,8 @@ export const trendsRoutes = new Hono()
 				sourceId,
 				lang,
 				translationMode,
-				itemsPerSource
+				itemsPerSource,
+				{ waitUntil: getWaitUntil(c) }
 			);
 			return withTrendsCacheHeaders(
 				c.json(source),

@@ -20,6 +20,7 @@ export interface WorkerBindings {
 	LLM_BASE_URL: string;
 	LLM_ENABLE_THINKING?: "true" | "false";
 	LLM_MODEL: string;
+	LLM_TRANSLATION_MODEL?: string;
 	NODE_ENV: "development" | "production" | "test";
 	RSSHUB_BASE_URLS?: string;
 	SILICONFLOW_API_KEY?: string;

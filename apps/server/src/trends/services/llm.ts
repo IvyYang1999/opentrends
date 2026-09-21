@@ -5,6 +5,12 @@ import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
 
 const PROVIDER_NAME = "llm";
 
+// Translation is high-volume and latency-bound, digests are low-volume and
+// judgment-bound, so translation can be pointed at a smaller, faster model.
+export function translationModelId(): string {
+	return env.LLM_TRANSLATION_MODEL ?? env.LLM_MODEL;
+}
+
 export function llmModel(
 	operation: "summary" | "translation",
 	modelId: string = env.LLM_MODEL

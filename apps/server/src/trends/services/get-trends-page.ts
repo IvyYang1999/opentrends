@@ -550,7 +550,8 @@ export async function getTrendSourceCard(
 	sourceId: string,
 	lang: TranslationLanguage = "en",
 	translationMode: TranslationMode = "background",
-	itemsPerSource = DEFAULT_TRENDS_ITEMS_PER_SOURCE
+	itemsPerSource = DEFAULT_TRENDS_ITEMS_PER_SOURCE,
+	options: TrendsPageCacheOptions = {}
 ): Promise<SourceCardData> {
 	const topic = getTopicPreset(topicId);
 	if (!topic) {
@@ -582,7 +583,8 @@ export async function getTrendSourceCard(
 			sections: [{ id: "source", title: source.title, sources: [source] }],
 		},
 		lang,
-		translationMode
+		translationMode,
+		{ waitUntil: options.waitUntil }
 	);
 	return translated.sections[0]?.sources[0] ?? source;
 }
