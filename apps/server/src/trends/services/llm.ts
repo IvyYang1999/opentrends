@@ -21,11 +21,7 @@ export function llmModel(
 		baseURL: env.LLM_BASE_URL,
 		includeUsage: isSiliconFlow(env.LLM_BASE_URL),
 	});
-	return trackSiliconFlowModel(
-		provider(modelId),
-		operation,
-		env.LLM_BASE_URL
-	);
+	return trackSiliconFlowModel(provider(modelId), operation, env.LLM_BASE_URL);
 }
 
 // Hybrid reasoning models (Kimi, Qwen3, GLM on SiliconFlow) think before they
