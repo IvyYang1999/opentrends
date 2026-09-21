@@ -11,15 +11,24 @@ import { getTrendsPage, TopicNotFoundError } from "./get-trends-page";
 import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
 import type { TranslationLanguage } from "./translate-news-items";
 
-const ITEMS_PER_SOURCE = 6;
+// A low per-source cap lets every section of a topic reach the prompt instead
+// of the first few sources filling the whole citation budget.
+const ITEMS_PER_SOURCE = 3;
 // Hard cap on number of cited items per summary. Keeps the citation header
 // well under common HTTP header limits and keeps the LLM prompt focused.
 const MAX_CITATIONS = 60;
+const RECENT_ITEM_WINDOW_MS = 48 * 60 * 60 * 1000;
+const FALLBACK_ITEM_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
+// Below this many recent items the topic is too quiet for a 48h digest, so the
+// window widens to a week.
+const MIN_RECENT_ITEMS = 30;
+const MIN_TARGET_SCRIPT_RATIO = 0.2;
+const SUMMARY_LANGUAGE_RETRY_LIMIT = 1;
 const SUMMARY_TTL_MS = 60 * 60 * 1000;
 const SUMMARY_STALE_MS = 24 * 60 * 60 * 1000;
 const SUMMARY_CACHE_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SUMMARY_HOT_CACHE_SCHEMA_VERSION = 2;
-const SUMMARY_PROMPT_VERSION = "summary-date-v1";
+const SUMMARY_PROMPT_VERSION = "top10-v1";
 const SUMMARY_HOT_CACHE_TTL_SECONDS = Math.ceil(
 	SUMMARY_CACHE_RETENTION_MS / 1000
 );
@@ -93,24 +102,66 @@ function isDescriptionRedundant(title: string, description: string): boolean {
 	return d === t || d.startsWith(t) || t.startsWith(d);
 }
 
-function collectCitedItems(page: TrendsPageData): CitedItem[] {
-	const result: CitedItem[] = [];
-	let n = 0;
+interface SourceCandidates {
+	items: NewsItem[];
+	source: string;
+}
+
+function collectSourceCandidates(
+	page: TrendsPageData,
+	notBefore: number
+): SourceCandidates[] {
+	const result: SourceCandidates[] = [];
 	for (const section of page.sections) {
 		for (const source of section.sources) {
-			if (source.items.length === 0) {
+			const items = source.items
+				.filter((item) => (item.publishedAt ?? item.fetchedAt) >= notBefore)
+				.slice(0, ITEMS_PER_SOURCE);
+			if (items.length === 0) {
 				continue;
 			}
 			const preset = getSourcePreset(source.sourceId);
-			const sourceLabel = preset?.name ?? source.title;
-			const top = source.items.slice(0, ITEMS_PER_SOURCE);
-			for (const item of top) {
-				if (n >= MAX_CITATIONS) {
-					return result;
-				}
-				n += 1;
-				result.push({ n, source: sourceLabel, item });
+			result.push({ items, source: preset?.name ?? source.title });
+		}
+	}
+	return result;
+}
+
+function countCandidates(sources: SourceCandidates[]): number {
+	return sources.reduce((total, source) => total + source.items.length, 0);
+}
+
+export function collectCitedItems(
+	page: TrendsPageData,
+	now: number = Date.now()
+): CitedItem[] {
+	let sources = collectSourceCandidates(page, now - RECENT_ITEM_WINDOW_MS);
+	if (countCandidates(sources) < MIN_RECENT_ITEMS) {
+		sources = collectSourceCandidates(page, now - FALLBACK_ITEM_WINDOW_MS);
+	}
+
+	// Round-robin across sources: every source contributes its first item
+	// before any source contributes a second one.
+	const taken = sources.map(() => 0);
+	let remaining = MAX_CITATIONS;
+	for (let round = 0; round < ITEMS_PER_SOURCE && remaining > 0; round += 1) {
+		for (const [index, source] of sources.entries()) {
+			if (remaining === 0) {
+				break;
 			}
+			if (source.items.length > round) {
+				taken[index] = round + 1;
+				remaining -= 1;
+			}
+		}
+	}
+
+	const result: CitedItem[] = [];
+	let n = 0;
+	for (const [index, source] of sources.entries()) {
+		for (const item of source.items.slice(0, taken[index])) {
+			n += 1;
+			result.push({ n, source: source.source, item });
 		}
 	}
 	return result;
@@ -130,7 +181,81 @@ function hasCurrentPromptVersion(prompt: string): boolean {
 	return prompt.includes(`Prompt version: ${SUMMARY_PROMPT_VERSION}`);
 }
 
-export function buildPrompt(topic: TopicPreset, cited: CitedItem[]): string {
+interface SummaryLanguageProfile {
+	// Closing reminder written in the target language. Source items are mostly
+	// English, and models tend to answer in the language of the material unless
+	// the last thing they read says otherwise.
+	closingReminder: string;
+	name: string;
+	reasonLimit: string;
+	takeawayLimit: string;
+}
+
+const WORD_LIMITS = {
+	reasonLimit: "max 20 words",
+	takeawayLimit: "max 15 words",
+};
+
+const SUMMARY_LANGUAGE_PROFILES: Record<
+	TranslationLanguage,
+	SummaryLanguageProfile
+> = {
+	en: {
+		...WORD_LIMITS,
+		closingReminder: "Write the whole list in English.",
+		name: "English",
+	},
+	zh: {
+		closingReminder:
+			"请只用简体中文输出整个列表，即使上面的条目是英文；公司名、产品名、模型名保留原文。",
+		name: "Simplified Chinese",
+		reasonLimit: "max 40 Chinese characters",
+		takeawayLimit: "max 30 Chinese characters",
+	},
+	"zh-Hant": {
+		closingReminder:
+			"請只用繁體中文輸出整個列表，即使上面的項目是英文；公司名、產品名、模型名保留原文。",
+		name: "Traditional Chinese",
+		reasonLimit: "max 40 Chinese characters",
+		takeawayLimit: "max 30 Chinese characters",
+	},
+	ru: {
+		...WORD_LIMITS,
+		closingReminder:
+			"Напишите весь список только на русском языке, даже если материалы выше на английском.",
+		name: "Russian",
+	},
+	"fr-FR": {
+		...WORD_LIMITS,
+		closingReminder:
+			"Rédigez toute la liste uniquement en français, même si les éléments ci-dessus sont en anglais.",
+		name: "French (France)",
+	},
+	"es-ES": {
+		...WORD_LIMITS,
+		closingReminder:
+			"Escribe toda la lista únicamente en español, aunque los elementos anteriores estén en inglés.",
+		name: "Spanish (Spain)",
+	},
+	"de-DE": {
+		...WORD_LIMITS,
+		closingReminder:
+			"Schreiben Sie die gesamte Liste ausschließlich auf Deutsch, auch wenn die Einträge oben auf Englisch sind.",
+		name: "German (Germany)",
+	},
+	"pt-BR": {
+		...WORD_LIMITS,
+		closingReminder:
+			"Escreva toda a lista somente em português do Brasil, mesmo que os itens acima estejam em inglês.",
+		name: "Portuguese (Brazil)",
+	},
+};
+
+export function buildPrompt(
+	topic: TopicPreset,
+	cited: CitedItem[],
+	lang: TranslationLanguage = "en"
+): string {
 	const lines: string[] = [];
 	lines.push(`Prompt version: ${SUMMARY_PROMPT_VERSION}`);
 	lines.push(`Topic: ${topic.title}`);
@@ -139,7 +264,7 @@ export function buildPrompt(topic: TopicPreset, cited: CitedItem[]): string {
 	}
 	lines.push("");
 	lines.push(
-		"Numbered sources you may cite. Each line is `[N] [Source] (item date) Title — short description` (description shown when available). Prioritize newer dated items when identifying what changed or moved recently:"
+		"Numbered items you may cite. Each line is `[N] [Source] (item date) Title — short description` (description shown when available):"
 	);
 	lines.push("");
 
@@ -153,88 +278,54 @@ export function buildPrompt(topic: TopicPreset, cited: CitedItem[]): string {
 		);
 	}
 
+	lines.push("");
+	lines.push(SUMMARY_LANGUAGE_PROFILES[lang].closingReminder);
+
 	return lines.join("\n");
 }
 
-function buildSystemPrompt(lang: TranslationLanguage): string {
-	if (lang === "zh") {
-		return [
-			"你是趋势新闻看板的编辑。",
-			"根据下面带编号的信息源，写一段简短的中文总结，突出共同主题、值得关注的故事和真正有趣或重要的内容。",
-			"每条信息源都带有日期；优先总结日期较新的条目，尽量说明最近更新、变化或新出现的内容，较早条目只作为背景。",
-			"输出 Markdown：可以用 **加粗** 强调关键词；不要大标题（#），不要写「以下是总结」之类的开场白。",
-			"重要：每当具体提到某条新闻时，**必须**在该断言或要点结尾追加来源编号，格式严格写作 `[N]`，N 是上面列表里的编号。例如：「OpenAI 推出了 GPT-5 [3][7]」。引用多条用 `[3][7]` 连写，不要写成 `[3, 7]`。",
-			"只引用真实出现在编号列表里的 N，不要自创。如果某句没有具体来源，就不要加引用。",
-		].join("\n");
-	}
-	if (lang === "zh-Hant") {
-		return [
-			"你是趨勢新聞看板的編輯。",
-			"根據下面帶編號的資訊來源，寫一段簡短的繁體中文總結，突出共同主題、值得關注的故事和真正有趣或重要的內容。",
-			"每則資訊來源都帶有日期；優先總結日期較新的項目，盡量說明最近更新、變化或新出現的內容，較早項目只作背景。",
-			"輸出 Markdown：可以用 **粗體** 強調關鍵詞；不要大標題（#），不要寫「以下是總結」之類的開場白。",
-			"重要：每當具體提到某則新聞時，**必須**在該斷言或要點結尾追加來源編號，格式嚴格寫作 `[N]`，N 是上面列表裡的編號。例如：「OpenAI 推出了 GPT-5 [3][7]」。引用多則用 `[3][7]` 連寫，不要寫成 `[3, 7]`。",
-			"只引用真實出現在編號列表裡的 N，不要自創。如果某句沒有具體來源，就不要加引用。",
-		].join("\n");
-	}
-	if (lang === "ru") {
-		return [
-			"Вы редактор панели технологических трендов.",
-			"По пронумерованным заголовкам ниже напишите краткую сводку на русском языке: выделите общие темы, заметные сюжеты и действительно важные или неожиданные детали.",
-			"У каждого источника есть дата; отдавайте приоритет более новым материалам и по возможности объясняйте, что недавно обновилось, изменилось или появилось. Более старые материалы используйте только как контекст.",
-			"Отвечайте в Markdown: используйте **жирный** для акцентов; не добавляйте заголовки верхнего уровня (#) и вступления вроде «Вот сводка».",
-			"ВАЖНО: когда ссылаетесь на конкретный материал, добавляйте номер источника в формате `[N]` в конце предложения или утверждения. Несколько источников пишите подряд, например `[3][7]`, а не `[3, 7]`.",
-			"Цитируйте только номера, реально присутствующие в списке. Если предложение не привязано к конкретному материалу, не добавляйте ссылку.",
-		].join("\n");
-	}
-	if (lang === "fr-FR") {
-		return [
-			"Vous êtes éditeur d'un tableau de bord des tendances technologiques.",
-			"À partir des titres numérotés ci-dessous, rédigez un court résumé en français de France qui met en avant les thèmes communs, les histoires notables et les éléments vraiment surprenants ou importants.",
-			"Chaque élément source inclut une date ; donnez la priorité aux éléments les plus récents et indiquez ce qui a changé, été mis à jour ou émergé récemment. Utilisez les éléments plus anciens seulement comme contexte.",
-			"Répondez en Markdown : utilisez le **gras** pour les points clés ; évitez les titres de premier niveau (#) et les introductions comme « Voici un résumé ».",
-			"IMPORTANT : quand vous mentionnez un élément précis, ajoutez une citation au format `[N]` à la fin de la phrase ou de l'affirmation. Pour plusieurs sources, écrivez-les côte à côte, par exemple `[3][7]`, pas `[3, 7]`.",
-			"Ne citez que les numéros réellement présents dans la liste. Si une phrase n'est pas liée à un élément précis, n'ajoutez pas de citation.",
-		].join("\n");
-	}
-	if (lang === "es-ES") {
-		return [
-			"Eres editor de un panel de tendencias tecnológicas.",
-			"A partir de los titulares numerados de abajo, escribe un resumen breve en español de España que destaque temas comunes, historias relevantes y cualquier detalle realmente sorprendente o importante.",
-			"Cada elemento de fuente incluye una fecha; da prioridad a los elementos más recientes y explica qué ha cambiado, se ha actualizado o ha aparecido últimamente. Usa los elementos antiguos solo como contexto.",
-			"Responde en Markdown: usa **negrita** para enfatizar; evita encabezados de primer nivel (#) y entradas como «Aquí tienes un resumen».",
-			"IMPORTANTE: cuando menciones un elemento concreto, añade una cita con el formato `[N]` al final de la frase o afirmación. Para varias fuentes, escríbelas juntas, por ejemplo `[3][7]`, no `[3, 7]`.",
-			"Cita solo números que aparezcan realmente en la lista. Si una frase no está vinculada a un elemento concreto, no añadas cita.",
-		].join("\n");
-	}
-	if (lang === "de-DE") {
-		return [
-			"Sie sind Redakteur eines Dashboards für Technologietrends.",
-			"Schreiben Sie anhand der nummerierten Überschriften unten eine kurze Zusammenfassung auf Deutsch (Deutschland), die gemeinsame Themen, wichtige Geschichten und wirklich überraschende oder bedeutsame Details hervorhebt.",
-			"Jedes Quellelement enthält ein Datum; priorisieren Sie neuere Einträge und erklären Sie nach Möglichkeit, was sich kürzlich geändert, aktualisiert oder neu ergeben hat. Ältere Einträge nur als Kontext verwenden.",
-			"Antworten Sie in Markdown: Verwenden Sie **Fettdruck** für Akzente; vermeiden Sie Überschriften erster Ebene (#) und Einleitungen wie „Hier ist eine Zusammenfassung“.",
-			"WICHTIG: Wenn Sie sich auf einen konkreten Eintrag beziehen, fügen Sie am Ende des Satzes oder der Aussage eine Quellenangabe im Format `[N]` hinzu. Mehrere Quellen direkt hintereinander schreiben, z. B. `[3][7]`, nicht `[3, 7]`.",
-			"Zitieren Sie nur Nummern, die tatsächlich in der Liste vorkommen. Wenn ein Satz nicht an einen konkreten Eintrag gebunden ist, lassen Sie die Quellenangabe weg.",
-		].join("\n");
-	}
-	if (lang === "pt-BR") {
-		return [
-			"Você é editor de um painel de tendências de tecnologia.",
-			"Com base nas manchetes numeradas abaixo, escreva um resumo curto em português do Brasil destacando temas comuns, histórias relevantes e qualquer detalhe realmente surpreendente ou importante.",
-			"Cada item de fonte inclui uma data; priorize itens mais recentes e explique o que mudou, foi atualizado ou surgiu recentemente. Use itens mais antigos apenas como contexto.",
-			"Responda em Markdown: use **negrito** para dar ênfase; evite títulos de primeiro nível (#) e aberturas como «Aqui está um resumo».",
-			"IMPORTANTE: sempre que mencionar um item específico, adicione uma citação no formato `[N]` ao final da frase ou afirmação. Para várias fontes, escreva-as juntas, por exemplo `[3][7]`, não `[3, 7]`.",
-			"Cite apenas números que realmente aparecem na lista. Se uma frase não estiver ligada a um item específico, não adicione citação.",
-		].join("\n");
-	}
+export function buildSystemPrompt(lang: TranslationLanguage): string {
+	const profile = SUMMARY_LANGUAGE_PROFILES[lang];
 	return [
-		"You are an editor for a trending tech news dashboard.",
-		"Given the numbered headlines below, write a short summary that highlights common themes, notable stories, and anything genuinely surprising or significant.",
-		"Each source item includes a date; prioritize newer dated items and call out what recently changed, updated, or emerged. Use older items only as context.",
-		"Respond in Markdown: use **bold** to emphasize key terms; Avoid top-level headings (#) and no preamble like 'Here is a summary'.",
-		"IMPORTANT: whenever you reference a specific item, append a citation tag in the form `[N]` (where N is the index from the list above), placed at the end of the sentence or claim. To cite multiple sources, write them adjacent like `[3][7]`, not `[3, 7]`.",
-		"Only cite numbers that actually appear in the list. If a sentence isn't tied to a specific item, omit the citation.",
+		"You are the editor of OpenTrends, a dashboard of first-hand tech sources.",
+		"From the numbered items the user gives you, pick the 10 things most worth knowing today.",
+		"Rules:",
+		"- Merge items that report the same story into one entry and cite all of them. A story covered by several sources matters more.",
+		"- Prefer the newest items. Skip promotions, ticket sales, job posts, and pure opinion pieces.",
+		"- Output only a Markdown ordered list numbered `1.`, `2.`, `3.` … with at most 10 entries (fewer when the material is thin). No heading, no preamble, no closing remarks, no blank lines between entries.",
+		`- Each entry is one line: \`1. **Takeaway in one sentence (${profile.takeawayLimit})** — why it is worth reading (${profile.reasonLimit}) [N][M]\`.`,
+		`- Write everything in ${profile.name}, whatever language the items are in. Keep company, product, and model names in their original form.`,
+		"- End each entry with citation tags in the form `[N]`, where N is the item number. Cite several items adjacent like `[3][7]`, never `[3, 7]`. Only cite numbers that appear in the list.",
 	].join("\n");
+}
+
+const CJK_CHAR_RE = /[\u3400-\u9fff]/g;
+const CYRILLIC_CHAR_RE = /\p{Script=Cyrillic}/gu;
+const LATIN_CHAR_RE = /\p{Script=Latin}/gu;
+
+function countMatches(text: string, pattern: RegExp): number {
+	return text.match(pattern)?.length ?? 0;
+}
+
+// Only scripts that differ from the mostly-English source material can be
+// checked cheaply; Latin-script targets always pass.
+export function isWrittenInTargetLanguage(
+	text: string,
+	lang: TranslationLanguage
+): boolean {
+	let target: number;
+	if (lang === "zh" || lang === "zh-Hant") {
+		target = countMatches(text, CJK_CHAR_RE);
+	} else if (lang === "ru") {
+		target = countMatches(text, CYRILLIC_CHAR_RE);
+	} else {
+		return true;
+	}
+	const latin = countMatches(text, LATIN_CHAR_RE);
+	if (target + latin === 0) {
+		return true;
+	}
+	return target / (target + latin) >= MIN_TARGET_SCRIPT_RATIO;
 }
 
 function makeSummaryCacheKey(
@@ -405,7 +496,7 @@ async function refreshSummaryCache(
 		n,
 		url: item.url,
 	}));
-	const prompt = buildPrompt(topic, cited);
+	const prompt = buildPrompt(topic, cited, lang);
 	const cached = await readSummaryWithTimeout(topicId, lang);
 	const cachedEntry = cachedSummaryToEntry(cached);
 	if (cachedEntry && cachedEntry.prompt === prompt) {
@@ -415,16 +506,23 @@ async function refreshSummaryCache(
 	}
 
 	const controller = new AbortController();
-	for await (const _chunk of streamGeneratedSummary({
-		citations,
-		cited,
-		lang,
-		prompt,
-		topic,
-		topicId,
-		abortSignal: controller.signal,
-	})) {
-		// Consume the generator so it can write the completed summary to cache.
+	for (let attempt = 0; attempt <= SUMMARY_LANGUAGE_RETRY_LIMIT; attempt += 1) {
+		for await (const _chunk of streamGeneratedSummary({
+			citations,
+			cited,
+			lang,
+			prompt,
+			topic,
+			topicId,
+			abortSignal: controller.signal,
+		})) {
+			// Consume the generator so it can write the completed summary to cache.
+		}
+		// A summary in the wrong language is never cached, so a missing entry
+		// here means the attempt has to be repeated.
+		if (readMemorySummary(topicId, lang)?.prompt === prompt) {
+			return;
+		}
 	}
 }
 
@@ -608,7 +706,11 @@ async function* streamGeneratedSummary(params: {
 			yield chunk;
 		}
 		const text = chunks.join("").trim();
-		if (text) {
+		if (text && !isWrittenInTargetLanguage(text, params.lang)) {
+			console.warn(
+				`[trends-summary] discarded ${params.topicId} summary not written in ${params.lang}`
+			);
+		} else if (text) {
 			await writeCachedSummary({
 				citations: params.citations,
 				lang: params.lang,
@@ -723,7 +825,7 @@ export async function prepareTrendsSummary(
 		n,
 		url: item.url,
 	}));
-	const prompt = buildPrompt(topic, cited);
+	const prompt = buildPrompt(topic, cited, lang);
 
 	return {
 		citations,
