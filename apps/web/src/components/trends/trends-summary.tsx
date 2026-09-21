@@ -1,4 +1,5 @@
 import { env } from "@opentrends/env/web";
+import { Share2 } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 
@@ -9,7 +10,9 @@ import {
 	type CitationMeta,
 	type CitationMetaMap,
 } from "./citation-link-popover";
+import { parseDigest } from "./share-image";
 import { SourceLogoStack, type SourceLogoStackItem } from "./source-favicon";
+import { SummaryShareDialog } from "./summary-share-dialog";
 import type { TrendsPageData } from "./types";
 
 interface TrendsSummaryProps {
@@ -18,6 +21,15 @@ interface TrendsSummaryProps {
 }
 
 type SummaryStatus = "loading" | "streaming" | "done" | "unavailable" | "error";
+
+const SUMMARY_WINDOWS = ["today", "week", "month"] as const;
+type SummaryWindow = (typeof SUMMARY_WINDOWS)[number];
+
+const SUMMARY_WINDOW_LABELS = {
+	today: "summary.windowToday",
+	week: "summary.windowWeek",
+	month: "summary.windowMonth",
+} as const;
 
 type CitationMap = ReadonlyMap<number, string>;
 
@@ -103,9 +115,13 @@ async function readStream(
 async function streamSummary(
 	topicId: string,
 	locale: Locale,
+	summaryWindow: SummaryWindow,
 	handlers: StreamHandlers
 ): Promise<void> {
 	const search = new URLSearchParams({ lang: locale, _: String(Date.now()) });
+	if (summaryWindow !== "today") {
+		search.set("window", summaryWindow);
+	}
 	const url = `${env.VITE_SERVER_URL}/api/trends/${encodeURIComponent(topicId)}/summary?${search}`;
 	try {
 		const response = await fetch(url, {
@@ -338,8 +354,16 @@ export function TrendsSummary({ page, topicId }: TrendsSummaryProps) {
 	const [status, setStatus] = useState<SummaryStatus>("loading");
 	const [error, setError] = useState<string | null>(null);
 	const [citations, setCitations] = useState<CitationMap>(EMPTY_CITATIONS);
+	const [summaryWindow, setSummaryWindow] = useState<SummaryWindow>("today");
 	const metadata = useMemo(() => buildMetadataMap(page), [page]);
 	const stats = useMemo(() => computeSummaryStats(page), [page]);
+	const [shareOpen, setShareOpen] = useState(false);
+	// Sharing is offered once the whole digest has arrived, so the image never
+	// shows a half-written entry.
+	const digestEntries = useMemo(
+		() => (status === "done" ? parseDigest(text) : []),
+		[status, text]
+	);
 
 	const containerRef = useCallback(
 		(el: HTMLDivElement | null) => {
@@ -355,7 +379,7 @@ export function TrendsSummary({ page, topicId }: TrendsSummaryProps) {
 			setStatus("loading");
 			setCitations(EMPTY_CITATIONS);
 
-			streamSummary(topicId, locale, {
+			streamSummary(topicId, locale, summaryWindow, {
 				signal: controller.signal,
 				isCancelled: () => cancelled,
 				onStreamingStart: () => setStatus("streaming"),
@@ -381,7 +405,7 @@ export function TrendsSummary({ page, topicId }: TrendsSummaryProps) {
 				controller.abort();
 			};
 		},
-		[topicId, locale]
+		[topicId, locale, summaryWindow]
 	);
 
 	if (status === "unavailable") {
@@ -427,7 +451,43 @@ export function TrendsSummary({ page, topicId }: TrendsSummaryProps) {
 									: t("summary.writing")}
 							</span>
 						) : null}
+						<fieldset
+							aria-label={t("summary.windowLabel")}
+							className="ml-auto inline-flex items-center gap-0.5"
+						>
+							{SUMMARY_WINDOWS.map((option) => (
+								<button
+									aria-pressed={option === summaryWindow}
+									className="rounded px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:text-[var(--accent-blue)]"
+									key={option}
+									onClick={() => setSummaryWindow(option)}
+									type="button"
+								>
+									{t(SUMMARY_WINDOW_LABELS[option])}
+								</button>
+							))}
+							{digestEntries.length > 0 ? (
+								<button
+									className="ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
+									onClick={() => setShareOpen(true)}
+									type="button"
+								>
+									<Share2 aria-hidden className="size-3" />
+									{t("summary.share")}
+								</button>
+							) : null}
+						</fieldset>
 					</div>
+					{shareOpen ? (
+						<SummaryShareDialog
+							entries={digestEntries}
+							onOpenChange={setShareOpen}
+							open={shareOpen}
+							summaryWindow={summaryWindow}
+							topicId={topicId}
+							topicTitle={page.title}
+						/>
+					) : null}
 					<SummaryBody
 						citations={citations}
 						error={error}
