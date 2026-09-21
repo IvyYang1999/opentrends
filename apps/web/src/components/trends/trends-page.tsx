@@ -25,11 +25,21 @@ import {
 	ArrowUpRight,
 	CircleAlert,
 	CircleDashed,
+	EyeOff,
+	GripVertical,
 	Languages,
 	LoaderCircle,
 	MoreHorizontal,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+	type KeyboardEvent as ReactKeyboardEvent,
+	type ReactNode,
+	type PointerEvent as ReactPointerEvent,
+	useCallback,
+	useEffect,
+	useRef,
+	useState,
+} from "react";
 
 import {
 	type Locale,
@@ -51,6 +61,8 @@ import {
 import { translateTrendsPageSnapshot } from "./load-trends";
 import { formatRelativeTime } from "./relative-time";
 import { SourceFavicon } from "./source-favicon";
+import { useSourcePreferences } from "./source-preferences";
+import { moveSource } from "./source-preferences-model";
 import { trendSourceQueryOptions } from "./trends-query";
 import { TrendsSummary } from "./trends-summary";
 import type {
@@ -139,9 +151,160 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 			source,
 		}))
 	);
+	const sourcePreferences = useSourcePreferences(
+		displayPage.id,
+		sources.map(({ source }) => source.sourceId)
+	);
+	const sourceById = new Map(
+		sources.map((entry) => [entry.source.sourceId, entry])
+	);
+	const orderedSources = sourcePreferences.preference.orderedSourceIds
+		.map((sourceId) => sourceById.get(sourceId))
+		.filter((entry): entry is SourceWithSection => Boolean(entry));
+	const hiddenSourceIdSet = new Set(
+		sourcePreferences.preference.hiddenSourceIds
+	);
+	const visibleSources = orderedSources.filter(
+		({ source }) => !hiddenSourceIdSet.has(source.sourceId)
+	);
+	const [draggingSourceId, setDraggingSourceId] = useState<string | undefined>(
+		undefined
+	);
+	const draggingSourceIdRef = useRef<string | undefined>(undefined);
+	const sourceOrderRef = useRef(sourcePreferences.preference.orderedSourceIds);
+	sourceOrderRef.current = sourcePreferences.preference.orderedSourceIds;
+	const [dragAnnouncement, setDragAnnouncement] = useState("");
+
+	function moveAndAnnounce(activeSourceId: string, overSourceId: string) {
+		const currentOrder = sourceOrderRef.current;
+		const nextOrder = moveSource(currentOrder, activeSourceId, overSourceId);
+		if (nextOrder.join("\u0000") === currentOrder.join("\u0000")) {
+			return;
+		}
+		sourceOrderRef.current = nextOrder;
+		sourcePreferences.setOrder(nextOrder);
+		const sourceTitle = sourceById.get(activeSourceId)?.source.title ?? "";
+		setDragAnnouncement(
+			t("display.sourceMoved", {
+				title: sourceTitle,
+				position: nextOrder.indexOf(activeSourceId) + 1,
+				count: nextOrder.length,
+			})
+		);
+	}
+
+	function dragHandleProps(sourceId: string): SourceDragHandleProps {
+		const finishPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+			if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+				event.currentTarget.releasePointerCapture(event.pointerId);
+			}
+			draggingSourceIdRef.current = undefined;
+			setDraggingSourceId(undefined);
+		};
+		return {
+			onKeyDown: (event) => {
+				const order = sourceOrderRef.current;
+				const currentIndex = order.indexOf(sourceId);
+				let targetIndex = currentIndex;
+				if (event.key === "ArrowLeft" || event.key === "ArrowUp") {
+					targetIndex = Math.max(0, currentIndex - 1);
+				} else if (event.key === "ArrowRight" || event.key === "ArrowDown") {
+					targetIndex = Math.min(order.length - 1, currentIndex + 1);
+				} else if (event.key === "Home") {
+					targetIndex = 0;
+				} else if (event.key === "End") {
+					targetIndex = order.length - 1;
+				} else {
+					return;
+				}
+				event.preventDefault();
+				const overSourceId = order[targetIndex];
+				if (overSourceId) {
+					moveAndAnnounce(sourceId, overSourceId);
+				}
+			},
+			onPointerDown: (event) => {
+				if (!event.isPrimary) {
+					return;
+				}
+				event.preventDefault();
+				event.currentTarget.setPointerCapture(event.pointerId);
+				draggingSourceIdRef.current = sourceId;
+				setDraggingSourceId(sourceId);
+			},
+			onPointerMove: (event) => {
+				const activeSourceId = draggingSourceIdRef.current;
+				if (!activeSourceId) {
+					return;
+				}
+				const target = document
+					.elementFromPoint(event.clientX, event.clientY)
+					?.closest<HTMLElement>("[data-sortable-source-id]");
+				const overSourceId = target?.dataset.sortableSourceId;
+				if (overSourceId) {
+					moveAndAnnounce(activeSourceId, overSourceId);
+				}
+			},
+			onPointerCancel: finishPointerDrag,
+			onPointerUp: finishPointerDrag,
+		};
+	}
+
+	let sourceContent: ReactNode;
+	if (visibleSources.length === 0) {
+		sourceContent = (
+			<div className="flex min-h-48 flex-col items-center justify-center gap-3 border-[var(--border-default)] border-b bg-[var(--surface-card)] px-4 text-center">
+				<p className="text-[13px] text-[var(--text-secondary)]">
+					{t("display.allSourcesHidden")}
+				</p>
+				<button
+					className="rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-3 py-1.5 text-[12px] text-[var(--text-primary)] hover:bg-[var(--state-hover-subtle)]"
+					onClick={sourcePreferences.showAllSources}
+					type="button"
+				>
+					{t("display.restoreAllSources")}
+				</button>
+			</div>
+		);
+	} else if (settings.layout === "sourceSections") {
+		sourceContent = (
+			<SourceSectionsLayout
+				draggingSourceId={draggingSourceId}
+				dragHandleProps={dragHandleProps}
+				locale={locale}
+				onHideSource={(sourceId) =>
+					sourcePreferences.setSourceVisible(sourceId, false)
+				}
+				settings={settings}
+				sources={visibleSources}
+				t={t}
+				topicId={displayPage.id}
+				translationPending={translationPending}
+			/>
+		);
+	} else {
+		sourceContent = (
+			<SourceGridLayout
+				draggingSourceId={draggingSourceId}
+				dragHandleProps={dragHandleProps}
+				locale={locale}
+				onHideSource={(sourceId) =>
+					sourcePreferences.setSourceVisible(sourceId, false)
+				}
+				settings={settings}
+				sources={visibleSources}
+				t={t}
+				topicId={displayPage.id}
+				translationPending={translationPending}
+			/>
+		);
+	}
 	return (
 		<ScrollArea className="min-w-0 flex-1 overflow-hidden bg-[var(--surface-app)] text-[var(--text-primary)]">
 			<div ref={translationRef}>
+				<p aria-live="polite" className="sr-only">
+					{dragAnnouncement}
+				</p>
 				<TrendsSummary
 					key={displayPage.id}
 					page={displayPage}
@@ -165,7 +328,13 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 							Events
 						</Link>
 						<LayoutSettingsMenuContent
+							hiddenSourceIds={sourcePreferences.preference.hiddenSourceIds}
+							onSourceVisibilityChange={sourcePreferences.setSourceVisible}
 							settings={settings}
+							sources={orderedSources.map(({ source }) => ({
+								id: source.sourceId,
+								title: source.title,
+							}))}
 							storeOptions={displaySettingsStore}
 							t={t}
 						/>
@@ -176,25 +345,7 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 						/>
 					</div>
 				</div>
-				{settings.layout === "sourceSections" ? (
-					<SourceSectionsLayout
-						locale={locale}
-						settings={settings}
-						sources={sources}
-						t={t}
-						topicId={displayPage.id}
-						translationPending={translationPending}
-					/>
-				) : (
-					<SourceGridLayout
-						locale={locale}
-						settings={settings}
-						sources={sources}
-						t={t}
-						topicId={displayPage.id}
-						translationPending={translationPending}
-					/>
-				)}
+				{sourceContent}
 			</div>
 		</ScrollArea>
 	);
@@ -263,6 +414,14 @@ interface SourceWithSection {
 	source: SourceCardData;
 }
 
+interface SourceDragHandleProps {
+	onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
+	onPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+	onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+	onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+	onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void;
+}
+
 const SOURCE_CARD_HEIGHT = "h-[480px]";
 // A topic page holds dozens of cards and hundreds of rows. Skipping layout and
 // paint for cards far from the viewport also keeps their lazy cover images
@@ -279,6 +438,9 @@ function SourceGridLayout({
 	topicId,
 	locale,
 	translationPending,
+	dragHandleProps,
+	draggingSourceId,
+	onHideSource,
 }: {
 	sources: SourceWithSection[];
 	settings: DisplaySettings;
@@ -286,13 +448,19 @@ function SourceGridLayout({
 	topicId: string;
 	locale: Locale;
 	translationPending: boolean;
+	dragHandleProps: (sourceId: string) => SourceDragHandleProps;
+	draggingSourceId?: string;
+	onHideSource: (sourceId: string) => void;
 }) {
 	return (
 		<div className="grid grid-cols-1 items-start sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
 			{sources.map(({ sectionId, source }) => (
 				<SourceCard
+					dragHandleProps={dragHandleProps(source.sourceId)}
+					isDragging={draggingSourceId === source.sourceId}
 					key={`${sectionId}:${source.sourceId}`}
 					locale={locale}
+					onHide={() => onHideSource(source.sourceId)}
 					settings={settings}
 					source={source}
 					t={t}
@@ -311,6 +479,9 @@ function SourceSectionsLayout({
 	topicId,
 	locale,
 	translationPending,
+	dragHandleProps,
+	draggingSourceId,
+	onHideSource,
 }: {
 	sources: SourceWithSection[];
 	settings: DisplaySettings;
@@ -318,13 +489,19 @@ function SourceSectionsLayout({
 	topicId: string;
 	locale: Locale;
 	translationPending: boolean;
+	dragHandleProps: (sourceId: string) => SourceDragHandleProps;
+	draggingSourceId?: string;
+	onHideSource: (sourceId: string) => void;
 }) {
 	return (
 		<div className="bg-[var(--surface-app)]">
 			{sources.map(({ sectionId, source }) => (
 				<SourceSection
+					dragHandleProps={dragHandleProps(source.sourceId)}
+					isDragging={draggingSourceId === source.sourceId}
 					key={`${sectionId}:${source.sourceId}`}
 					locale={locale}
+					onHide={() => onHideSource(source.sourceId)}
 					settings={settings}
 					source={source}
 					t={t}
@@ -343,6 +520,9 @@ function SourceCard({
 	topicId,
 	locale,
 	translationPending,
+	dragHandleProps,
+	isDragging,
+	onHide,
 }: {
 	source: SourceCardData;
 	settings: DisplaySettings;
@@ -350,6 +530,9 @@ function SourceCard({
 	topicId: string;
 	locale: Locale;
 	translationPending: boolean;
+	dragHandleProps: SourceDragHandleProps;
+	isDragging: boolean;
+	onHide: () => void;
 }) {
 	const [open, setOpen] = useState(false);
 	const [overflowing, setOverflowing] = useState(false);
@@ -368,9 +551,15 @@ function SourceCard({
 
 	return (
 		<article
-			className={`flex min-w-0 flex-col overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-card)] sm:border-r ${SOURCE_CARD_OFFSCREEN} ${hasItems ? `${SOURCE_CARD_HEIGHT} max-sm:h-auto max-sm:max-h-none` : "h-auto"}`}
+			className={`flex min-w-0 flex-col overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-[box-shadow,opacity] sm:border-r ${SOURCE_CARD_OFFSCREEN} ${hasItems ? `${SOURCE_CARD_HEIGHT} max-sm:h-auto max-sm:max-h-none` : "h-auto"} ${isDragging ? "relative z-30 opacity-80 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
+			data-sortable-source-id={source.sourceId}
 		>
-			<SourceCardHeader source={source} t={t} />
+			<SourceCardHeader
+				dragHandleProps={dragHandleProps}
+				onHide={onHide}
+				source={source}
+				t={t}
+			/>
 			{hasItems ? (
 				<div
 					className="relative min-h-0 flex-1 overflow-hidden max-sm:max-h-[70svh]"
@@ -430,6 +619,9 @@ function SourceSection({
 	topicId,
 	locale,
 	translationPending,
+	dragHandleProps,
+	isDragging,
+	onHide,
 }: {
 	source: SourceCardData;
 	settings: DisplaySettings;
@@ -437,11 +629,22 @@ function SourceSection({
 	topicId: string;
 	locale: Locale;
 	translationPending: boolean;
+	dragHandleProps: SourceDragHandleProps;
+	isDragging: boolean;
+	onHide: () => void;
 }) {
 	const [open, setOpen] = useState(false);
 	return (
-		<section className="border-[var(--border-default)] border-b bg-[var(--surface-card)]">
-			<SourceSectionHeader source={source} t={t} />
+		<section
+			className={`border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-[box-shadow,opacity] ${isDragging ? "relative z-30 opacity-80 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
+			data-sortable-source-id={source.sourceId}
+		>
+			<SourceSectionHeader
+				dragHandleProps={dragHandleProps}
+				onHide={onHide}
+				source={source}
+				t={t}
+			/>
 			{source.items.length === 0 ? (
 				<div className="flex">
 					<SourceEmptyContent source={source} t={t} />
@@ -542,20 +745,29 @@ function SourceDialog({
 function SourceCardHeader({
 	source,
 	t,
+	dragHandleProps,
+	onHide,
 }: {
 	source: SourceCardData;
 	t: Translator;
+	dragHandleProps: SourceDragHandleProps;
+	onHide: () => void;
 }) {
 	return (
 		<div className="flex items-start justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-2 sm:items-baseline">
 			<div className="flex min-w-0 items-center gap-2">
+				<SourceDragHandle
+					dragHandleProps={dragHandleProps}
+					source={source}
+					t={t}
+				/>
 				<SourceFavicon homeUrl={source.homeUrl} />
 				<h3 className="truncate font-semibold text-[13px] text-[var(--text-heading)] tracking-tight">
 					{source.title}
 				</h3>
 				<StatusDot status={source.status} t={t} />
 			</div>
-			<SourceHeaderMeta source={source} t={t} />
+			<SourceHeaderMeta onHide={onHide} source={source} t={t} />
 		</div>
 	);
 }
@@ -563,20 +775,34 @@ function SourceCardHeader({
 function SourceSectionHeader({
 	source,
 	t,
+	dragHandleProps,
+	onHide,
 }: {
 	source: SourceCardData;
 	t: Translator;
+	dragHandleProps: SourceDragHandleProps;
+	onHide: () => void;
 }) {
 	return (
 		<div className="sticky top-0 z-20 flex flex-col gap-2 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-4">
 			<div className="flex min-w-0 items-center gap-2">
+				<SourceDragHandle
+					dragHandleProps={dragHandleProps}
+					source={source}
+					t={t}
+				/>
 				<SourceFavicon homeUrl={source.homeUrl} />
 				<h2 className="min-w-0 truncate font-semibold text-[15px] text-[var(--text-heading)] tracking-tight">
 					{source.title}
 				</h2>
 				<StatusDot status={source.status} t={t} />
 			</div>
-			<SourceHeaderMeta itemCount={source.items.length} source={source} t={t} />
+			<SourceHeaderMeta
+				itemCount={source.items.length}
+				onHide={onHide}
+				source={source}
+				t={t}
+			/>
 		</div>
 	);
 }
@@ -585,10 +811,12 @@ function SourceHeaderMeta({
 	source,
 	t,
 	itemCount,
+	onHide,
 }: {
 	source: SourceCardData;
 	t: Translator;
 	itemCount?: number;
+	onHide: () => void;
 }) {
 	return (
 		<div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-[11px] text-[var(--text-muted)] max-sm:justify-start">
@@ -602,15 +830,15 @@ function SourceHeaderMeta({
 			) : (
 				<span>—</span>
 			)}
-			{source.homeUrl ? (
-				<DropdownMenu>
-					<DropdownMenuTrigger
-						aria-label={t("card.actionsFor", { title: source.title })}
-						className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[popup-open]:bg-[var(--state-hover-subtle)] data-[popup-open]:text-[var(--text-primary)]"
-					>
-						<MoreHorizontal className="size-3" />
-					</DropdownMenuTrigger>
-					<DropdownMenuContent align="end" className="bg-card">
+			<DropdownMenu>
+				<DropdownMenuTrigger
+					aria-label={t("card.actionsFor", { title: source.title })}
+					className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[popup-open]:bg-[var(--state-hover-subtle)] data-[popup-open]:text-[var(--text-primary)]"
+				>
+					<MoreHorizontal className="size-3" />
+				</DropdownMenuTrigger>
+				<DropdownMenuContent align="end" className="bg-card">
+					{source.homeUrl ? (
 						<DropdownMenuItem
 							render={
 								<a
@@ -622,10 +850,40 @@ function SourceHeaderMeta({
 								</a>
 							}
 						/>
-					</DropdownMenuContent>
-				</DropdownMenu>
-			) : null}
+					) : null}
+					<DropdownMenuItem onClick={onHide}>
+						<EyeOff aria-hidden className="size-3.5" />
+						{t("card.hideSource")}
+					</DropdownMenuItem>
+				</DropdownMenuContent>
+			</DropdownMenu>
 		</div>
+	);
+}
+
+function SourceDragHandle({
+	dragHandleProps,
+	source,
+	t,
+}: {
+	dragHandleProps: SourceDragHandleProps;
+	source: SourceCardData;
+	t: Translator;
+}) {
+	return (
+		<button
+			aria-label={t("display.dragSource", { title: source.title })}
+			className="-ml-1 inline-flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded text-[var(--text-muted)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] active:cursor-grabbing"
+			onKeyDown={dragHandleProps.onKeyDown}
+			onPointerCancel={dragHandleProps.onPointerCancel}
+			onPointerDown={dragHandleProps.onPointerDown}
+			onPointerMove={dragHandleProps.onPointerMove}
+			onPointerUp={dragHandleProps.onPointerUp}
+			title={t("display.dragSource", { title: source.title })}
+			type="button"
+		>
+			<GripVertical aria-hidden className="size-3.5" />
+		</button>
 	);
 }
 

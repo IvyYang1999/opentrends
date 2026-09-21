@@ -1,8 +1,17 @@
 import { buttonVariants } from "@opentrends/ui/components/button";
+import {
+	DropdownMenu,
+	DropdownMenuContent,
+	DropdownMenuItem,
+	DropdownMenuLabel,
+	DropdownMenuSeparator,
+	DropdownMenuTrigger,
+} from "@opentrends/ui/components/dropdown-menu";
 import { cn } from "@opentrends/ui/lib/utils";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link } from "@tanstack/react-router";
-import { Star } from "lucide-react";
+import { LogIn, LogOut, Star, UserRound } from "lucide-react";
+import { toast } from "sonner";
 
 import { trendsPageQueryOptions } from "@/components/trends/trends-query";
 import {
@@ -10,6 +19,7 @@ import {
 	type GitHubRepositoryStats,
 	getGithubRepositoryStats,
 } from "@/functions/get-github-repository-stats";
+import { authClient } from "@/lib/auth-client";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
 
 import LanguageToggle from "./language-toggle";
@@ -41,6 +51,81 @@ function formatStars(stars: number | null | undefined): string {
 		maximumFractionDigits: stars >= 1000 ? 1 : 0,
 		notation: "compact",
 	}).format(stars);
+}
+
+function AccountMenu() {
+	const t = useT();
+	const locale = useLocale();
+	const localeParam = localePathParam(locale);
+	const session = authClient.useSession();
+
+	if (session.isPending) {
+		return (
+			<span
+				aria-hidden
+				className="size-7 animate-pulse rounded bg-[var(--state-hover-subtle)]"
+			/>
+		);
+	}
+
+	const user = session.data?.user;
+	if (!user) {
+		return (
+			<Link
+				aria-label={t("userMenu.signIn")}
+				className={cn(
+					buttonVariants({ size: "sm", variant: "ghost" }),
+					"h-7 gap-1.5 px-2 text-[var(--text-secondary)]"
+				)}
+				params={{ locale: localeParam }}
+				to="/{-$locale}/login"
+			>
+				<LogIn aria-hidden className="size-3.5" />
+				<span className="hidden xl:inline">{t("userMenu.signIn")}</span>
+			</Link>
+		);
+	}
+
+	return (
+		<DropdownMenu>
+			<DropdownMenuTrigger
+				aria-label={t("userMenu.myAccount")}
+				className="inline-flex size-7 items-center justify-center overflow-hidden rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[popup-open]:bg-[var(--state-hover-subtle)]"
+			>
+				{user.image ? (
+					<img
+						alt=""
+						className="size-6 rounded object-cover"
+						height={24}
+						src={user.image}
+						width={24}
+					/>
+				) : (
+					<UserRound aria-hidden className="size-4" />
+				)}
+			</DropdownMenuTrigger>
+			<DropdownMenuContent align="end" className="min-w-52 bg-card">
+				<DropdownMenuLabel className="min-w-0">
+					<span className="block truncate text-[var(--text-primary)]">
+						{user.name}
+					</span>
+					<span className="block truncate font-normal">{user.email}</span>
+				</DropdownMenuLabel>
+				<DropdownMenuSeparator />
+				<DropdownMenuItem
+					onClick={async () => {
+						const result = await authClient.signOut();
+						if (result.error) {
+							toast.error(result.error.message);
+						}
+					}}
+				>
+					<LogOut aria-hidden className="size-3.5" />
+					{t("userMenu.signOut")}
+				</DropdownMenuItem>
+			</DropdownMenuContent>
+		</DropdownMenu>
+	);
 }
 
 interface HeaderProps {
@@ -105,6 +190,7 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 							<Star className="size-3.5" />
 							<span className="tabular-nums">{githubStars}</span>
 						</a>
+						<AccountMenu />
 						<LanguageToggle />
 						<ThemeToggle />
 					</div>

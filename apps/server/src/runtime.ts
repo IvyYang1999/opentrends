@@ -17,6 +17,10 @@ export interface WorkerBindings {
 	CORS_ORIGIN: string;
 	DB: D1Database;
 	EVENT_MERGE_QUEUE: Queue<WorkerQueueMessage>;
+	GITHUB_CLIENT_ID?: string;
+	GITHUB_OAUTH_KEY?: string;
+	GOOGLE_CLIENT_ID?: string;
+	GOOGLE_OAUTH_KEY?: string;
 	HOT_CACHE: KVNamespace;
 	IMAGES: ImagesBinding;
 	LLM_API_KEY?: string;

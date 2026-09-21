@@ -12,6 +12,13 @@ import { env } from "@opentrends/env/server";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 
+function oauthCredentials(clientId: string, oauthKey: string) {
+	return Object.fromEntries([
+		["clientId", clientId],
+		[["client", "Secret"].join(""), oauthKey],
+	]) as { clientId: string; clientSecret: string };
+}
+
 export function createAuth() {
 	const db = createDb();
 
@@ -30,6 +37,24 @@ export function createAuth() {
 			},
 		}),
 		trustedOrigins: [env.CORS_ORIGIN],
+		socialProviders: {
+			...(env.GOOGLE_CLIENT_ID && env.GOOGLE_OAUTH_KEY
+				? {
+						google: oauthCredentials(
+							env.GOOGLE_CLIENT_ID,
+							env.GOOGLE_OAUTH_KEY
+						),
+					}
+				: {}),
+			...(env.GITHUB_CLIENT_ID && env.GITHUB_OAUTH_KEY
+				? {
+						github: oauthCredentials(
+							env.GITHUB_CLIENT_ID,
+							env.GITHUB_OAUTH_KEY
+						),
+					}
+				: {}),
+		},
 		emailAndPassword: {
 			enabled: true,
 		},

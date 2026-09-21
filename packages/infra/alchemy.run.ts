@@ -85,6 +85,18 @@ export const api = await Worker("api", {
 		),
 		BETTER_AUTH_URL: required(alchemy.env.BETTER_AUTH_URL, "BETTER_AUTH_URL"),
 		CORS_ORIGIN: required(alchemy.env.CORS_ORIGIN, "CORS_ORIGIN"),
+		...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_OAUTH_KEY
+			? {
+					GOOGLE_CLIENT_ID: alchemy.env.GOOGLE_CLIENT_ID,
+					GOOGLE_OAUTH_KEY: alchemy.secret.env.GOOGLE_OAUTH_KEY,
+				}
+			: {}),
+		...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_OAUTH_KEY
+			? {
+					GITHUB_CLIENT_ID: alchemy.env.GITHUB_CLIENT_ID,
+					GITHUB_OAUTH_KEY: alchemy.secret.env.GITHUB_OAUTH_KEY,
+				}
+			: {}),
 		...(process.env.RSSHUB_BASE_URLS
 			? { RSSHUB_BASE_URLS: alchemy.env.RSSHUB_BASE_URLS }
 			: {}),

@@ -67,6 +67,17 @@ function resolveAllowedOrigin(
 	return null;
 }
 
+app.get("/api/auth/providers", (context) =>
+	context.json({
+		google: Boolean(
+			context.env.GOOGLE_CLIENT_ID && context.env.GOOGLE_OAUTH_KEY
+		),
+		github: Boolean(
+			context.env.GITHUB_CLIENT_ID && context.env.GITHUB_OAUTH_KEY
+		),
+	})
+);
+
 app.on(["POST", "GET"], "/api/auth/*", async (context) => {
 	const { getAuth } = await import("@opentrends/auth");
 	return getAuth().handler(context.req.raw);
