@@ -34,12 +34,12 @@ describe("sync translation deadline", () => {
 		const background: Promise<unknown>[] = [];
 		let aborted = false;
 
-		// 18 candidates = 3 batches of 6; two run concurrently and each takes
+		// 30 candidates = 5 batches of 6; four run concurrently and each takes
 		// longer than the 20ms deadline.
 		const started = Date.now();
 		const result = await translateMissingWithinTimeout(
 			"zh",
-			makeCandidates(18),
+			makeCandidates(30),
 			20,
 			{ waitUntil: (promise) => background.push(promise) },
 			async (_lang, batch, signal) => {
@@ -59,8 +59,8 @@ describe("sync translation deadline", () => {
 
 		await Promise.all(background);
 
-		// The two batches that were in flight completed; the third never started.
-		expect(finishedBatches).toEqual([6, 6]);
+		// The four batches that were in flight completed; the fifth never started.
+		expect(finishedBatches).toEqual([6, 6, 6, 6]);
 		expect(aborted).toBe(false);
 	});
 });
