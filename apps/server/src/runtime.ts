@@ -18,6 +18,7 @@ export interface WorkerBindings {
 	DB: D1Database;
 	EVENT_MERGE_QUEUE: Queue<WorkerQueueMessage>;
 	HOT_CACHE: KVNamespace;
+	IMAGES: ImagesBinding;
 	LLM_API_KEY?: string;
 	LLM_BASE_URL: string;
 	LLM_ENABLE_THINKING?: "true" | "false";

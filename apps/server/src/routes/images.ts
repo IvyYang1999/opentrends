@@ -1,9 +1,16 @@
 import { Hono } from "hono";
 
 const IMAGE_PROXY_CACHE_CONTROL =
-	"public, max-age=3600, s-maxage=86400, stale-while-revalidate=86400";
+	"public, max-age=86400, s-maxage=2592000, stale-while-revalidate=604800";
 const IMAGE_PROXY_TIMEOUT_MS = 8000;
+const MAX_SOURCE_IMAGE_BYTES = 15 * 1024 * 1024;
 const PRIVATE_172_RE = /^172\.(\d{1,2})\./;
+const THUMBNAIL_VARIANTS = {
+	card: { fit: "cover", height: 360, width: 640 },
+	row: { fit: "cover", height: 96, width: 96 },
+} as const;
+
+type ThumbnailVariant = keyof typeof THUMBNAIL_VARIANTS;
 
 function isPrivateHostname(hostname: string): boolean {
 	const normalized = hostname.toLowerCase();
@@ -54,10 +61,43 @@ function emptyImageResponse(): Response {
 	});
 }
 
-export const imageRoutes = new Hono().get("/", async (c) => {
+function parseThumbnailVariant(
+	value: string | undefined
+): ThumbnailVariant | null {
+	if (value === undefined) {
+		return "row";
+	}
+	return value === "row" || value === "card" ? value : null;
+}
+
+function defaultCache(): Cache | undefined {
+	return typeof caches === "undefined"
+		? undefined
+		: (caches as CacheStorage & { default: Cache }).default;
+}
+
+function isOversizedImage(response: Response): boolean {
+	const contentLength = response.headers.get("Content-Length");
+	if (!contentLength) {
+		return false;
+	}
+	const bytes = Number(contentLength);
+	return Number.isFinite(bytes) && bytes > MAX_SOURCE_IMAGE_BYTES;
+}
+
+export const imageRoutes = new Hono<{
+	Bindings: { IMAGES: ImagesBinding };
+}>().get("/", async (c) => {
 	const url = parseImageUrl(c.req.query("url"));
-	if (!url) {
+	const variant = parseThumbnailVariant(c.req.query("variant"));
+	if (!(url && variant)) {
 		return emptyImageResponse();
+	}
+	const cache = defaultCache();
+	const cacheKey = c.req.raw;
+	const cached = await cache?.match(cacheKey);
+	if (cached) {
+		return cached;
 	}
 
 	try {
@@ -71,16 +111,31 @@ export const imageRoutes = new Hono().get("/", async (c) => {
 			signal: AbortSignal.timeout(IMAGE_PROXY_TIMEOUT_MS),
 		});
 		const contentType = upstream.headers.get("Content-Type") ?? "";
-		if (!(upstream.ok && contentType.toLowerCase().startsWith("image/"))) {
+		if (
+			!(upstream.ok && contentType.toLowerCase().startsWith("image/")) ||
+			isOversizedImage(upstream) ||
+			!upstream.body
+		) {
 			return emptyImageResponse();
 		}
 
-		return new Response(upstream.body, {
-			headers: {
-				"Cache-Control": IMAGE_PROXY_CACHE_CONTROL,
-				"Content-Type": contentType,
-			},
+		const transformed = await c.env.IMAGES.input(upstream.body)
+			.transform(THUMBNAIL_VARIANTS[variant])
+			.output({ format: "image/webp", quality: 76 });
+		const imageResponse = transformed.response();
+		if (!imageResponse.ok) {
+			return emptyImageResponse();
+		}
+		const headers = new Headers(imageResponse.headers);
+		headers.set("Cache-Control", IMAGE_PROXY_CACHE_CONTROL);
+		headers.set("Content-Type", transformed.contentType());
+		headers.set("X-Content-Type-Options", "nosniff");
+		const response = new Response(imageResponse.body, {
+			headers,
+			status: imageResponse.status,
 		});
+		await cache?.put(cacheKey, response.clone());
+		return response;
 	} catch {
 		return emptyImageResponse();
 	}

@@ -67,8 +67,8 @@ interface TrendsPageProps {
 	page: TrendsPageData;
 }
 
-function proxiedImageUrl(imageUrl: string): string {
-	return `${env.VITE_SERVER_URL}/api/image?url=${encodeURIComponent(imageUrl)}`;
+function proxiedImageUrl(imageUrl: string, variant: "card" | "row"): string {
+	return `${env.VITE_SERVER_URL}/api/image?variant=${variant}&url=${encodeURIComponent(imageUrl)}`;
 }
 
 export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
@@ -688,7 +688,7 @@ function NewsRow({
 					className="mt-[2px] size-10 shrink-0 rounded border border-[var(--border-subtle)] bg-[var(--surface-sidebar)] object-cover sm:size-12"
 					height={48}
 					loading="lazy"
-					src={proxiedImageUrl(item.imageUrl as string)}
+					src={proxiedImageUrl(item.imageUrl as string, "row")}
 					width={48}
 				/>
 			) : null}
@@ -735,7 +735,7 @@ function NewsCard({
 					className="aspect-[16/9] w-full border-[var(--border-subtle)] border-b bg-[var(--surface-sidebar)] object-cover"
 					height={180}
 					loading="lazy"
-					src={proxiedImageUrl(item.imageUrl as string)}
+					src={proxiedImageUrl(item.imageUrl as string, "card")}
 					width={320}
 				/>
 			) : null}

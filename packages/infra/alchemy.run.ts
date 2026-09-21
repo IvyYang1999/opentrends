@@ -1,6 +1,7 @@
 import alchemy from "alchemy";
 import {
 	D1Database,
+	Images,
 	KVNamespace,
 	Queue,
 	TanStackStart,
@@ -39,6 +40,7 @@ const database = await D1Database("database", {
 	primaryLocationHint: "apac",
 });
 const hotCache = await KVNamespace("hot-cache");
+const images = Images();
 const eventMergeDeadLetterQueue = await Queue("event-merge-dlq");
 const eventMergeQueue = await Queue("event-merge", {
 	dlq: eventMergeDeadLetterQueue,
@@ -74,6 +76,7 @@ export const api = await Worker("api", {
 	bindings: {
 		DB: database,
 		HOT_CACHE: hotCache,
+		IMAGES: images,
 		EVENT_MERGE_QUEUE: eventMergeQueue,
 		SUMMARY_PREWARM_QUEUE: summaryPrewarmQueue,
 		BETTER_AUTH_SECRET: required(
