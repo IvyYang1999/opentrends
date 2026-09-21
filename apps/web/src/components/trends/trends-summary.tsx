@@ -47,30 +47,68 @@ interface StreamHandlers {
 const CITATIONS_HEADER = "X-Trends-Citations";
 const CITATION_RE = /\[(\d+)\]/g;
 
+const CITATION_PREAMBLE_PREFIX = '{"citations":';
+
+function toCitationMap(parsed: unknown): CitationMap {
+	const map = new Map<number, string>();
+	if (!Array.isArray(parsed)) {
+		return map;
+	}
+	for (const entry of parsed) {
+		if (
+			entry &&
+			typeof entry === "object" &&
+			typeof (entry as { n?: unknown }).n === "number" &&
+			typeof (entry as { url?: unknown }).url === "string"
+		) {
+			map.set((entry as { n: number }).n, (entry as { url: string }).url);
+		}
+	}
+	return map;
+}
+
 function parseCitationsHeader(value: string | null): CitationMap {
 	if (!value) {
 		return new Map();
 	}
 	try {
-		const decoded = decodeURIComponent(value);
-		const parsed: unknown = JSON.parse(decoded);
-		if (!Array.isArray(parsed)) {
-			return new Map();
-		}
-		const map = new Map<number, string>();
-		for (const entry of parsed) {
-			if (
-				entry &&
-				typeof entry === "object" &&
-				typeof (entry as { n?: unknown }).n === "number" &&
-				typeof (entry as { url?: unknown }).url === "string"
-			) {
-				map.set((entry as { n: number }).n, (entry as { url: string }).url);
-			}
-		}
-		return map;
+		return toCitationMap(JSON.parse(decodeURIComponent(value)));
 	} catch {
 		return new Map();
+	}
+}
+
+interface SummaryBody {
+	citations: CitationMap | null;
+	text: string;
+}
+
+// The server sends every citation as one JSON line ahead of the Markdown.
+// Returns null while that line is still arriving; a body without the line
+// (an older server) is all Markdown.
+function splitCitationPreamble(buffer: string): SummaryBody | null {
+	const body = buffer.trimStart();
+	if (
+		!CITATION_PREAMBLE_PREFIX.startsWith(
+			body.slice(0, CITATION_PREAMBLE_PREFIX.length)
+		)
+	) {
+		return { citations: null, text: buffer };
+	}
+	const newline = body.indexOf("\n");
+	if (newline === -1) {
+		return null;
+	}
+	try {
+		const parsed = JSON.parse(body.slice(0, newline)) as {
+			citations?: unknown;
+		};
+		return {
+			citations: toCitationMap(parsed.citations),
+			text: body.slice(newline + 1),
+		};
+	} catch {
+		return { citations: null, text: buffer };
 	}
 }
 
@@ -100,15 +138,22 @@ async function readStream(
 	const reader = body.getReader();
 	const decoder = new TextDecoder();
 	let buffer = "";
+	let citationsSent = false;
 	while (!handlers.isCancelled()) {
 		const { done, value } = await reader.read();
 		if (done) {
 			return;
 		}
 		buffer += decoder.decode(value, { stream: true });
-		if (!handlers.isCancelled()) {
-			handlers.onChunk(buffer);
+		const summary = splitCitationPreamble(buffer);
+		if (!summary || handlers.isCancelled()) {
+			continue;
 		}
+		if (summary.citations && !citationsSent) {
+			citationsSent = true;
+			handlers.onCitations(summary.citations);
+		}
+		handlers.onChunk(summary.text);
 	}
 }
 
@@ -118,7 +163,11 @@ async function streamSummary(
 	summaryWindow: SummaryWindow,
 	handlers: StreamHandlers
 ): Promise<void> {
-	const search = new URLSearchParams({ lang: locale, _: String(Date.now()) });
+	const search = new URLSearchParams({
+		citations: "body",
+		lang: locale,
+		_: String(Date.now()),
+	});
 	if (summaryWindow !== "today") {
 		search.set("window", summaryWindow);
 	}

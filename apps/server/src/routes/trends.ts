@@ -12,9 +12,11 @@ import {
 	TrendsSnapshotsUnavailableError,
 } from "../trends/services/get-trends-page";
 import {
+	HEADER_CITATION_LIMIT,
 	normalizeSummaryWindow,
 	prepareTrendsSummary,
 	TrendsSummaryNotConfiguredError,
+	withCitationPreamble,
 } from "../trends/services/get-trends-summary";
 import {
 	normalizeTranslationLanguage,
@@ -198,13 +200,27 @@ export const trendsRoutes = new Hono()
 			throw error;
 		}
 
-		const body = textStreamFromGenerator(prepared.stream(c.req.raw.signal));
-		return new Response(body, {
+		const stream = prepared.stream(c.req.raw.signal);
+		if (c.req.query("citations") === "body") {
+			return new Response(
+				textStreamFromGenerator(
+					withCitationPreamble(prepared.citations, stream)
+				),
+				{
+					headers: {
+						"Content-Type": "text/plain; charset=utf-8",
+						"Cache-Control": "no-store",
+					},
+				}
+			);
+		}
+
+		return new Response(textStreamFromGenerator(stream), {
 			headers: {
 				"Content-Type": "text/plain; charset=utf-8",
 				"Cache-Control": "no-store",
 				"X-Trends-Citations": encodeURIComponent(
-					JSON.stringify(prepared.citations)
+					JSON.stringify(prepared.citations.slice(0, HEADER_CITATION_LIMIT))
 				),
 				// Allow the cross-origin web client (different localhost port) to
 				// read the citations header off the response.

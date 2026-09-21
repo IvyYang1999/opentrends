@@ -12,9 +12,9 @@ import { getTrendsPage, TopicNotFoundError } from "./get-trends-page";
 import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
 import type { TranslationLanguage } from "./translate-news-items";
 
-// Hard cap on number of cited items per summary. Keeps the citation header
-// well under common HTTP header limits and keeps the LLM prompt focused.
-const MAX_CITATIONS = 60;
+// Clients that still read citations from the response header only get this
+// many, which keeps the header under common HTTP header limits.
+export const HEADER_CITATION_LIMIT = 60;
 const HOUR_MS = 60 * 60 * 1000;
 const DAY_MS = 24 * HOUR_MS;
 const MIN_TARGET_SCRIPT_RATIO = 0.2;
@@ -35,6 +35,9 @@ interface SummaryWindowProfile {
 	// A low per-source cap lets every section of a topic reach the prompt
 	// instead of the first few sources filling the whole citation budget.
 	itemsPerSource: number;
+	// Cap on items in the prompt. Longer periods get a larger budget so that
+	// sampling is less likely to drop the period's major stories.
+	maxCitations: number;
 	minItems?: number;
 	staleMs: number;
 	ttlMs: number;
@@ -45,8 +48,9 @@ const SUMMARY_WINDOW_PROFILES: Record<SummaryWindow, SummaryWindowProfile> = {
 	today: {
 		editorialPeriod: "from the last 24 hours",
 		fallbackWindowMs: 3 * DAY_MS,
-		itemsPerSource: 3,
-		minItems: 20,
+		itemsPerSource: 6,
+		maxCitations: 80,
+		minItems: 40,
 		staleMs: DAY_MS,
 		ttlMs: HOUR_MS,
 		windowMs: DAY_MS,
@@ -54,7 +58,8 @@ const SUMMARY_WINDOW_PROFILES: Record<SummaryWindow, SummaryWindowProfile> = {
 	week: {
 		editorialPeriod: "from the last 7 days",
 		historyItemsPerSourcePerDay: 2,
-		itemsPerSource: 5,
+		itemsPerSource: 8,
+		maxCitations: 150,
 		staleMs: 2 * DAY_MS,
 		ttlMs: 6 * HOUR_MS,
 		windowMs: 7 * DAY_MS,
@@ -62,7 +67,8 @@ const SUMMARY_WINDOW_PROFILES: Record<SummaryWindow, SummaryWindowProfile> = {
 	month: {
 		editorialPeriod: "from the last 30 days",
 		historyItemsPerSourcePerDay: 1,
-		itemsPerSource: 5,
+		itemsPerSource: 8,
+		maxCitations: 150,
 		staleMs: 3 * DAY_MS,
 		ttlMs: DAY_MS,
 		windowMs: 30 * DAY_MS,
@@ -242,10 +248,13 @@ function countCandidates(sources: SourceCandidates[]): number {
 
 // Round-robin across sources: every source contributes its first item before
 // any source contributes a second one.
-export function selectCitedItems(sources: SourceCandidates[]): CitedItem[] {
+export function selectCitedItems(
+	sources: SourceCandidates[],
+	maxCitations: number
+): CitedItem[] {
 	const taken = sources.map(() => 0);
 	const rounds = Math.max(0, ...sources.map((source) => source.items.length));
-	let remaining = MAX_CITATIONS;
+	let remaining = maxCitations;
 	for (let round = 0; round < rounds && remaining > 0; round += 1) {
 		for (const [index, source] of sources.entries()) {
 			if (remaining === 0) {
@@ -289,7 +298,7 @@ export function collectCitedItems(
 			profile.itemsPerSource
 		);
 	}
-	return selectCitedItems(sources);
+	return selectCitedItems(sources, profile.maxCitations);
 }
 
 async function collectWindowCitedItems(
@@ -309,7 +318,8 @@ async function collectWindowCitedItems(
 		profile.historyItemsPerSourcePerDay
 	);
 	return selectCitedItems(
-		collectHistoryCandidates(topic, history, profile.itemsPerSource)
+		collectHistoryCandidates(topic, history, profile.itemsPerSource),
+		profile.maxCitations
 	);
 }
 
@@ -786,6 +796,17 @@ async function writeCachedSummary(params: {
 	} catch (error) {
 		console.warn("[trends-summary] failed to write cached summary", error);
 	}
+}
+
+// Body format for clients that ask for it: one JSON line carrying every
+// citation, then the Markdown. A response header cannot hold the citation
+// lists of the longer windows.
+export async function* withCitationPreamble(
+	citations: Citation[],
+	stream: AsyncGenerator<string, void, void>
+): AsyncGenerator<string, void, void> {
+	yield `${JSON.stringify({ citations })}\n`;
+	yield* stream;
 }
 
 function delay(ms: number): Promise<void> {

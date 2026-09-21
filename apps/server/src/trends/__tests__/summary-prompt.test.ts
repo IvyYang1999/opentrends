@@ -88,10 +88,10 @@ describe("trends summary prompt", () => {
 		const cited = collectCitedItems(page, now);
 		const sources = new Set(cited.map((entry) => entry.source));
 
-		expect(cited).toHaveLength(60);
+		expect(cited).toHaveLength(80);
 		expect(sources.size).toBe(40);
 		expect(cited.map((entry) => entry.n)).toEqual(
-			Array.from({ length: 60 }, (_, index) => index + 1)
+			Array.from({ length: 80 }, (_, index) => index + 1)
 		);
 	});
 
@@ -103,7 +103,7 @@ describe("trends summary prompt", () => {
 		const now = Date.UTC(2026, 8, 21, 12);
 		const busy = makePage(
 			[
-				...Array.from({ length: 12 }, (_, index) => ({
+				...Array.from({ length: 14 }, (_, index) => ({
 					ageHours: [1, 2, 3],
 					sourceId: `fresh-${index}`,
 				})),
@@ -163,6 +163,32 @@ describe("trends summary prompt", () => {
 			"feed-1",
 			"feed-3",
 		]);
+	});
+
+	test("sends every citation as a JSON line ahead of the Markdown", async () => {
+		setServerEnv();
+		const { withCitationPreamble } = await import(
+			"../services/get-trends-summary"
+		);
+		const citations = Array.from({ length: 150 }, (_, index) => ({
+			n: index + 1,
+			url: `https://example.com/${index + 1}`,
+		}));
+		async function* markdown() {
+			yield "1. **First** — why [1]\n";
+			yield "2. **Second** — why [150]";
+		}
+
+		let body = "";
+		for await (const chunk of withCitationPreamble(citations, markdown())) {
+			body += chunk;
+		}
+		const newline = body.indexOf("\n");
+
+		expect(JSON.parse(body.slice(0, newline))).toEqual({ citations });
+		expect(body.slice(newline + 1)).toBe(
+			"1. **First** — why [1]\n2. **Second** — why [150]"
+		);
 	});
 
 	test("detects summaries that ignored the target language", async () => {

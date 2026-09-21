@@ -68,16 +68,10 @@ if (isPlaywrightRuntime) {
 				await route.fulfill({
 					status: 200,
 					contentType: "text/plain; charset=utf-8",
-					headers: {
-						...corsHeaders(route),
-						"X-Trends-Citations": encodeURIComponent(
-							JSON.stringify([
-								{ n: 1, url: "https://openai.example.com/gpt-5" },
-							])
-						),
-						"Access-Control-Expose-Headers": "X-Trends-Citations",
-					},
-					body: FAKE_DIGEST,
+					headers: corsHeaders(route),
+					body: `${JSON.stringify({
+						citations: [{ n: 1, url: "https://openai.example.com/gpt-5" }],
+					})}\n${FAKE_DIGEST}`,
 				});
 			});
 
@@ -86,7 +80,14 @@ if (isPlaywrightRuntime) {
 				.getByTestId("trends-summary-body")
 				.locator("ol > li");
 			await expect(entries).toHaveCount(2, { timeout: 10_000 });
+			expect(summaryUrls.at(-1)).toContain("citations=body");
 			expect(summaryUrls.at(-1)).not.toContain("window=");
+			// Citations arrive as the first line of the body, never as visible text.
+			const summaryBody = page.getByTestId("trends-summary-body");
+			await expect(summaryBody).not.toContainText("citations");
+			await expect(
+				summaryBody.locator('[data-streamdown="link"]:has(sup)')
+			).toHaveCount(2);
 
 			await page.getByRole("button", { name: "This week" }).click();
 			await expect
