@@ -1,3 +1,4 @@
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { env } from "@opentrends/env/server";
 import { streamText } from "ai";
 
@@ -8,8 +9,8 @@ import { getSourcePreset } from "../config/sources";
 import { getTopicPreset } from "../config/topics";
 import type { NewsItem, SourceId, TopicPreset, TrendsPageData } from "../types";
 import { getTrendsPage, TopicNotFoundError } from "./get-trends-page";
-import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
 import { llmProviderOptions } from "./llm";
+import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
 import type { TranslationLanguage } from "./translate-news-items";
 
 // Clients that still read citations from the response header only get this

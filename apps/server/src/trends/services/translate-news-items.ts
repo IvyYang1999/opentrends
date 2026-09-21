@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
 import { env } from "@opentrends/env/server";
 import { generateText, Output } from "ai";
 import { z } from "zod";
@@ -9,8 +10,8 @@ import {
 	writeItemTranslations,
 } from "../cache/item-translation-cache";
 import type { NewsItem, SourceCardData, TrendsPageData } from "../types";
-import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
 import { llmProviderOptions, translationModelId } from "./llm";
+import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
 
 export const TRANSLATION_LANGUAGES = [
 	"en",
