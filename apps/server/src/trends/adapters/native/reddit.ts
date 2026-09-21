@@ -1,4 +1,5 @@
 import type { FetchContext, NewsItem, SourceAdapter } from "../../types";
+import { createRssAdapter } from "../rss";
 import {
 	clampItems,
 	cleanDescription,
@@ -58,6 +59,20 @@ function resolveImage(post: RedditChild): string | undefined {
 
 const DEFAULT_LIMIT = 50;
 
+async function fetchRedditAtom(
+	ctx: FetchContext,
+	subreddit: string
+): Promise<NewsItem[]> {
+	const homeUrl = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/`;
+	return await createRssAdapter({
+		name: `r/${subreddit}`,
+		provider: "rss",
+		homeUrl,
+		feedUrl: `${homeUrl}.rss`,
+		refresh: "community",
+	}).fetch(ctx);
+}
+
 function resolveLink(post: RedditChild): string | undefined {
 	const externalUrl = post.url;
 	const permalink = post.permalink
@@ -107,7 +122,15 @@ export const redditAdapter: SourceAdapter = {
 		const limit = Number(ctx.params?.limit ?? DEFAULT_LIMIT);
 		const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/${sort}.json?limit=${limit}&raw_json=1`;
 
-		const data = await fetchJson<RedditListing>(url, { signal: ctx.signal });
+		let data: RedditListing;
+		try {
+			data = await fetchJson<RedditListing>(url, { signal: ctx.signal });
+		} catch (error) {
+			if (ctx.signal.aborted) {
+				throw error;
+			}
+			return await fetchRedditAtom(ctx, subreddit);
+		}
 		const fetchedAt = Date.now();
 		const items: NewsItem[] = [];
 		const list = data.data?.children ?? [];

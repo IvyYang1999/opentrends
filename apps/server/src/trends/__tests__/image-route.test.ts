@@ -89,6 +89,34 @@ describe("image thumbnail route", () => {
 		expect(calls).toEqual([{ fit: "cover", height: 360, width: 640 }]);
 	});
 
+	test("serves SVG covers with a restrictive document sandbox", async () => {
+		const svg =
+			'<svg xmlns="http://www.w3.org/2000/svg"><rect width="10" height="10"/></svg>';
+		globalThis.fetch = mock(() =>
+			Promise.resolve(
+				new Response(svg, {
+					headers: { "Content-Type": "image/svg+xml" },
+				})
+			)
+		) as unknown as typeof fetch;
+		const calls: TransformCall[] = [];
+		const { app, images } = createApp(calls);
+
+		const response = await app.request(
+			"/api/image?variant=row&url=https%3A%2F%2Fcdn.example.com%2Fcover.svg",
+			undefined,
+			{ IMAGES: images }
+		);
+
+		expect(response.status).toBe(200);
+		expect(response.headers.get("Content-Type")).toContain("image/svg+xml");
+		expect(response.headers.get("Content-Security-Policy")).toContain(
+			"sandbox"
+		);
+		expect(await response.text()).toBe(svg);
+		expect(calls).toHaveLength(0);
+	});
+
 	test("fails closed instead of serving a large original", async () => {
 		globalThis.fetch = mock(() =>
 			Promise.resolve(

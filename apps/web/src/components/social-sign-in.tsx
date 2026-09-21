@@ -8,6 +8,8 @@ import { toast } from "sonner";
 import { authClient } from "@/lib/auth-client";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
 
+import { buildSocialCallbackUrl } from "./social-sign-in-model";
+
 type SocialProvider = "google" | "github";
 
 interface ProviderAvailability {
@@ -63,9 +65,10 @@ export function SocialSignIn() {
 	async function signIn(provider: SocialProvider) {
 		setPendingProvider(provider);
 		try {
-			const callbackURL = localeParam
-				? `/${localeParam}/trends/ai`
-				: "/trends/ai";
+			const callbackURL = buildSocialCallbackUrl(
+				window.location.origin,
+				localeParam
+			);
 			const result = await authClient.signIn.social({ provider, callbackURL });
 			if (result.error) {
 				toast.error(result.error.message ?? t("sign.socialError"));
@@ -78,7 +81,7 @@ export function SocialSignIn() {
 	}
 
 	return (
-		<div className="space-y-3">
+		<div>
 			<div className="grid gap-2 sm:grid-cols-2">
 				{available.google ? (
 					<Button
@@ -112,11 +115,6 @@ export function SocialSignIn() {
 						{t("sign.continueGithub")}
 					</Button>
 				) : null}
-			</div>
-			<div className="flex items-center gap-3 text-[11px] text-[var(--text-muted)]">
-				<span className="h-px flex-1 bg-[var(--border-default)]" />
-				<span>{t("sign.orEmail")}</span>
-				<span className="h-px flex-1 bg-[var(--border-default)]" />
 			</div>
 		</div>
 	);

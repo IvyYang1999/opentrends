@@ -15,6 +15,7 @@ import type {
 	TrendsSectionData,
 } from "../types";
 import { refreshSource } from "./refresh-source";
+import { prioritizeExpiredSourceIds } from "./source-refresh-priority";
 import {
 	type TranslationLanguage,
 	type TranslationMode,
@@ -245,15 +246,10 @@ function getExpiredSnapshotSourceIds(
 	page: TrendsPageData,
 	now = Date.now()
 ): SourceId[] {
-	const expired = new Set<SourceId>();
-	for (const section of page.sections) {
-		for (const source of section.sources) {
-			if (source.expiresAt !== undefined && source.expiresAt <= now) {
-				expired.add(source.sourceId);
-			}
-		}
-	}
-	return [...expired];
+	return prioritizeExpiredSourceIds(
+		page.sections.flatMap((section) => section.sources),
+		now
+	);
 }
 
 function refreshStaleTrendsPage(

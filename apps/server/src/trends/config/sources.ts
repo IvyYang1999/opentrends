@@ -786,13 +786,13 @@ export const sourcePresets = {
 	),
 	"runway-news": googleNewsSource(
 		"Runway News",
-		"https://runwayml.com/news/",
-		"site:runwayml.com/news Runway"
+		"https://runway.com/news/",
+		"site:runway.com/news Runway"
 	),
 	"runway-changelog": googleNewsSource(
 		"Runway Changelog",
-		"https://runwayml.com/changelog/",
-		"site:runwayml.com/changelog Runway"
+		"https://runway.com/changelog/",
+		"site:runway.com/changelog Runway"
 	),
 	"midjourney-updates": googleNewsSource(
 		"Midjourney Updates",
@@ -806,8 +806,8 @@ export const sourcePresets = {
 	),
 	"openrouter-announcements": googleNewsSource(
 		"OpenRouter Announcements",
-		"https://openrouter.ai/announcements",
-		"site:openrouter.ai/announcements OpenRouter"
+		"https://openrouter.ai/blog/announcements/",
+		"site:openrouter.ai/blog/announcements OpenRouter"
 	),
 	"lmsys-blog": googleNewsSource(
 		"LMSYS Blog",

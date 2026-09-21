@@ -118,6 +118,18 @@ export const imageRoutes = new Hono<{
 		) {
 			return emptyImageResponse();
 		}
+		if (contentType.toLowerCase().startsWith("image/svg+xml")) {
+			const headers = new Headers({
+				"Cache-Control": IMAGE_PROXY_CACHE_CONTROL,
+				"Content-Security-Policy":
+					"sandbox; default-src 'none'; style-src 'unsafe-inline'; img-src data:",
+				"Content-Type": "image/svg+xml; charset=utf-8",
+				"X-Content-Type-Options": "nosniff",
+			});
+			const response = new Response(upstream.body, { headers });
+			await cache?.put(cacheKey, response.clone());
+			return response;
+		}
 
 		const transformed = await c.env.IMAGES.input(upstream.body)
 			.transform(THUMBNAIL_VARIANTS[variant])

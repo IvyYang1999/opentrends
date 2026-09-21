@@ -23,6 +23,7 @@ import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 
 import { localePathParam, type Translator, useLocale, useT } from "@/lib/i18n";
 
+import { CoverImage } from "./cover-image";
 import {
 	loadTrendEvents,
 	TrendEventsEmbeddingNotConfiguredError,
@@ -444,7 +445,7 @@ function EventCard({
 	return (
 		<article className="w-full overflow-hidden rounded border border-[var(--border-default)] bg-[var(--surface-card)]">
 			{event.imageUrl ? (
-				<img
+				<CoverImage
 					alt=""
 					className="aspect-[16/9] w-full border-[var(--border-subtle)] border-b bg-[var(--surface-sidebar)] object-cover"
 					height={360}
@@ -582,7 +583,7 @@ function EventDetailDialog({
 										target="_blank"
 									>
 										{item.imageUrl ? (
-											<img
+											<CoverImage
 												alt=""
 												className="mt-0.5 size-12 shrink-0 rounded border border-[var(--border-subtle)] bg-[var(--surface-sidebar)] object-cover"
 												height={48}

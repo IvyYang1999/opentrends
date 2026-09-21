@@ -48,7 +48,7 @@ import {
 	useLocale,
 	useT,
 } from "@/lib/i18n";
-
+import { CoverImage } from "./cover-image";
 import {
 	type DisplaySettings,
 	type DisplaySettingsStoreOptions,
@@ -60,6 +60,7 @@ import {
 } from "./display-settings-menu";
 import { translateTrendsPageSnapshot } from "./load-trends";
 import { formatRelativeTime } from "./relative-time";
+import { sourceCardViewportClasses } from "./source-card-model";
 import { SourceFavicon } from "./source-favicon";
 import { useSourcePreferences } from "./source-preferences";
 import { moveSource } from "./source-preferences-model";
@@ -78,6 +79,15 @@ const CYRILLIC_RE = /\p{Script=Cyrillic}/u;
 interface TrendsPageProps {
 	displaySettingsStore?: DisplaySettingsStoreOptions;
 	page: TrendsPageData;
+}
+
+interface SourceDragPreview {
+	height: number;
+	homeUrl?: string;
+	left: number;
+	title: string;
+	top: number;
+	width: number;
 }
 
 function proxiedImageUrl(imageUrl: string, variant: "card" | "row"): string {
@@ -173,7 +183,50 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	const draggingSourceIdRef = useRef<string | undefined>(undefined);
 	const sourceOrderRef = useRef(sourcePreferences.preference.orderedSourceIds);
 	sourceOrderRef.current = sourcePreferences.preference.orderedSourceIds;
+	const committedSourceOrderRef = useRef(
+		sourcePreferences.preference.orderedSourceIds
+	);
+	committedSourceOrderRef.current =
+		sourcePreferences.preference.orderedSourceIds;
+	const pointerDragBaseOrderRef = useRef<string[] | undefined>(undefined);
+	const pointerDragOrderRef = useRef<string[] | undefined>(undefined);
+	const dropTargetElementRef = useRef<HTMLElement | null>(null);
+	const dragGrabOffsetRef = useRef({ x: 0, y: 0 });
+	const dragPreviewOriginRef = useRef({ left: 0, top: 0 });
+	const dragPreviewPositionRef = useRef({ left: 0, top: 0 });
+	const dragPreviewElementRef = useRef<HTMLDivElement | null>(null);
+	const dragPreviewFrameRef = useRef<number | undefined>(undefined);
+	const [dragPreview, setDragPreview] = useState<SourceDragPreview | undefined>(
+		undefined
+	);
 	const [dragAnnouncement, setDragAnnouncement] = useState("");
+
+	useEffect(
+		() => () => {
+			if (dragPreviewFrameRef.current !== undefined) {
+				cancelAnimationFrame(dragPreviewFrameRef.current);
+			}
+			dropTargetElementRef.current?.removeAttribute("data-drop-target");
+		},
+		[]
+	);
+
+	function announceMove(activeSourceId: string, order: readonly string[]) {
+		const sourceTitle = sourceById.get(activeSourceId)?.source.title ?? "";
+		setDragAnnouncement(
+			t("display.sourceMoved", {
+				title: sourceTitle,
+				position: order.indexOf(activeSourceId) + 1,
+				count: order.length,
+			})
+		);
+	}
+
+	function commitSourceOrder(activeSourceId: string, nextOrder: string[]) {
+		sourceOrderRef.current = nextOrder;
+		sourcePreferences.setOrder(nextOrder);
+		announceMove(activeSourceId, nextOrder);
+	}
 
 	function moveAndAnnounce(activeSourceId: string, overSourceId: string) {
 		const currentOrder = sourceOrderRef.current;
@@ -181,25 +234,37 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 		if (nextOrder.join("\u0000") === currentOrder.join("\u0000")) {
 			return;
 		}
-		sourceOrderRef.current = nextOrder;
-		sourcePreferences.setOrder(nextOrder);
-		const sourceTitle = sourceById.get(activeSourceId)?.source.title ?? "";
-		setDragAnnouncement(
-			t("display.sourceMoved", {
-				title: sourceTitle,
-				position: nextOrder.indexOf(activeSourceId) + 1,
-				count: nextOrder.length,
-			})
-		);
+		commitSourceOrder(activeSourceId, nextOrder);
 	}
 
 	function dragHandleProps(sourceId: string): SourceDragHandleProps {
-		const finishPointerDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+		const finishPointerDrag = (
+			event: ReactPointerEvent<HTMLButtonElement>,
+			commit: boolean
+		) => {
 			if (event.currentTarget.hasPointerCapture(event.pointerId)) {
 				event.currentTarget.releasePointerCapture(event.pointerId);
 			}
+			const finalOrder = pointerDragOrderRef.current;
+			if (
+				commit &&
+				finalOrder &&
+				finalOrder.join("\u0000") !==
+					committedSourceOrderRef.current.join("\u0000")
+			) {
+				commitSourceOrder(sourceId, finalOrder);
+			}
+			if (dragPreviewFrameRef.current !== undefined) {
+				cancelAnimationFrame(dragPreviewFrameRef.current);
+				dragPreviewFrameRef.current = undefined;
+			}
+			dropTargetElementRef.current?.removeAttribute("data-drop-target");
+			dropTargetElementRef.current = null;
+			pointerDragBaseOrderRef.current = undefined;
+			pointerDragOrderRef.current = undefined;
 			draggingSourceIdRef.current = undefined;
 			setDraggingSourceId(undefined);
+			setDragPreview(undefined);
 		};
 		return {
 			onKeyDown: (event) => {
@@ -224,29 +289,83 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				}
 			},
 			onPointerDown: (event) => {
-				if (!event.isPrimary) {
+				if (!(event.isPrimary && event.button === 0)) {
 					return;
 				}
 				event.preventDefault();
+				const card = event.currentTarget.closest<HTMLElement>(
+					"[data-sortable-source-id]"
+				);
+				const rect = card?.getBoundingClientRect();
+				if (!rect) {
+					return;
+				}
 				event.currentTarget.setPointerCapture(event.pointerId);
+				const source = sourceById.get(sourceId)?.source;
+				const initialOrder = [...sourceOrderRef.current];
+				pointerDragBaseOrderRef.current = initialOrder;
+				pointerDragOrderRef.current = initialOrder;
+				dragGrabOffsetRef.current = {
+					x: event.clientX - rect.left,
+					y: event.clientY - rect.top,
+				};
+				dragPreviewOriginRef.current = { left: rect.left, top: rect.top };
+				dragPreviewPositionRef.current = { left: rect.left, top: rect.top };
 				draggingSourceIdRef.current = sourceId;
 				setDraggingSourceId(sourceId);
+				setDragPreview({
+					height: Math.min(rect.height, 44),
+					homeUrl: source?.homeUrl,
+					left: rect.left,
+					title: source?.title ?? "",
+					top: rect.top,
+					width: rect.width,
+				});
 			},
 			onPointerMove: (event) => {
 				const activeSourceId = draggingSourceIdRef.current;
 				if (!activeSourceId) {
 					return;
 				}
+				dragPreviewPositionRef.current = {
+					left: event.clientX - dragGrabOffsetRef.current.x,
+					top: event.clientY - dragGrabOffsetRef.current.y,
+				};
+				if (dragPreviewFrameRef.current === undefined) {
+					dragPreviewFrameRef.current = requestAnimationFrame(() => {
+						dragPreviewFrameRef.current = undefined;
+						const element = dragPreviewElementRef.current;
+						if (!element) {
+							return;
+						}
+						const position = dragPreviewPositionRef.current;
+						const origin = dragPreviewOriginRef.current;
+						element.style.transform = `translate3d(${position.left - origin.left}px, ${position.top - origin.top}px, 0)`;
+					});
+				}
 				const target = document
 					.elementFromPoint(event.clientX, event.clientY)
 					?.closest<HTMLElement>("[data-sortable-source-id]");
 				const overSourceId = target?.dataset.sortableSourceId;
 				if (overSourceId) {
-					moveAndAnnounce(activeSourceId, overSourceId);
+					const baseOrder = pointerDragBaseOrderRef.current;
+					if (!baseOrder) {
+						return;
+					}
+					pointerDragOrderRef.current = moveSource(
+						baseOrder,
+						activeSourceId,
+						overSourceId
+					);
+					if (dropTargetElementRef.current !== target) {
+						dropTargetElementRef.current?.removeAttribute("data-drop-target");
+						target?.setAttribute("data-drop-target", "true");
+						dropTargetElementRef.current = target ?? null;
+					}
 				}
 			},
-			onPointerCancel: finishPointerDrag,
-			onPointerUp: finishPointerDrag,
+			onPointerCancel: (event) => finishPointerDrag(event, false),
+			onPointerUp: (event) => finishPointerDrag(event, true),
 		};
 	}
 
@@ -347,6 +466,27 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				</div>
 				{sourceContent}
 			</div>
+			{dragPreview ? (
+				<div
+					aria-hidden
+					className="pointer-events-none fixed z-[100] flex flex-col overflow-hidden border border-[var(--accent-blue)] bg-[var(--surface-card)] opacity-95 shadow-lg [contain:strict] [will-change:transform]"
+					ref={dragPreviewElementRef}
+					style={{
+						height: dragPreview.height,
+						left: dragPreview.left,
+						top: dragPreview.top,
+						width: dragPreview.width,
+					}}
+				>
+					<div className="flex items-center gap-2 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-2">
+						<GripVertical className="size-3.5 text-[var(--accent-blue)]" />
+						<SourceFavicon homeUrl={dragPreview.homeUrl} />
+						<span className="truncate font-semibold text-[13px] text-[var(--text-heading)]">
+							{dragPreview.title}
+						</span>
+					</div>
+				</div>
+			) : null}
 		</ScrollArea>
 	);
 }
@@ -422,12 +562,6 @@ interface SourceDragHandleProps {
 	onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 }
 
-const SOURCE_CARD_HEIGHT = "h-[480px]";
-// A topic page holds dozens of cards and hundreds of rows. Skipping layout and
-// paint for cards far from the viewport also keeps their lazy cover images
-// from being fetched until the reader scrolls near them.
-const SOURCE_CARD_OFFSCREEN =
-	"[content-visibility:auto] [contain-intrinsic-size:auto_480px]";
 const SOURCE_SECTION_GRID =
 	"grid grid-cols-1 items-stretch sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 min-[1800px]:grid-cols-8";
 
@@ -551,7 +685,7 @@ function SourceCard({
 
 	return (
 		<article
-			className={`flex min-w-0 flex-col overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-[box-shadow,opacity] sm:border-r ${SOURCE_CARD_OFFSCREEN} ${hasItems ? `${SOURCE_CARD_HEIGHT} max-sm:h-auto max-sm:max-h-none` : "h-auto"} ${isDragging ? "relative z-30 opacity-80 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
+			className={`flex min-w-0 flex-col overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-[box-shadow,opacity] data-[drop-target=true]:shadow-[inset_0_0_0_2px_var(--accent-blue)] sm:border-r ${sourceCardViewportClasses(hasItems)} ${isDragging ? "relative z-30 opacity-50 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
 			data-sortable-source-id={source.sourceId}
 		>
 			<SourceCardHeader
@@ -636,7 +770,7 @@ function SourceSection({
 	const [open, setOpen] = useState(false);
 	return (
 		<section
-			className={`border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-[box-shadow,opacity] ${isDragging ? "relative z-30 opacity-80 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
+			className={`border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-[box-shadow,opacity] data-[drop-target=true]:shadow-[inset_0_0_0_2px_var(--accent-blue)] ${isDragging ? "relative z-30 opacity-80 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
 			data-sortable-source-id={source.sourceId}
 		>
 			<SourceSectionHeader
@@ -937,7 +1071,7 @@ function SourceEmptyContent({
 		return (
 			<EmptyState>
 				<CircleAlert className="size-3.5 text-[var(--accent-red)]" />
-				<span>{source.errorMessage ?? t("card.unavailable")}</span>
+				<span>{t("card.unavailable")}</span>
 			</EmptyState>
 		);
 	}
@@ -1009,7 +1143,7 @@ function NewsRow({
 				</span>
 			) : null}
 			{showCover ? (
-				<img
+				<CoverImage
 					alt=""
 					className="mt-[2px] size-10 shrink-0 rounded border border-[var(--border-subtle)] bg-[var(--surface-sidebar)] object-cover sm:size-12"
 					height={48}
@@ -1066,7 +1200,7 @@ function NewsCard({
 			target="_blank"
 		>
 			{showCover ? (
-				<img
+				<CoverImage
 					alt=""
 					className="aspect-[16/9] w-full border-[var(--border-subtle)] border-b bg-[var(--surface-sidebar)] object-cover"
 					height={180}
