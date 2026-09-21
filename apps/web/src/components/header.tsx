@@ -2,6 +2,7 @@ import { buttonVariants } from "@opentrends/ui/components/button";
 import {
 	DropdownMenu,
 	DropdownMenuContent,
+	DropdownMenuGroup,
 	DropdownMenuItem,
 	DropdownMenuLabel,
 	DropdownMenuSeparator,
@@ -105,12 +106,14 @@ function AccountMenu() {
 				)}
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="min-w-52 bg-card">
-				<DropdownMenuLabel className="min-w-0">
-					<span className="block truncate text-[var(--text-primary)]">
-						{user.name}
-					</span>
-					<span className="block truncate font-normal">{user.email}</span>
-				</DropdownMenuLabel>
+				<DropdownMenuGroup>
+					<DropdownMenuLabel className="min-w-0">
+						<span className="block truncate text-[var(--text-primary)]">
+							{user.name}
+						</span>
+						<span className="block truncate font-normal">{user.email}</span>
+					</DropdownMenuLabel>
+				</DropdownMenuGroup>
 				<DropdownMenuSeparator />
 				<DropdownMenuItem
 					onClick={async () => {
@@ -163,7 +166,7 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 	] as const;
 
 	return (
-		<header className="min-w-0 overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-sidebar)]">
+		<header className="sticky top-0 z-[80] min-w-0 overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] shadow-[0_1px_0_rgba(0,0,0,0.02)]">
 			<div className="flex min-h-11 min-w-0 flex-col gap-2 px-3 py-2 sm:px-4 lg:h-11 lg:flex-row lg:items-center lg:justify-between lg:gap-3 lg:py-0">
 				<div className="order-1 flex items-center justify-between gap-3 lg:order-2 lg:ml-auto">
 					<Link
@@ -190,9 +193,9 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 							<Star className="size-3.5" />
 							<span className="tabular-nums">{githubStars}</span>
 						</a>
-						<AccountMenu />
 						<LanguageToggle />
 						<ThemeToggle />
+						<AccountMenu />
 					</div>
 				</div>
 				<nav className="order-2 flex w-full min-w-0 items-center gap-1 overflow-x-auto text-[13px] [-ms-overflow-style:none] [scrollbar-width:none] lg:order-1 lg:w-auto lg:overflow-visible [&::-webkit-scrollbar]:hidden">

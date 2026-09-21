@@ -1,5 +1,5 @@
 import { env } from "@opentrends/env/web";
-import { Share2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Share2 } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 
@@ -16,6 +16,8 @@ import { SummaryShareDialog } from "./summary-share-dialog";
 import type { TrendsPageData } from "./types";
 
 interface TrendsSummaryProps {
+	collapsed: boolean;
+	onCollapsedChange: (collapsed: boolean) => void;
 	page: TrendsPageData;
 	topicId: string;
 }
@@ -396,7 +398,12 @@ function SummaryBody({
 
 const EMPTY_CITATIONS: CitationMap = new Map();
 
-export function TrendsSummary({ page, topicId }: TrendsSummaryProps) {
+export function TrendsSummary({
+	collapsed,
+	onCollapsedChange,
+	page,
+	topicId,
+}: TrendsSummaryProps) {
 	const locale = useLocale();
 	const t = useT();
 	const [text, setText] = useState("");
@@ -525,6 +532,22 @@ export function TrendsSummary({ page, topicId }: TrendsSummaryProps) {
 									{t("summary.share")}
 								</button>
 							) : null}
+							<button
+								aria-expanded={!collapsed}
+								aria-label={
+									collapsed ? t("summary.expand") : t("summary.collapse")
+								}
+								className="ml-1 inline-flex size-6 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
+								onClick={() => onCollapsedChange(!collapsed)}
+								title={collapsed ? t("summary.expand") : t("summary.collapse")}
+								type="button"
+							>
+								{collapsed ? (
+									<ChevronDown aria-hidden className="size-3.5" />
+								) : (
+									<ChevronUp aria-hidden className="size-3.5" />
+								)}
+							</button>
 						</fieldset>
 					</div>
 					{shareOpen ? (
@@ -537,14 +560,16 @@ export function TrendsSummary({ page, topicId }: TrendsSummaryProps) {
 							topicTitle={page.title}
 						/>
 					) : null}
-					<SummaryBody
-						citations={citations}
-						error={error}
-						metadata={metadata}
-						status={status}
-						t={t}
-						text={text}
-					/>
+					{collapsed ? null : (
+						<SummaryBody
+							citations={citations}
+							error={error}
+							metadata={metadata}
+							status={status}
+							t={t}
+							text={text}
+						/>
+					)}
 				</div>
 			</div>
 		</div>

@@ -34,6 +34,8 @@
   "summary_window_week": "Esta semana",
   "summary_window_month": "Este mes",
   "summary_share": "Compartir",
+  "summary_collapse": "Contraer resumen",
+  "summary_expand": "Expandir resumen",
   "share_title": "Imagen para compartir",
   "share_download": "Descargar imagen",
   "share_copy": "Copiar imagen",

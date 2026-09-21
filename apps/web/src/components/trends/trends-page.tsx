@@ -52,6 +52,7 @@ import { CoverImage } from "./cover-image";
 import {
 	type DisplaySettings,
 	type DisplaySettingsStoreOptions,
+	setDisplaySetting,
 	useDisplaySettings,
 } from "./display-settings";
 import {
@@ -64,6 +65,10 @@ import { sourceCardViewportClasses } from "./source-card-model";
 import { SourceFavicon } from "./source-favicon";
 import { useSourcePreferences } from "./source-preferences";
 import { moveSource } from "./source-preferences-model";
+import {
+	applyCachedTranslations,
+	storePageTranslations,
+} from "./translation-snapshot-cache";
 import { trendSourceQueryOptions } from "./trends-query";
 import { TrendsSummary } from "./trends-summary";
 import type {
@@ -115,7 +120,10 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				return;
 			}
 			const requestKey = `${page.id}:${page.updatedAt}:${locale}`;
-			if (!needsTranslationWarmup(displayPage, locale)) {
+			const cachedPage = applyCachedTranslations(page, locale);
+			setDisplayPage(cachedPage);
+			storePageTranslations(cachedPage, locale);
+			if (!needsTranslationWarmup(cachedPage, locale)) {
 				translationRequestKeyRef.current = requestKey;
 				setTranslationPending(false);
 				return;
@@ -126,13 +134,14 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 
 			translationRequestKeyRef.current = requestKey;
 			setTranslationPending(true);
-			translateTrendsPageSnapshot(displayPage, locale)
+			translateTrendsPageSnapshot(cachedPage, locale)
 				.then((translatedPage) => {
 					if (
 						translationMountedRef.current &&
 						translationRequestKeyRef.current === requestKey
 					) {
 						setTranslationPending(false);
+						storePageTranslations(translatedPage, locale);
 						if (needsTranslationWarmup(translatedPage, locale)) {
 							translationRequestKeyRef.current = null;
 						}
@@ -153,7 +162,7 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 					/* The original page is already rendered. */
 				});
 		},
-		[displayPage, locale, page.id, page.updatedAt]
+		[locale, page]
 	);
 	const sources = displayPage.sections.flatMap((section) =>
 		section.sources.map((source) => ({
@@ -425,7 +434,15 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 					{dragAnnouncement}
 				</p>
 				<TrendsSummary
+					collapsed={settings.summaryCollapsed}
 					key={displayPage.id}
+					onCollapsedChange={(collapsed) =>
+						setDisplaySetting(
+							"summaryCollapsed",
+							collapsed,
+							displaySettingsStore
+						)
+					}
 					page={displayPage}
 					topicId={displayPage.id}
 				/>
@@ -685,7 +702,7 @@ function SourceCard({
 
 	return (
 		<article
-			className={`flex min-w-0 flex-col overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-[box-shadow,opacity] data-[drop-target=true]:shadow-[inset_0_0_0_2px_var(--accent-blue)] sm:border-r ${sourceCardViewportClasses(hasItems)} ${isDragging ? "relative z-30 opacity-50 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
+			className={`relative flex min-w-0 flex-col overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-opacity after:pointer-events-none after:absolute after:inset-0 after:z-40 after:content-[''] data-[drop-target=true]:after:border-2 data-[drop-target=true]:after:border-[var(--accent-blue)] sm:border-r ${sourceCardViewportClasses(hasItems)} ${isDragging ? "z-30 opacity-50 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
 			data-sortable-source-id={source.sourceId}
 		>
 			<SourceCardHeader
@@ -770,7 +787,7 @@ function SourceSection({
 	const [open, setOpen] = useState(false);
 	return (
 		<section
-			className={`border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-[box-shadow,opacity] data-[drop-target=true]:shadow-[inset_0_0_0_2px_var(--accent-blue)] ${isDragging ? "relative z-30 opacity-80 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
+			className={`relative border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-opacity after:pointer-events-none after:absolute after:inset-0 after:z-40 after:content-[''] data-[drop-target=true]:after:border-2 data-[drop-target=true]:after:border-[var(--accent-blue)] ${isDragging ? "z-30 opacity-80 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
 			data-sortable-source-id={source.sourceId}
 		>
 			<SourceSectionHeader
@@ -918,7 +935,7 @@ function SourceSectionHeader({
 	onHide: () => void;
 }) {
 	return (
-		<div className="sticky top-0 z-20 flex flex-col gap-2 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-4">
+		<div className="flex flex-col gap-2 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-4">
 			<div className="flex min-w-0 items-center gap-2">
 				<SourceDragHandle
 					dragHandleProps={dragHandleProps}

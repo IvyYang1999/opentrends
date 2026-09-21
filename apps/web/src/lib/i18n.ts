@@ -86,6 +86,8 @@ const MESSAGE_IDS = {
 	"summary.windowWeek": "summary_window_week",
 	"summary.windowMonth": "summary_window_month",
 	"summary.share": "summary_share",
+	"summary.collapse": "summary_collapse",
+	"summary.expand": "summary_expand",
 	"share.title": "share_title",
 	"share.download": "share_download",
 	"share.copy": "share_copy",
