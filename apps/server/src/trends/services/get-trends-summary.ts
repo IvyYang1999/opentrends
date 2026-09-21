@@ -3,29 +3,86 @@ import { env } from "@opentrends/env/server";
 import { streamText } from "ai";
 
 import { type CacheEnvelope, hotCache } from "../cache/hot-cache";
+import { readSourceItemHistory } from "../cache/source-cache";
 import { readSummary, writeSummary } from "../cache/summary-cache";
 import { getSourcePreset } from "../config/sources";
 import { getTopicPreset } from "../config/topics";
-import type { NewsItem, TopicPreset, TrendsPageData } from "../types";
+import type { NewsItem, SourceId, TopicPreset, TrendsPageData } from "../types";
 import { getTrendsPage, TopicNotFoundError } from "./get-trends-page";
 import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
 import type { TranslationLanguage } from "./translate-news-items";
 
-// A low per-source cap lets every section of a topic reach the prompt instead
-// of the first few sources filling the whole citation budget.
-const ITEMS_PER_SOURCE = 3;
 // Hard cap on number of cited items per summary. Keeps the citation header
 // well under common HTTP header limits and keeps the LLM prompt focused.
 const MAX_CITATIONS = 60;
-const RECENT_ITEM_WINDOW_MS = 48 * 60 * 60 * 1000;
-const FALLBACK_ITEM_WINDOW_MS = 7 * 24 * 60 * 60 * 1000;
-// Below this many recent items the topic is too quiet for a 48h digest, so the
-// window widens to a week.
-const MIN_RECENT_ITEMS = 30;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
 const MIN_TARGET_SCRIPT_RATIO = 0.2;
 const SUMMARY_LANGUAGE_RETRY_LIMIT = 1;
-const SUMMARY_TTL_MS = 60 * 60 * 1000;
-const SUMMARY_STALE_MS = 24 * 60 * 60 * 1000;
+
+export const SUMMARY_WINDOWS = ["today", "week", "month"] as const;
+export type SummaryWindow = (typeof SUMMARY_WINDOWS)[number];
+
+interface SummaryWindowProfile {
+	// How the editor prompt names the period.
+	editorialPeriod: string;
+	// Below `minItems` candidates the window widens to `fallbackWindowMs`, so a
+	// quiet topic still gets a digest.
+	fallbackWindowMs?: number;
+	// History windows sample this many items per source per day so one busy
+	// feed cannot crowd out a whole week or month.
+	historyItemsPerSourcePerDay?: number;
+	// A low per-source cap lets every section of a topic reach the prompt
+	// instead of the first few sources filling the whole citation budget.
+	itemsPerSource: number;
+	minItems?: number;
+	staleMs: number;
+	ttlMs: number;
+	windowMs: number;
+}
+
+const SUMMARY_WINDOW_PROFILES: Record<SummaryWindow, SummaryWindowProfile> = {
+	today: {
+		editorialPeriod: "from the last 24 hours",
+		fallbackWindowMs: 3 * DAY_MS,
+		itemsPerSource: 3,
+		minItems: 20,
+		staleMs: DAY_MS,
+		ttlMs: HOUR_MS,
+		windowMs: DAY_MS,
+	},
+	week: {
+		editorialPeriod: "from the last 7 days",
+		historyItemsPerSourcePerDay: 2,
+		itemsPerSource: 5,
+		staleMs: 2 * DAY_MS,
+		ttlMs: 6 * HOUR_MS,
+		windowMs: 7 * DAY_MS,
+	},
+	month: {
+		editorialPeriod: "from the last 30 days",
+		historyItemsPerSourcePerDay: 1,
+		itemsPerSource: 5,
+		staleMs: 3 * DAY_MS,
+		ttlMs: DAY_MS,
+		windowMs: 30 * DAY_MS,
+	},
+};
+
+export function normalizeSummaryWindow(
+	value: string | undefined
+): SummaryWindow {
+	return (SUMMARY_WINDOWS as readonly string[]).includes(value ?? "")
+		? (value as SummaryWindow)
+		: "today";
+}
+
+// Summary caches are keyed by topic and language. Non-default windows get
+// their own topic key so they never overwrite the default digest.
+function summaryCacheTopicId(topicId: string, window: SummaryWindow): string {
+	return window === "today" ? topicId : `${topicId}#${window}`;
+}
+
 const SUMMARY_CACHE_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SUMMARY_HOT_CACHE_SCHEMA_VERSION = 2;
 const SUMMARY_PROMPT_VERSION = "top10-v1";
@@ -66,6 +123,7 @@ export interface PreparedSummary {
 
 interface TrendsSummaryCacheOptions {
 	waitUntil?: (promise: Promise<unknown>) => void;
+	window?: SummaryWindow;
 }
 
 export interface CitedItem {
@@ -107,16 +165,21 @@ interface SourceCandidates {
 	source: string;
 }
 
-function collectSourceCandidates(
+function itemTime(item: NewsItem): number {
+	return item.publishedAt ?? item.fetchedAt;
+}
+
+function collectPageCandidates(
 	page: TrendsPageData,
-	notBefore: number
+	notBefore: number,
+	itemsPerSource: number
 ): SourceCandidates[] {
 	const result: SourceCandidates[] = [];
 	for (const section of page.sections) {
 		for (const source of section.sources) {
 			const items = source.items
-				.filter((item) => (item.publishedAt ?? item.fetchedAt) >= notBefore)
-				.slice(0, ITEMS_PER_SOURCE);
+				.filter((item) => itemTime(item) >= notBefore)
+				.slice(0, itemsPerSource);
 			if (items.length === 0) {
 				continue;
 			}
@@ -127,24 +190,63 @@ function collectSourceCandidates(
 	return result;
 }
 
+// Orders a source's items so that taking a prefix spreads over the window:
+// the first item of every day (newest day first), then the second of every
+// day, and so on.
+export function interleaveByDay(items: NewsItem[]): NewsItem[] {
+	const days = new Map<number, NewsItem[]>();
+	for (const item of [...items].sort((a, b) => itemTime(b) - itemTime(a))) {
+		const day = Math.floor(itemTime(item) / DAY_MS);
+		days.set(day, [...(days.get(day) ?? []), item]);
+	}
+	const result: NewsItem[] = [];
+	const buckets = [...days.values()];
+	for (let depth = 0; result.length < items.length; depth += 1) {
+		for (const bucket of buckets) {
+			const item = bucket[depth];
+			if (item) {
+				result.push(item);
+			}
+		}
+	}
+	return result;
+}
+
+function collectHistoryCandidates(
+	topic: TopicPreset,
+	history: Map<SourceId, NewsItem[]>,
+	itemsPerSource: number
+): SourceCandidates[] {
+	const result: SourceCandidates[] = [];
+	for (const section of topic.sections) {
+		for (const sourceId of section.sourceIds) {
+			const items = interleaveByDay(history.get(sourceId) ?? []).slice(
+				0,
+				itemsPerSource
+			);
+			if (items.length === 0) {
+				continue;
+			}
+			result.push({
+				items,
+				source: getSourcePreset(sourceId)?.name ?? sourceId,
+			});
+		}
+	}
+	return result;
+}
+
 function countCandidates(sources: SourceCandidates[]): number {
 	return sources.reduce((total, source) => total + source.items.length, 0);
 }
 
-export function collectCitedItems(
-	page: TrendsPageData,
-	now: number = Date.now()
-): CitedItem[] {
-	let sources = collectSourceCandidates(page, now - RECENT_ITEM_WINDOW_MS);
-	if (countCandidates(sources) < MIN_RECENT_ITEMS) {
-		sources = collectSourceCandidates(page, now - FALLBACK_ITEM_WINDOW_MS);
-	}
-
-	// Round-robin across sources: every source contributes its first item
-	// before any source contributes a second one.
+// Round-robin across sources: every source contributes its first item before
+// any source contributes a second one.
+export function selectCitedItems(sources: SourceCandidates[]): CitedItem[] {
 	const taken = sources.map(() => 0);
+	const rounds = Math.max(0, ...sources.map((source) => source.items.length));
 	let remaining = MAX_CITATIONS;
-	for (let round = 0; round < ITEMS_PER_SOURCE && remaining > 0; round += 1) {
+	for (let round = 0; round < rounds && remaining > 0; round += 1) {
 		for (const [index, source] of sources.entries()) {
 			if (remaining === 0) {
 				break;
@@ -165,6 +267,50 @@ export function collectCitedItems(
 		}
 	}
 	return result;
+}
+
+export function collectCitedItems(
+	page: TrendsPageData,
+	now: number = Date.now()
+): CitedItem[] {
+	const profile = SUMMARY_WINDOW_PROFILES.today;
+	let sources = collectPageCandidates(
+		page,
+		now - profile.windowMs,
+		profile.itemsPerSource
+	);
+	if (
+		profile.fallbackWindowMs !== undefined &&
+		countCandidates(sources) < (profile.minItems ?? 0)
+	) {
+		sources = collectPageCandidates(
+			page,
+			now - profile.fallbackWindowMs,
+			profile.itemsPerSource
+		);
+	}
+	return selectCitedItems(sources);
+}
+
+async function collectWindowCitedItems(
+	topicId: string,
+	topic: TopicPreset,
+	lang: TranslationLanguage,
+	window: SummaryWindow
+): Promise<CitedItem[]> {
+	const profile = SUMMARY_WINDOW_PROFILES[window];
+	if (profile.historyItemsPerSourcePerDay === undefined) {
+		return collectCitedItems(await getTrendsPage(topicId, lang));
+	}
+	const sourceIds = topic.sections.flatMap((section) => section.sourceIds);
+	const history = await readSourceItemHistory(
+		sourceIds,
+		Date.now() - profile.windowMs,
+		profile.historyItemsPerSourcePerDay
+	);
+	return selectCitedItems(
+		collectHistoryCandidates(topic, history, profile.itemsPerSource)
+	);
 }
 
 function formatSourceItemDate(item: NewsItem): string {
@@ -254,10 +400,12 @@ const SUMMARY_LANGUAGE_PROFILES: Record<
 export function buildPrompt(
 	topic: TopicPreset,
 	cited: CitedItem[],
-	lang: TranslationLanguage = "en"
+	lang: TranslationLanguage = "en",
+	window: SummaryWindow = "today"
 ): string {
 	const lines: string[] = [];
 	lines.push(`Prompt version: ${SUMMARY_PROMPT_VERSION}`);
+	lines.push(`Window: ${window}`);
 	lines.push(`Topic: ${topic.title}`);
 	if (topic.description) {
 		lines.push(`Description: ${topic.description}`);
@@ -284,14 +432,22 @@ export function buildPrompt(
 	return lines.join("\n");
 }
 
-export function buildSystemPrompt(lang: TranslationLanguage): string {
+export function buildSystemPrompt(
+	lang: TranslationLanguage,
+	window: SummaryWindow = "today"
+): string {
 	const profile = SUMMARY_LANGUAGE_PROFILES[lang];
+	const period = SUMMARY_WINDOW_PROFILES[window].editorialPeriod;
+	const recencyRule =
+		window === "today"
+			? "- Prefer the newest items. Skip promotions, ticket sales, job posts, and pure opinion pieces."
+			: "- Judge importance over the whole period, not recency: a major story from early in the period beats a minor one from today. Skip promotions, ticket sales, job posts, and pure opinion pieces.";
 	return [
 		"You are the editor of OpenTrends, a dashboard of first-hand tech sources.",
-		"From the numbered items the user gives you, pick the 10 things most worth knowing today.",
+		`From the numbered items the user gives you, pick the 10 things most worth knowing ${period}.`,
 		"Rules:",
 		"- Merge items that report the same story into one entry and cite all of them. A story covered by several sources matters more.",
-		"- Prefer the newest items. Skip promotions, ticket sales, job posts, and pure opinion pieces.",
+		recencyRule,
 		"- Output only a Markdown ordered list numbered `1.`, `2.`, `3.` … with at most 10 entries (fewer when the material is thin). No heading, no preamble, no closing remarks, no blank lines between entries.",
 		`- Each entry is one line: \`1. **Takeaway in one sentence (${profile.takeawayLimit})** — why it is worth reading (${profile.reasonLimit}) [N][M]\`.`,
 		`- Write everything in ${profile.name}, whatever language the items are in. Keep company, product, and model names in their original form.`,
@@ -425,7 +581,8 @@ async function readSummaryWithTimeout(
 }
 
 function cachedSummaryToEntry(
-	cached: Awaited<ReturnType<typeof readSummary>>
+	cached: Awaited<ReturnType<typeof readSummary>>,
+	window: SummaryWindow
 ): CachedSummaryEntry | null {
 	if (!cached) {
 		return null;
@@ -441,14 +598,15 @@ function cachedSummaryToEntry(
 		citations: cached.citations,
 		expiresAt: cached.expiresAt,
 		prompt: cached.prompt,
-		staleUntil: cached.createdAt + SUMMARY_STALE_MS,
+		staleUntil: cached.createdAt + SUMMARY_WINDOW_PROFILES[window].staleMs,
 		text: cached.text,
 	};
 }
 
 async function readAnyCachedSummary(
 	topicId: string,
-	lang: TranslationLanguage
+	lang: TranslationLanguage,
+	window: SummaryWindow
 ): Promise<CachedSummaryEntry | null> {
 	const memory = readMemorySummary(topicId, lang);
 	if (memory) {
@@ -464,7 +622,7 @@ async function readAnyCachedSummary(
 	try {
 		const cached = await readSummaryWithTimeout(topicId, lang);
 		if (cached) {
-			const entry = cachedSummaryToEntry(cached);
+			const entry = cachedSummaryToEntry(cached, window);
 			if (entry) {
 				hydrateMemorySummary(topicId, lang, entry);
 				await writeHotSummaryCache(topicId, lang, entry);
@@ -481,7 +639,8 @@ async function readAnyCachedSummary(
 
 async function refreshSummaryCache(
 	topicId: string,
-	lang: TranslationLanguage
+	lang: TranslationLanguage,
+	window: SummaryWindow
 ): Promise<void> {
 	if (!env.LLM_API_KEY) {
 		throw new TrendsSummaryNotConfiguredError();
@@ -490,37 +649,38 @@ async function refreshSummaryCache(
 	if (!topic) {
 		throw new TopicNotFoundError(topicId);
 	}
-	const page = await getTrendsPage(topicId, lang);
-	const cited = collectCitedItems(page);
+	const cacheTopicId = summaryCacheTopicId(topicId, window);
+	const cited = await collectWindowCitedItems(topicId, topic, lang, window);
 	const citations: Citation[] = cited.map(({ n, item }) => ({
 		n,
 		url: item.url,
 	}));
-	const prompt = buildPrompt(topic, cited, lang);
-	const cached = await readSummaryWithTimeout(topicId, lang);
-	const cachedEntry = cachedSummaryToEntry(cached);
+	const prompt = buildPrompt(topic, cited, lang, window);
+	const cached = await readSummaryWithTimeout(cacheTopicId, lang);
+	const cachedEntry = cachedSummaryToEntry(cached, window);
 	if (cachedEntry && cachedEntry.prompt === prompt) {
-		hydrateMemorySummary(topicId, lang, cachedEntry);
-		await writeHotSummaryCache(topicId, lang, cachedEntry);
+		hydrateMemorySummary(cacheTopicId, lang, cachedEntry);
+		await writeHotSummaryCache(cacheTopicId, lang, cachedEntry);
 		return;
 	}
 
 	const controller = new AbortController();
 	for (let attempt = 0; attempt <= SUMMARY_LANGUAGE_RETRY_LIMIT; attempt += 1) {
 		for await (const _chunk of streamGeneratedSummary({
+			cacheTopicId,
 			citations,
 			cited,
 			lang,
 			prompt,
 			topic,
-			topicId,
+			window,
 			abortSignal: controller.signal,
 		})) {
 			// Consume the generator so it can write the completed summary to cache.
 		}
 		// A summary in the wrong language is never cached, so a missing entry
 		// here means the attempt has to be repeated.
-		if (readMemorySummary(topicId, lang)?.prompt === prompt) {
+		if (readMemorySummary(cacheTopicId, lang)?.prompt === prompt) {
 			return;
 		}
 	}
@@ -528,16 +688,20 @@ async function refreshSummaryCache(
 
 function startSummaryRefresh(
 	topicId: string,
-	lang: TranslationLanguage
+	lang: TranslationLanguage,
+	window: SummaryWindow
 ): Promise<void> {
-	const cacheKey = makeSummaryCacheKey(topicId, lang);
+	const cacheKey = makeSummaryCacheKey(
+		summaryCacheTopicId(topicId, window),
+		lang
+	);
 	const inFlight = inFlightSummaryRefreshes.get(cacheKey);
 	if (inFlight) {
 		return inFlight;
 	}
 	const refresh = (async () => {
 		try {
-			await refreshSummaryCache(topicId, lang);
+			await refreshSummaryCache(topicId, lang, window);
 		} finally {
 			inFlightSummaryRefreshes.delete(cacheKey);
 		}
@@ -548,9 +712,10 @@ function startSummaryRefresh(
 
 export function refreshTrendsSummaryCache(
 	topicId: string,
-	lang: TranslationLanguage
+	lang: TranslationLanguage,
+	window: SummaryWindow = "today"
 ): Promise<void> {
-	return startSummaryRefresh(topicId, lang);
+	return startSummaryRefresh(topicId, lang, window);
 }
 
 function refreshSummaryInBackground(
@@ -591,13 +756,15 @@ async function writeCachedSummary(params: {
 	prompt: string;
 	text: string;
 	topicId: string;
+	window: SummaryWindow;
 }): Promise<void> {
 	const now = Date.now();
+	const profile = SUMMARY_WINDOW_PROFILES[params.window];
 	const entry: CachedSummaryEntry = {
 		citations: params.citations,
-		expiresAt: now + SUMMARY_TTL_MS,
+		expiresAt: now + profile.ttlMs,
 		prompt: params.prompt,
-		staleUntil: now + SUMMARY_STALE_MS,
+		staleUntil: now + profile.staleMs,
 		text: params.text,
 	};
 	hydrateMemorySummary(params.topicId, params.lang, entry);
@@ -611,7 +778,7 @@ async function writeCachedSummary(params: {
 				text: params.text,
 				citations: params.citations,
 				createdAt: now,
-				ttlMs: SUMMARY_TTL_MS,
+				ttlMs: profile.ttlMs,
 			}),
 			SUMMARY_CACHE_WRITE_TIMEOUT_MS,
 			"Timed out writing cached trends summary."
@@ -663,12 +830,13 @@ async function readNextSummaryChunk(
 }
 
 async function* streamGeneratedSummary(params: {
+	cacheTopicId: string;
 	citations: Citation[];
 	cited: CitedItem[];
 	lang: TranslationLanguage;
 	prompt: string;
 	topic: TopicPreset;
-	topicId: string;
+	window: SummaryWindow;
 	abortSignal: AbortSignal;
 }): AsyncGenerator<string, void, void> {
 	const provider = createOpenAICompatible({
@@ -687,7 +855,7 @@ async function* streamGeneratedSummary(params: {
 				"summary",
 				env.LLM_BASE_URL
 			),
-			system: buildSystemPrompt(params.lang),
+			system: buildSystemPrompt(params.lang, params.window),
 			prompt: params.prompt,
 		});
 		iterator = result.textStream[Symbol.asyncIterator]();
@@ -708,7 +876,7 @@ async function* streamGeneratedSummary(params: {
 		const text = chunks.join("").trim();
 		if (text && !isWrittenInTargetLanguage(text, params.lang)) {
 			console.warn(
-				`[trends-summary] discarded ${params.topicId} summary not written in ${params.lang}`
+				`[trends-summary] discarded ${params.cacheTopicId} summary not written in ${params.lang}`
 			);
 		} else if (text) {
 			await writeCachedSummary({
@@ -716,7 +884,8 @@ async function* streamGeneratedSummary(params: {
 				lang: params.lang,
 				prompt: params.prompt,
 				text,
-				topicId: params.topicId,
+				topicId: params.cacheTopicId,
+				window: params.window,
 			});
 		}
 	} catch (error) {
@@ -803,12 +972,14 @@ export async function prepareTrendsSummary(
 	if (!topic) {
 		throw new TopicNotFoundError(topicId);
 	}
+	const window = options.window ?? "today";
+	const cacheTopicId = summaryCacheTopicId(topicId, window);
 
-	const cachedSummary = await readAnyCachedSummary(topicId, lang);
+	const cachedSummary = await readAnyCachedSummary(cacheTopicId, lang, window);
 	if (cachedSummary) {
 		if (cachedSummary.expiresAt <= Date.now()) {
 			refreshSummaryInBackground(
-				startSummaryRefresh(topicId, lang),
+				startSummaryRefresh(topicId, lang, window),
 				options.waitUntil
 			);
 		}
@@ -819,24 +990,24 @@ export async function prepareTrendsSummary(
 		};
 	}
 
-	const page = await getTrendsPage(topicId, lang);
-	const cited = collectCitedItems(page);
+	const cited = await collectWindowCitedItems(topicId, topic, lang, window);
 	const citations: Citation[] = cited.map(({ n, item }) => ({
 		n,
 		url: item.url,
 	}));
-	const prompt = buildPrompt(topic, cited, lang);
+	const prompt = buildPrompt(topic, cited, lang, window);
 
 	return {
 		citations,
 		stream: (abortSignal) =>
 			streamGeneratedSummary({
+				cacheTopicId,
 				citations,
 				cited,
 				lang,
 				prompt,
 				topic,
-				topicId,
+				window,
 				abortSignal,
 			}),
 	};

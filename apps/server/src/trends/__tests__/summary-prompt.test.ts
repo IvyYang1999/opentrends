@@ -114,7 +114,7 @@ describe("trends summary prompt", () => {
 		const quiet = makePage(
 			[
 				{ ageHours: [1], sourceId: "fresh" },
-				{ ageHours: [24 * 3, 24 * 30], sourceId: "weekly" },
+				{ ageHours: [24 * 2, 24 * 30], sourceId: "weekly" },
 			],
 			now
 		);
@@ -128,6 +128,41 @@ describe("trends summary prompt", () => {
 
 		expect(busySources).not.toContain("stale");
 		expect(quietIds).toEqual(["fresh-0", "weekly-0"]);
+	});
+
+	test("names the period and cache scope of each summary window", async () => {
+		setServerEnv();
+		const { buildPrompt, buildSystemPrompt, normalizeSummaryWindow } =
+			await import("../services/get-trends-summary");
+
+		expect(normalizeSummaryWindow("week")).toBe("week");
+		expect(normalizeSummaryWindow("hour")).toBe("today");
+		expect(normalizeSummaryWindow(undefined)).toBe("today");
+		expect(buildSystemPrompt("en", "today")).toContain("last 24 hours");
+		expect(buildSystemPrompt("en", "month")).toContain("last 30 days");
+		expect(buildSystemPrompt("en", "month")).toContain(
+			"Judge importance over the whole period"
+		);
+		expect(buildPrompt(topic, [], "en", "week")).toContain("Window: week");
+	});
+
+	test("spreads a source's history across days before going deeper into one day", async () => {
+		setServerEnv();
+		const { interleaveByDay } = await import("../services/get-trends-summary");
+		const now = Date.UTC(2026, 8, 21, 12);
+		const page = makePage(
+			[{ ageHours: [1, 2, 25, 26, 49], sourceId: "feed" }],
+			now
+		);
+		const items = page.sections[0]?.sources[0]?.items ?? [];
+
+		expect(interleaveByDay(items).map((item) => item.id)).toEqual([
+			"feed-0",
+			"feed-2",
+			"feed-4",
+			"feed-1",
+			"feed-3",
+		]);
 	});
 
 	test("detects summaries that ignored the target language", async () => {

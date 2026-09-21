@@ -13,6 +13,8 @@ const { source, sourceItem } = schema;
 const SOURCE_SNAPSHOT_ITEM_READ_LIMIT = 30;
 const SNAPSHOT_READ_BATCH_SIZE = 24;
 const SNAPSHOT_WRITE_BATCH_SIZE = 6;
+const HISTORY_DESCRIPTION_MAX_CHARS = 280;
+const SECONDS_PER_DAY = 86_400;
 
 export interface SourceSnapshotSummary {
 	errorCount: number;
@@ -495,4 +497,78 @@ export async function writeSnapshotError(params: {
 				updatedAt: fetchedAtDate,
 			},
 		});
+}
+
+interface SourceItemHistoryRow {
+	description: string | null;
+	fetched_at: number;
+	item_id: string;
+	published_at: number | null;
+	rank: number;
+	source_id: string;
+	title: string;
+	url: string;
+}
+
+// Item timestamps are stored in seconds. Partitioning by source and day keeps a
+// long window from being filled by the newest day of a high-volume feed.
+export function buildSourceItemHistoryQuery(
+	sourceIds: readonly SourceId[],
+	sinceMs: number,
+	itemsPerSourcePerDay: number
+) {
+	const itemTime = sql`coalesce(${sourceItem.publishedAt}, ${sourceItem.fetchedAt})`;
+	return sql`
+		select source_id, item_id, url, title,
+			substr(description, 1, ${HISTORY_DESCRIPTION_MAX_CHARS}) as description,
+			rank, published_at, fetched_at
+		from (
+			select ${sourceItem}.*,
+				row_number() over (
+					partition by ${sourceItem.sourceId}, ${itemTime} / ${SECONDS_PER_DAY}
+					order by ${sourceItem.rank} asc, ${itemTime} desc
+				) as day_rank
+			from ${sourceItem}
+			where ${inArray(sourceItem.sourceId, [...sourceIds])}
+				and ${itemTime} >= ${Math.floor(sinceMs / 1000)}
+		)
+		where day_rank <= ${itemsPerSourcePerDay}
+		order by source_id asc, coalesce(published_at, fetched_at) desc
+	`;
+}
+
+export function historyRowToNewsItem(row: SourceItemHistoryRow): NewsItem {
+	return {
+		id: row.item_id,
+		url: row.url,
+		rank: row.rank,
+		title: row.title,
+		sourceId: row.source_id,
+		fetchedAt: row.fetched_at * 1000,
+		description: row.description ?? undefined,
+		publishedAt:
+			row.published_at === null ? undefined : row.published_at * 1000,
+	};
+}
+
+// Reads items a source has carried since `sinceMs`, including ones that have
+// already dropped out of its current snapshot.
+export async function readSourceItemHistory(
+	sourceIds: readonly SourceId[],
+	sinceMs: number,
+	itemsPerSourcePerDay: number
+): Promise<Map<SourceId, NewsItem[]>> {
+	const history = new Map<SourceId, NewsItem[]>();
+	for (const batch of chunk(sourceIds, SNAPSHOT_READ_BATCH_SIZE)) {
+		const rows = await db.all<SourceItemHistoryRow>(
+			buildSourceItemHistoryQuery(batch, sinceMs, itemsPerSourcePerDay)
+		);
+		for (const row of rows) {
+			const item = historyRowToNewsItem(row);
+			const items = history.get(item.sourceId as SourceId) ?? [];
+			items.push(item);
+			history.set(item.sourceId as SourceId, items);
+		}
+	}
+	return history;
 }

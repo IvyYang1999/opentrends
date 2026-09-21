@@ -12,6 +12,7 @@ import {
 	TrendsSnapshotsUnavailableError,
 } from "../trends/services/get-trends-page";
 import {
+	normalizeSummaryWindow,
 	prepareTrendsSummary,
 	TrendsSummaryNotConfiguredError,
 } from "../trends/services/get-trends-summary";
@@ -180,6 +181,7 @@ export const trendsRoutes = new Hono()
 		try {
 			prepared = await prepareTrendsSummary(topic, lang, {
 				waitUntil: getWaitUntil(c),
+				window: normalizeSummaryWindow(c.req.query("window")),
 			});
 		} catch (error) {
 			if (error instanceof TopicNotFoundError) {
