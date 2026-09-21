@@ -54,6 +54,7 @@
   "card_status_failed": "fallido",
   "card_translated": "Elemento traducido",
   "card_translated_tooltip": "Traducido del titular original",
+  "card_translating_title": "Traduciendo el título",
   "card_updated": "Actualizado {time}",
   "card_item_count": "{count} elementos",
   "display_label": "Vista",

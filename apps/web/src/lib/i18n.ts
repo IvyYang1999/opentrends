@@ -106,6 +106,7 @@ const MESSAGE_IDS = {
 	"card.statusFailed": "card_status_failed",
 	"card.translated": "card_translated",
 	"card.translatedTooltip": "card_translated_tooltip",
+	"card.translatingTitle": "card_translating_title",
 	"card.updated": "card_updated",
 	"card.itemCount": "card_item_count",
 	"display.label": "display_label",

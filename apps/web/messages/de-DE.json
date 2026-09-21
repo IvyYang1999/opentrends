@@ -54,6 +54,7 @@
   "card_status_failed": "fehlgeschlagen",
   "card_translated": "Übersetzter Eintrag",
   "card_translated_tooltip": "Aus der Originalüberschrift übersetzt",
+  "card_translating_title": "Titel wird übersetzt",
   "card_updated": "Aktualisiert {time}",
   "card_item_count": "{count} Einträge",
   "display_label": "Anzeige",

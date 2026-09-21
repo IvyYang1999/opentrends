@@ -54,6 +54,7 @@
   "card_status_failed": "falhou",
   "card_translated": "Item traduzido",
   "card_translated_tooltip": "Traduzido da manchete original",
+  "card_translating_title": "Traduzindo o título",
   "card_updated": "Atualizado {time}",
   "card_item_count": "{count} itens",
   "display_label": "Exibição",

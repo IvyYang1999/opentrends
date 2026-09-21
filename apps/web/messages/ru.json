@@ -54,6 +54,7 @@
   "card_status_failed": "ошибка",
   "card_translated": "Переведенный материал",
   "card_translated_tooltip": "Переведено с исходного заголовка",
+  "card_translating_title": "Перевод заголовка",
   "card_updated": "Обновлено {time}",
   "card_item_count": "{count} материалов",
   "display_label": "Вид",

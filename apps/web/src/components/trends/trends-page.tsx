@@ -26,9 +26,10 @@ import {
 	CircleAlert,
 	CircleDashed,
 	Languages,
+	LoaderCircle,
 	MoreHorizontal,
 } from "lucide-react";
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 import {
 	type Locale,
@@ -76,26 +77,40 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	const localeParam = localePathParam(locale);
 	const t = useT();
 	const [displayPage, setDisplayPage] = useState(page);
+	const [translationPending, setTranslationPending] = useState(false);
+	const translationMountedRef = useRef(false);
 	const translationRequestKeyRef = useRef<string | null>(null);
 	const settings = useDisplaySettings(displaySettingsStore);
+	useEffect(() => {
+		translationMountedRef.current = true;
+		return () => {
+			translationMountedRef.current = false;
+		};
+	}, []);
 	const translationRef = useCallback(
 		(el: HTMLDivElement | null) => {
 			if (!el) {
 				return;
 			}
 			const requestKey = `${page.id}:${page.updatedAt}:${locale}`;
-			if (
-				translationRequestKeyRef.current === requestKey ||
-				!needsTranslationWarmup(displayPage, locale)
-			) {
+			if (!needsTranslationWarmup(displayPage, locale)) {
+				translationRequestKeyRef.current = requestKey;
+				setTranslationPending(false);
+				return;
+			}
+			if (translationRequestKeyRef.current === requestKey) {
 				return;
 			}
 
 			translationRequestKeyRef.current = requestKey;
-			let cancelled = false;
+			setTranslationPending(true);
 			translateTrendsPageSnapshot(displayPage, locale)
 				.then((translatedPage) => {
-					if (!cancelled) {
+					if (
+						translationMountedRef.current &&
+						translationRequestKeyRef.current === requestKey
+					) {
+						setTranslationPending(false);
 						if (needsTranslationWarmup(translatedPage, locale)) {
 							translationRequestKeyRef.current = null;
 						}
@@ -106,15 +121,15 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 					}
 				})
 				.catch(() => {
-					if (!cancelled) {
+					if (
+						translationMountedRef.current &&
+						translationRequestKeyRef.current === requestKey
+					) {
+						setTranslationPending(false);
 						translationRequestKeyRef.current = null;
 					}
 					/* The original page is already rendered. */
 				});
-
-			return () => {
-				cancelled = true;
-			};
 		},
 		[displayPage, locale, page.id, page.updatedAt]
 	);
@@ -168,6 +183,7 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 						sources={sources}
 						t={t}
 						topicId={displayPage.id}
+						translationPending={translationPending}
 					/>
 				) : (
 					<SourceGridLayout
@@ -176,6 +192,7 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 						sources={sources}
 						t={t}
 						topicId={displayPage.id}
+						translationPending={translationPending}
 					/>
 				)}
 			</div>
@@ -261,12 +278,14 @@ function SourceGridLayout({
 	t,
 	topicId,
 	locale,
+	translationPending,
 }: {
 	sources: SourceWithSection[];
 	settings: DisplaySettings;
 	t: Translator;
 	topicId: string;
 	locale: Locale;
+	translationPending: boolean;
 }) {
 	return (
 		<div className="grid grid-cols-1 items-start sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -278,6 +297,7 @@ function SourceGridLayout({
 					source={source}
 					t={t}
 					topicId={topicId}
+					translationPending={translationPending}
 				/>
 			))}
 		</div>
@@ -290,12 +310,14 @@ function SourceSectionsLayout({
 	t,
 	topicId,
 	locale,
+	translationPending,
 }: {
 	sources: SourceWithSection[];
 	settings: DisplaySettings;
 	t: Translator;
 	topicId: string;
 	locale: Locale;
+	translationPending: boolean;
 }) {
 	return (
 		<div className="bg-[var(--surface-app)]">
@@ -307,6 +329,7 @@ function SourceSectionsLayout({
 					source={source}
 					t={t}
 					topicId={topicId}
+					translationPending={translationPending}
 				/>
 			))}
 		</div>
@@ -319,12 +342,14 @@ function SourceCard({
 	t,
 	topicId,
 	locale,
+	translationPending,
 }: {
 	source: SourceCardData;
 	settings: DisplaySettings;
 	t: Translator;
 	topicId: string;
 	locale: Locale;
+	translationPending: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	const [overflowing, setOverflowing] = useState(false);
@@ -351,7 +376,13 @@ function SourceCard({
 					className="relative min-h-0 flex-1 overflow-hidden max-sm:max-h-[70svh]"
 					ref={bodyRef}
 				>
-					<SourceCardBody settings={settings} source={source} t={t} />
+					<SourceCardBody
+						locale={locale}
+						settings={settings}
+						source={source}
+						t={t}
+						translationPending={translationPending}
+					/>
 					{overflowing || source.itemsTruncated ? (
 						<>
 							<div
@@ -371,7 +402,13 @@ function SourceCard({
 					) : null}
 				</div>
 			) : (
-				<SourceCardBody settings={settings} source={source} t={t} />
+				<SourceCardBody
+					locale={locale}
+					settings={settings}
+					source={source}
+					t={t}
+					translationPending={translationPending}
+				/>
 			)}
 			<SourceDialog
 				locale={locale}
@@ -380,6 +417,7 @@ function SourceCard({
 				settings={settings}
 				source={source}
 				topicId={topicId}
+				translationPending={translationPending}
 			/>
 		</article>
 	);
@@ -391,12 +429,14 @@ function SourceSection({
 	t,
 	topicId,
 	locale,
+	translationPending,
 }: {
 	source: SourceCardData;
 	settings: DisplaySettings;
 	t: Translator;
 	topicId: string;
 	locale: Locale;
+	translationPending: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	return (
@@ -413,7 +453,12 @@ function SourceSection({
 							className="min-w-0 border-[var(--border-default)] border-b sm:border-r sm:last:border-b"
 							key={item.id}
 						>
-							<NewsCard item={item} settings={settings} />
+							<NewsCard
+								item={item}
+								locale={locale}
+								settings={settings}
+								translationPending={translationPending}
+							/>
 						</li>
 					))}
 				</ul>
@@ -438,6 +483,7 @@ function SourceSection({
 				settings={settings}
 				source={source}
 				topicId={topicId}
+				translationPending={translationPending}
 			/>
 		</section>
 	);
@@ -450,6 +496,7 @@ function SourceDialog({
 	settings,
 	topicId,
 	locale,
+	translationPending,
 }: {
 	source: SourceCardData;
 	open: boolean;
@@ -457,6 +504,7 @@ function SourceDialog({
 	settings: DisplaySettings;
 	topicId: string;
 	locale: Locale;
+	translationPending: boolean;
 }) {
 	const sourceQuery = useQuery({
 		...trendSourceQueryOptions(topicId, source.sourceId, locale),
@@ -474,7 +522,14 @@ function SourceDialog({
 					<ul className="flex flex-col divide-y divide-[var(--border-subtle)]">
 						{dialogSource.items.map((item) => (
 							<li key={item.id}>
-								<NewsRow item={item} settings={settings} />
+								<NewsRow
+									item={item}
+									locale={locale}
+									settings={settings}
+									translationPending={
+										translationPending || sourceQuery.isFetching
+									}
+								/>
 							</li>
 						))}
 					</ul>
@@ -578,10 +633,14 @@ function SourceCardBody({
 	source,
 	settings,
 	t,
+	locale,
+	translationPending,
 }: {
 	source: SourceCardData;
 	settings: DisplaySettings;
 	t: Translator;
+	locale: Locale;
+	translationPending: boolean;
 }) {
 	const empty = <SourceEmptyContent source={source} t={t} />;
 
@@ -597,7 +656,12 @@ function SourceCardBody({
 		<ul className="flex flex-col divide-y divide-[var(--border-subtle)]">
 			{source.items.map((item) => (
 				<li key={item.id}>
-					<NewsRow item={item} settings={settings} />
+					<NewsRow
+						item={item}
+						locale={locale}
+						settings={settings}
+						translationPending={translationPending}
+					/>
 				</li>
 			))}
 		</ul>
@@ -661,9 +725,13 @@ function buildMeta(
 function NewsRow({
 	item,
 	settings,
+	locale,
+	translationPending,
 }: {
 	item: NewsItem;
 	settings: DisplaySettings;
+	locale: Locale;
+	translationPending: boolean;
 }) {
 	const t = useT();
 	const meta = buildMeta(item, settings, t);
@@ -697,6 +765,12 @@ function NewsRow({
 					<span className="line-clamp-3 min-w-0 flex-1 font-medium text-[13px] text-[var(--text-primary)] leading-[1.45] group-hover:text-[var(--accent-blue)] sm:line-clamp-2">
 						{item.title}
 					</span>
+					<TitleTranslationIndicator
+						item={item}
+						locale={locale}
+						pending={translationPending}
+						t={t}
+					/>
 				</span>
 				{showDescription ? (
 					<span className="line-clamp-2 text-[12px] text-[var(--text-secondary)] leading-[1.45]">
@@ -713,9 +787,13 @@ function NewsRow({
 function NewsCard({
 	item,
 	settings,
+	locale,
+	translationPending,
 }: {
 	item: NewsItem;
 	settings: DisplaySettings;
+	locale: Locale;
+	translationPending: boolean;
 }) {
 	const t = useT();
 	const meta = buildMeta(item, settings, t);
@@ -749,6 +827,12 @@ function NewsCard({
 					<span className="line-clamp-3 min-w-0 flex-1 font-medium text-[13px] text-[var(--text-primary)] leading-[1.45] group-hover:text-[var(--accent-blue)]">
 						{item.title}
 					</span>
+					<TitleTranslationIndicator
+						item={item}
+						locale={locale}
+						pending={translationPending}
+						t={t}
+					/>
 					<ArrowUpRight className="mt-[3px] size-3 shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100" />
 				</span>
 				{showDescription ? (
@@ -759,6 +843,33 @@ function NewsCard({
 				<NewsItemMeta className="mt-auto" item={item} meta={meta} t={t} />
 			</span>
 		</a>
+	);
+}
+
+function TitleTranslationIndicator({
+	item,
+	locale,
+	pending,
+	t,
+}: {
+	item: NewsItem;
+	locale: Locale;
+	pending: boolean;
+	t: Translator;
+}) {
+	if (!pending || item.original || !shouldTranslateText(item.title, locale)) {
+		return null;
+	}
+
+	const label = t("card.translatingTitle");
+	return (
+		<span
+			className="mt-[3px] inline-flex size-3.5 shrink-0 items-center justify-center text-[var(--text-muted)]"
+			title={label}
+		>
+			<LoaderCircle aria-hidden className="size-3 motion-safe:animate-spin" />
+			<span className="sr-only">{label}</span>
+		</span>
 	);
 }
 

@@ -54,6 +54,7 @@
   "card_status_failed": "失敗",
   "card_translated": "已翻譯項目",
   "card_translated_tooltip": "由原始標題翻譯生成",
+  "card_translating_title": "標題翻譯中",
   "card_updated": "更新於 {time}",
   "card_item_count": "{count} 則",
   "display_label": "顯示",
