@@ -1060,5 +1060,32 @@ export async function prepareTrendsSummary(
 		};
 	}
 
+	// Topic digests are prewarmed by the scheduler and only replayed here. A
+	// followed-sources digest is one reader's request: it is generated in the
+	// response instead of waiting behind the shared queue.
+	if (topicId === FOLLOWED_TOPIC_ID) {
+		const topic = resolved.preset;
+		const cited = await collectWindowCitedItems(topicId, topic, lang, window);
+		const citations: Citation[] = cited.map(({ n, item }) => ({
+			n,
+			url: item.url,
+		}));
+		const prompt = buildPrompt(topic, cited, lang, window);
+		return {
+			citations,
+			stream: (abortSignal) =>
+				streamGeneratedSummary({
+					abortSignal,
+					cacheTopicId,
+					citations,
+					cited,
+					lang,
+					prompt,
+					topic,
+					window,
+				}),
+		};
+	}
+
 	throw new TrendsSummaryPendingError();
 }
