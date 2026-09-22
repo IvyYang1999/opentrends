@@ -237,6 +237,19 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 					{TOPIC_IDS.map((id) => (
 						<TopicLink id={id} key={id} localeParam={localeParam} />
 					))}
+					<span
+						aria-hidden
+						className="mx-1.5 h-4 w-px shrink-0 bg-[var(--border-default)]"
+					/>
+					<Link
+						activeOptions={{ exact: false }}
+						className={segmentClassName}
+						params={{ locale: localeParam }}
+						title={t("nav.skillsTitle")}
+						to="/{-$locale}/skills/opentrends"
+					>
+						{t("nav.skills")}
+					</Link>
 				</nav>
 			</div>
 			<SearchCommand onOpenChange={setSearchOpen} open={searchOpen} />

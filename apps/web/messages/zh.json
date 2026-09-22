@@ -191,6 +191,5 @@
   "source_manager_title": "来源",
   "source_manager_hint": "拖动调整顺序，置顶的来源固定在最前。",
   "source_manager_count": "显示 {shown} / {total}",
-  "card_show_source": "显示来源",
-  "events_all_topics": "全部主题"
+  "card_show_source": "显示来源"
 }

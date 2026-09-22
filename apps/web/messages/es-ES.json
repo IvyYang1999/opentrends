@@ -191,6 +191,5 @@
   "source_manager_title": "Fuentes",
   "source_manager_hint": "Arrastra para reordenar. Las fuentes fijadas se quedan arriba.",
   "source_manager_count": "{shown} de {total} visibles",
-  "card_show_source": "Mostrar fuente",
-  "events_all_topics": "Todos los temas"
+  "card_show_source": "Mostrar fuente"
 }

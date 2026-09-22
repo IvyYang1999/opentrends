@@ -109,7 +109,6 @@ const MESSAGE_IDS = {
 	"sourceManager.title": "source_manager_title",
 	"sourceManager.hint": "source_manager_hint",
 	"sourceManager.count": "source_manager_count",
-	"events.allTopics": "events_all_topics",
 	"card.actionsFor": "card_actions_for",
 	"card.statusLive": "card_status_live",
 	"card.statusStale": "card_status_stale",

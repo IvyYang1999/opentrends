@@ -191,6 +191,5 @@
   "source_manager_title": "Quellen",
   "source_manager_hint": "Ziehen zum Sortieren. Angeheftete Quellen bleiben oben.",
   "source_manager_count": "{shown} von {total} sichtbar",
-  "card_show_source": "Quelle anzeigen",
-  "events_all_topics": "Alle Themen"
+  "card_show_source": "Quelle anzeigen"
 }

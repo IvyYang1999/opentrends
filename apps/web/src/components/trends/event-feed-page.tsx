@@ -21,13 +21,11 @@ import {
 import type { ReactNode } from "react";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 
-import {
-	segmentClassName,
-	toolButtonClassName,
-} from "@/components/chrome-styles";
+import { toolButtonClassName } from "@/components/chrome-styles";
 import { localePathParam, type Translator, useLocale, useT } from "@/lib/i18n";
 
 import { CoverImage } from "./cover-image";
+import { setDisplaySetting, useDisplaySettings } from "./display-settings";
 import {
 	loadTrendEvents,
 	TrendEventsEmbeddingNotConfiguredError,
@@ -35,7 +33,11 @@ import {
 } from "./load-trends";
 import { formatRelativeTime } from "./relative-time";
 import { SourceLogoStack } from "./source-favicon";
-import { trendEventDetailQueryOptions } from "./trends-query";
+import {
+	trendEventDetailQueryOptions,
+	trendsPageQueryOptions,
+} from "./trends-query";
+import { TrendsSummary } from "./trends-summary";
 import type { EventDetailData, EventFeedItem } from "./types";
 import { ViewSwitch } from "./view-switch";
 
@@ -125,6 +127,30 @@ function estimateEventCardSize(event: EventFeedItem | undefined): number {
 		Math.min(titleLines, 4) * 20 +
 		Math.min(summaryLines, 5) * 18 +
 		(event.selectionReason ? 28 : 0)
+	);
+}
+
+// The digest belongs to the topic, not to the trends view, so it stays in
+// place when the reader switches to events. The topic page is usually already
+// cached from the trends view; otherwise it loads once here.
+function TopicDigest({ topicId }: { topicId: string }) {
+	const locale = useLocale();
+	const settings = useDisplaySettings();
+	const page = useQuery(trendsPageQueryOptions(topicId, locale));
+	if (!page.data) {
+		return (
+			<div className="h-10 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)]" />
+		);
+	}
+	return (
+		<TrendsSummary
+			collapsed={settings.summaryCollapsed}
+			onCollapsedChange={(collapsed) =>
+				setDisplaySetting("summaryCollapsed", collapsed)
+			}
+			page={page.data}
+			topicId={topicId}
+		/>
 	);
 }
 
@@ -220,25 +246,13 @@ export function EventFeedPage({ selectedTopic }: EventFeedPageProps) {
 			className="min-w-0 flex-1 overflow-auto bg-[var(--surface-app)] text-[var(--text-primary)]"
 			ref={scrollRef}
 		>
+			{selectedTopic ? <TopicDigest topicId={selectedTopic} /> : null}
 			<div className="flex h-10 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
-				<div className="flex min-w-0 items-center gap-2">
-					<ViewSwitch
-						localeParam={localeParam}
-						topicId={selectedTopic}
-						view="events"
-					/>
-					{selectedTopic ? (
-						<Link
-							activeOptions={{ exact: true, includeSearch: true }}
-							className={segmentClassName}
-							params={{ locale: localeParam }}
-							search={{}}
-							to="/{-$locale}/events"
-						>
-							{t("events.allTopics")}
-						</Link>
-					) : null}
-				</div>
+				<ViewSwitch
+					localeParam={localeParam}
+					topicId={selectedTopic}
+					view="events"
+				/>
 				<div className="flex shrink-0 items-center gap-2">
 					{eventsQuery.isPending && events.length === 0 ? (
 						<span

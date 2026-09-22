@@ -446,7 +446,6 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 					settings={settings}
 					t={t}
 					topicId={displayPage.id}
-					updatedAt={displayPage.updatedAt}
 				/>
 				{sourceManagerOpen ? (
 					<SourceManagerDialog
@@ -518,7 +517,6 @@ function ViewBar({
 	settings,
 	t,
 	topicId,
-	updatedAt,
 }: {
 	displaySettingsStore?: DisplaySettingsStoreOptions;
 	localeParam: Locale | undefined;
@@ -526,17 +524,11 @@ function ViewBar({
 	settings: DisplaySettings;
 	t: Translator;
 	topicId: string;
-	updatedAt?: number;
 }) {
 	return (
 		<div className="flex h-10 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
 			<ViewSwitch localeParam={localeParam} topicId={topicId} view="trends" />
 			<div className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--text-muted)]">
-				{updatedAt ? (
-					<span className="hidden sm:inline" suppressHydrationWarning>
-						{t("card.updated", { time: formatRelativeTime(updatedAt, t) })}
-					</span>
-				) : null}
 				<button
 					className={toolButtonClassName}
 					onClick={onOpenSources}
@@ -1010,9 +1002,9 @@ function SourceHeaderMeta({
 			<DropdownMenu>
 				<DropdownMenuTrigger
 					aria-label={t("card.actionsFor", { title: source.title })}
-					className="inline-flex h-5 w-5 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[popup-open]:bg-[var(--state-hover-subtle)] data-[popup-open]:text-[var(--text-primary)]"
+					className="-my-1 -mr-1.5 inline-flex size-7 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[popup-open]:bg-[var(--state-hover-subtle)] data-[popup-open]:text-[var(--text-primary)]"
 				>
-					<MoreHorizontal className="size-3" />
+					<MoreHorizontal className="size-3.5" />
 				</DropdownMenuTrigger>
 				<DropdownMenuContent align="end" className="bg-card">
 					{source.homeUrl ? (
