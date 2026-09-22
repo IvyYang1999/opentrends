@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import { interleaveSources, rankFeed } from "./feed-model";
+import { arrangeFeed, rankFeed, withListCards } from "./feed-model";
 import type { NewsItem, SourceCardData, TrendsPageData } from "./types";
 
 const NOW = Date.UTC(2026, 8, 22, 12);
@@ -64,19 +64,61 @@ describe("rankFeed", () => {
 	});
 });
 
-describe("interleaveSources", () => {
-	test("does not place two entries from one source next to each other when avoidable", () => {
-		const a = source("a", [{}, {}, {}]);
-		const b = source("b", [{}]);
-		const entries = [
-			...a.items.map((item) => ({ item, score: 1, source: a })),
-			...b.items.map((item) => ({ item, score: 0.5, source: b })),
-		];
-		expect(interleaveSources(entries).map((e) => e.source.sourceId)).toEqual([
+describe("arrangeFeed", () => {
+	test("gives seven of ten slots to illustrated items and caps a source per window", () => {
+		const a = source(
 			"a",
+			Array.from({ length: 20 }, () => ({ imageUrl: "https://img" }))
+		);
+		const b = source(
 			"b",
-			"a",
-			"a",
+			Array.from({ length: 20 }, () => ({}))
+		);
+		const c = source(
+			"c",
+			Array.from({ length: 20 }, () => ({ imageUrl: "https://img" }))
+		);
+		const bySource = { a, b, c } as const;
+		const entries = [...a.items, ...c.items, ...b.items].map((item) => ({
+			heat: undefined,
+			item,
+			kind: "item" as const,
+			score: 1,
+			source: bySource[item.sourceId as keyof typeof bySource],
+		}));
+		const arranged = arrangeFeed(entries);
+		const firstTen = arranged.slice(0, 10);
+		expect(firstTen.filter((e) => e.item.imageUrl).length).toBe(7);
+		for (let i = 0; i + 12 <= arranged.length; i += 1) {
+			const window = arranged.slice(i, i + 12).map((e) => e.source.sourceId);
+			for (const id of ["a", "b", "c"]) {
+				expect(window.filter((x) => x === id).length).toBeLessThanOrEqual(12);
+			}
+		}
+		expect(arranged).toHaveLength(60);
+	});
+});
+
+describe("withListCards", () => {
+	test("slips a ranking card in after every eleventh story", () => {
+		const s = source(
+			"s",
+			Array.from({ length: 23 }, () => ({}))
+		);
+		const entries = s.items.map((item) => ({
+			heat: undefined,
+			item,
+			kind: "item" as const,
+			score: 1,
+			source: s,
+		}));
+		const blocks = withListCards(entries, [
+			source("r1", [{}]),
+			source("r2", [{}]),
 		]);
+		expect(blocks.map((b) => b.kind).filter((k) => k === "list")).toHaveLength(
+			2
+		);
+		expect(blocks[11]?.kind).toBe("list");
 	});
 });

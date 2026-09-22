@@ -7,15 +7,20 @@ import Loader from "@/components/loader";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
 
 import { setDisplaySetting, useDisplaySettings } from "./display-settings";
-import { coverRatio, GeneratedCover } from "./feed-cover";
-import { type FeedEntry, rankFeed } from "./feed-model";
+import { coverRatio, GeneratedCover, useSourceHue } from "./feed-cover";
+import {
+	type FeedBlock,
+	type FeedEntry,
+	rankFeed,
+	withListCards,
+} from "./feed-model";
 import { recordFeedClick } from "./feed-signals";
 import { FOLLOWED_TOPIC_ID, useFollowedSources } from "./followed-sources";
 import { formatRelativeTime } from "./relative-time";
 import { SourceFavicon } from "./source-favicon";
 import { trendsPageQueryOptions } from "./trends-query";
 import { TrendsSummary } from "./trends-summary";
-import type { TrendsPageData } from "./types";
+import type { SourceCardData, TrendsPageData } from "./types";
 import { ViewSwitch } from "./view-switch";
 
 const PAGE_SIZE = 40;
@@ -76,10 +81,15 @@ export function FeedPage({ topicId }: FeedPageProps) {
 		}),
 	});
 	const primary = pages.find((page) => page.id === topicId) ?? pages[0];
-	const entries = useMemo(
-		() => rankFeed(pages, followedIds),
-		[pages, followedIds]
-	);
+	const blocks = useMemo(() => {
+		const rankings = pages
+			.flatMap((page) => page.sections)
+			.flatMap((section) => section.sources)
+			.filter(
+				(source) => source.kind === "ranking" && source.items.length >= 5
+			);
+		return withListCards(rankFeed(pages, followedIds), rankings);
+	}, [pages, followedIds]);
 	const [limit, setLimit] = useState(PAGE_SIZE);
 	const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -114,13 +124,13 @@ export function FeedPage({ topicId }: FeedPageProps) {
 			<div className="flex h-10 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
 				<ViewSwitch localeParam={localeParam} topicId={topicId} view="feed" />
 				<span className="text-[11px] text-[var(--text-muted)] tabular-nums">
-					{t("feed.count", { count: entries.length })}
+					{t("feed.count", { count: blocks.length })}
 				</span>
 			</div>
-			{pending && entries.length === 0 ? (
+			{pending && blocks.length === 0 ? (
 				<Loader />
 			) : (
-				<Masonry entries={entries.slice(0, limit)} t={t} />
+				<Masonry blocks={blocks.slice(0, limit)} t={t} />
 			)}
 			<div className="h-10" ref={sentinelRef} />
 		</div>
@@ -155,15 +165,15 @@ function useColumnCount(): number {
 }
 
 function Masonry({
-	entries,
+	blocks,
 	t,
 }: {
-	entries: FeedEntry[];
+	blocks: FeedBlock[];
 	t: ReturnType<typeof useT>;
 }) {
 	const columnCount = useColumnCount();
 	const columns = Array.from({ length: columnCount }, (_, column) =>
-		entries.filter((_, index) => index % columnCount === column)
+		blocks.filter((_, index) => index % columnCount === column)
 	);
 	return (
 		<div
@@ -172,9 +182,17 @@ function Masonry({
 		>
 			{columns.map((column, index) => (
 				<div className="flex min-w-0 flex-col gap-3" key={String(index)}>
-					{column.map((entry) => (
-						<FeedCard entry={entry} key={entry.item.url} t={t} />
-					))}
+					{column.map((block) =>
+						block.kind === "list" ? (
+							<ListCard
+								key={`list:${block.source.sourceId}`}
+								source={block.source}
+								t={t}
+							/>
+						) : (
+							<FeedCard entry={block} key={block.item.url} t={t} />
+						)
+					)}
 				</div>
 			))}
 		</div>
@@ -200,7 +218,7 @@ function FeedCard({
 			: undefined;
 	return (
 		<a
-			className="group block overflow-hidden rounded-lg border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)] transition-shadow visited:text-[#9b9893] hover:shadow-md dark:visited:text-[#6f685f]"
+			className="group block overflow-hidden border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)] transition-shadow visited:text-[#9b9893] hover:shadow-md dark:visited:text-[#6f685f]"
 			href={item.url}
 			onClick={() => recordFeedClick(item, source)}
 			rel="noopener noreferrer"
@@ -244,5 +262,72 @@ function FeedCard({
 				</span>
 			</span>
 		</a>
+	);
+}
+
+const LIST_PREVIEW = 5;
+
+// A whole ranking as one card: the top five, expandable to the full list,
+// each row a link. Gives the stream a second rhythm besides single stories.
+function ListCard({
+	source,
+	t,
+}: {
+	source: SourceCardData;
+	t: ReturnType<typeof useT>;
+}) {
+	const hue = useSourceHue(source);
+	const [expanded, setExpanded] = useState(false);
+	const items = expanded ? source.items : source.items.slice(0, LIST_PREVIEW);
+	return (
+		<div className="overflow-hidden border border-[var(--border-default)] bg-[var(--surface-card)]">
+			<div
+				className="flex items-center gap-2 px-3 py-2"
+				style={{
+					backgroundColor: `hsl(${hue} 70% 94%)`,
+					color: `hsl(${hue} 45% 22%)`,
+				}}
+			>
+				<SourceFavicon homeUrl={source.homeUrl} />
+				<span className="min-w-0 flex-1 truncate font-semibold text-[13px]">
+					{source.title}
+				</span>
+				<span className="rounded bg-white/60 px-1.5 py-px font-medium text-[10px] leading-4">
+					{t("card.hotList")}
+				</span>
+			</div>
+			<ol className="divide-y divide-[var(--border-subtle)]">
+				{items.map((item, index) => (
+					<li key={item.id}>
+						<a
+							className="flex items-start gap-2 px-3 py-2 text-[12px] text-[var(--text-primary)] transition-colors visited:text-[#9b9893] hover:bg-[var(--state-hover-subtle)] dark:visited:text-[#6f685f]"
+							href={item.url}
+							onClick={() => recordFeedClick(item, source)}
+							rel="noopener noreferrer"
+							target="_blank"
+							title={item.original?.title}
+						>
+							<span className="w-4 shrink-0 font-mono text-[11px] text-[var(--text-muted)] tabular-nums">
+								{index + 1}
+							</span>
+							<span className="line-clamp-2 min-w-0 flex-1 leading-[1.45]">
+								{item.title}
+							</span>
+						</a>
+					</li>
+				))}
+			</ol>
+			{source.items.length > LIST_PREVIEW ? (
+				<button
+					className="flex w-full items-center justify-center border-[var(--border-default)] border-t py-1.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+					onClick={() => setExpanded((value) => !value)}
+					type="button"
+				>
+					{expanded
+						? t("card.collapse")
+						: t("card.viewAll", { count: source.items.length })}
+				</button>
+			) : null}
+		</div>
 	);
 }

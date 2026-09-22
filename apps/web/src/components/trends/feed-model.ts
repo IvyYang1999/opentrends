@@ -3,9 +3,19 @@ import type { NewsItem, SourceCardData, TrendsPageData } from "./types";
 export interface FeedEntry {
 	heat?: number;
 	item: NewsItem;
+	kind: "item";
 	score: number;
 	source: SourceCardData;
 }
+
+// A whole ranking shown as one card inside the feed, every so often, so the
+// stream is not only single stories.
+export interface FeedListEntry {
+	kind: "list";
+	source: SourceCardData;
+}
+
+export type FeedBlock = FeedEntry | FeedListEntry;
 
 const HOUR_MS = 60 * 60 * 1000;
 // How quickly freshness fades: an item loses half its recency score every
@@ -13,6 +23,16 @@ const HOUR_MS = 60 * 60 * 1000;
 const RECENCY_HALF_LIFE_MS = 18 * HOUR_MS;
 const FOLLOWED_BOOST = 1.6;
 const HEAT_WEIGHT = 0.35;
+const COVER_BOOST = 1.25;
+// Per ten slots, how many go to illustrated items when enough exist.
+const COVER_QUOTA = 7;
+const SLOTS_PER_ROUND = 10;
+// A source may appear at most this many times within a window of recent
+// slots, so one busy feed cannot own a screen.
+const SOURCE_WINDOW = 12;
+const SOURCE_WINDOW_LIMIT = 2;
+// A ranking card is slipped in after this many story cards.
+const LIST_EVERY = 11;
 // Items without a publish date only have the fetch time, which would put a
 // whole feed at the top every refresh; they are treated as a day old.
 const UNDATED_AGE_MS = 24 * HOUR_MS;
@@ -73,8 +93,9 @@ function scoreSource(
 		const score =
 			recency *
 			(1 + HEAT_WEIGHT * heatFactor(heat, maxHeat)) *
-			(followed ? FOLLOWED_BOOST : 1);
-		return { heat, item, score, source };
+			(followed ? FOLLOWED_BOOST : 1) *
+			(item.imageUrl ? COVER_BOOST : 1);
+		return { heat, item, kind: "item" as const, score, source };
 	});
 }
 
@@ -99,21 +120,64 @@ export function rankFeed(
 			return true;
 		});
 	entries.sort((a, b) => b.score - a.score);
-	return interleaveSources(entries);
+	return arrangeFeed(entries);
 }
 
-// A feed that shows five Hacker News posts in a row reads like a source
-// page again. Adjacent entries from one source are pushed apart.
-export function interleaveSources(entries: FeedEntry[]): FeedEntry[] {
+// Fills the feed slot by slot: each round of ten hands most slots to
+// illustrated items, and no source may crowd a window of recent slots.
+// Falls back gracefully when a pool runs dry.
+export function arrangeFeed(sorted: FeedEntry[]): FeedEntry[] {
+	const withCover = sorted.filter((entry) => Boolean(entry.item.imageUrl));
+	const textOnly = sorted.filter((entry) => !entry.item.imageUrl);
 	const result: FeedEntry[] = [];
-	const pending = [...entries];
-	while (pending.length > 0) {
-		const last = result.at(-1)?.source.sourceId;
-		const index = pending.findIndex((entry) => entry.source.sourceId !== last);
-		const [next] = pending.splice(index === -1 ? 0 : index, 1);
-		if (next) {
-			result.push(next);
+	const recent: string[] = [];
+
+	const take = (pool: FeedEntry[]): FeedEntry | undefined => {
+		const counts = new Map<string, number>();
+		for (const id of recent) {
+			counts.set(id, (counts.get(id) ?? 0) + 1);
+		}
+		const index = pool.findIndex(
+			(entry) => (counts.get(entry.source.sourceId) ?? 0) < SOURCE_WINDOW_LIMIT
+		);
+		const [entry] = pool.splice(index === -1 ? 0 : index, 1);
+		return entry;
+	};
+
+	while (withCover.length + textOnly.length > 0) {
+		const slot = result.length % SLOTS_PER_ROUND;
+		const wantCover = slot < COVER_QUOTA;
+		const primary = wantCover ? withCover : textOnly;
+		const fallback = wantCover ? textOnly : withCover;
+		const entry = take(primary.length > 0 ? primary : fallback);
+		if (!entry) {
+			break;
+		}
+		result.push(entry);
+		recent.push(entry.source.sourceId);
+		if (recent.length > SOURCE_WINDOW) {
+			recent.shift();
 		}
 	}
 	return result;
+}
+
+// Weaves ranking cards into the story stream.
+export function withListCards(
+	entries: FeedEntry[],
+	rankings: readonly SourceCardData[]
+): FeedBlock[] {
+	if (rankings.length === 0) {
+		return entries;
+	}
+	const blocks: FeedBlock[] = [];
+	let next = 0;
+	for (const [index, entry] of entries.entries()) {
+		blocks.push(entry);
+		if ((index + 1) % LIST_EVERY === 0 && next < rankings.length) {
+			blocks.push({ kind: "list", source: rankings[next] as SourceCardData });
+			next += 1;
+		}
+	}
+	return blocks;
 }
