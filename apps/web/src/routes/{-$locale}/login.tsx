@@ -35,9 +35,6 @@ function RouteComponent() {
 						{t("sign.dialogDescription")}
 					</p>
 					<SocialSignIn />
-					<p className="text-[11px] text-[var(--text-muted)]">
-						{t("sign.dialogFootnote")}
-					</p>
 				</div>
 			</div>
 		</main>

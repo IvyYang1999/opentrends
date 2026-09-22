@@ -64,6 +64,7 @@ import {
 	LayoutSettingsMenuContent,
 } from "./display-settings-menu";
 import { formatRelativeTime } from "./relative-time";
+import { revealSourceCard, sourceCardElementId } from "./reveal-source-card";
 import {
 	isDecorativeBadgeImage,
 	sourceCardViewportClasses,
@@ -122,16 +123,16 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 		storePageTranslations(displayPage, locale);
 	}, [displayPage, locale]);
 	// Search navigates here with #source-<id>; the card only exists once the
-	// page has rendered, so the scroll happens after mount.
+	// page has rendered, so the reveal happens after mount.
 	// biome-ignore lint/correctness/useExhaustiveDependencies: re-run per topic
 	useEffect(() => {
 		const hash = window.location.hash;
 		if (!hash.startsWith("#source-")) {
 			return;
 		}
-		document
-			.getElementById(hash.slice(1))
-			?.scrollIntoView({ behavior: "smooth", block: "start" });
+		if (revealSourceCard(hash.slice("#source-".length))) {
+			history.replaceState(null, "", window.location.pathname);
+		}
 	}, [displayPage.id]);
 	const sources = displayPage.sections.flatMap((section) =>
 		section.sources.map((source) => ({
@@ -421,19 +422,6 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				<p aria-live="polite" className="sr-only">
 					{dragAnnouncement}
 				</p>
-				<TopicBar
-					displaySettingsStore={displaySettingsStore}
-					hiddenSourceIds={sourcePreferences.preference.hiddenSourceIds}
-					localeParam={localeParam}
-					onSourceVisibilityChange={sourcePreferences.setSourceVisible}
-					settings={settings}
-					sources={orderedSources.map(({ source }) => ({
-						id: source.sourceId,
-						title: source.title,
-					}))}
-					t={t}
-					updatedAt={displayPage.updatedAt}
-				/>
 				<TrendsSummary
 					collapsed={settings.summaryCollapsed}
 					key={displayPage.id}
@@ -446,6 +434,20 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 					}
 					page={displayPage}
 					topicId={displayPage.id}
+				/>
+				<ViewBar
+					displaySettingsStore={displaySettingsStore}
+					hiddenSourceIds={sourcePreferences.preference.hiddenSourceIds}
+					localeParam={localeParam}
+					onSourceVisibilityChange={sourcePreferences.setSourceVisible}
+					settings={settings}
+					sources={orderedSources.map(({ source }) => ({
+						id: source.sourceId,
+						title: source.title,
+					}))}
+					t={t}
+					topicId={displayPage.id}
+					updatedAt={displayPage.updatedAt}
 				/>
 				{sourceContent}
 			</div>
@@ -490,21 +492,12 @@ interface SourceDragHandleProps {
 const SOURCE_SECTION_GRID =
 	"grid grid-cols-1 items-stretch sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 min-[1800px]:grid-cols-8";
 
-const TOPIC_IDS = [
-	"ai",
-	"embodied",
-	"hardware",
-	"biotech",
-	"programming",
-	"cn",
-] as const;
+const viewTabClassName =
+	"inline-flex h-7 items-center rounded px-2.5 text-[12px] text-[var(--text-secondary)] whitespace-nowrap transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[status=active]:bg-[var(--accent-blue-bg)] data-[status=active]:text-[var(--accent-blue)]";
 
-const topicTabClassName =
-	"shrink-0 rounded px-2 py-0.5 text-[12px] text-[var(--text-secondary)] whitespace-nowrap transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[status=active]:bg-[var(--accent-blue-bg)] data-[status=active]:text-[var(--accent-blue)]";
-
-// Second row of the page: which topic is open, and how it is laid out. The
-// header above only switches between trends and events.
-function TopicBar({
+// Sits directly above the cards: how the open topic is viewed (source cards
+// or clustered events) and how the cards are laid out.
+function ViewBar({
 	displaySettingsStore,
 	hiddenSourceIds,
 	localeParam,
@@ -512,6 +505,7 @@ function TopicBar({
 	settings,
 	sources,
 	t,
+	topicId,
 	updatedAt,
 }: {
 	displaySettingsStore?: DisplaySettingsStoreOptions;
@@ -521,24 +515,28 @@ function TopicBar({
 	settings: DisplaySettings;
 	sources: { id: string; title: string }[];
 	t: Translator;
+	topicId: string;
 	updatedAt?: number;
 }) {
 	return (
-		<div className="flex h-9 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
-			<nav
-				aria-label={t("nav.trends")}
-				className="flex min-w-0 items-center gap-0.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-			>
-				{TOPIC_IDS.map((id) => (
-					<Link
-						className={topicTabClassName}
-						key={id}
-						params={{ locale: localeParam, topic: id }}
-						to="/{-$locale}/trends/$topic"
-					>
-						{t(`topic.${id}`)}
-					</Link>
-				))}
+		<div className="flex h-10 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
+			<nav aria-label={t("nav.trends")} className="flex items-center gap-0.5">
+				<Link
+					activeOptions={{ exact: true }}
+					className={viewTabClassName}
+					params={{ locale: localeParam, topic: topicId }}
+					to="/{-$locale}/trends/$topic"
+				>
+					{t("nav.trends")}
+				</Link>
+				<Link
+					className={viewTabClassName}
+					params={{ locale: localeParam }}
+					search={{ topic: topicId }}
+					to="/{-$locale}/events"
+				>
+					{t("nav.events")}
+				</Link>
 			</nav>
 			<div className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--text-muted)]">
 				{updatedAt ? (
@@ -702,7 +700,7 @@ function SourceCard({
 		<article
 			className={`relative flex min-w-0 flex-col overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-opacity after:pointer-events-none after:absolute after:inset-0 after:z-40 after:content-[''] data-[drop-target=true]:after:border-2 data-[drop-target=true]:after:border-[var(--accent-blue)] sm:border-r ${sourceCardViewportClasses(hasItems)} ${isDragging ? "z-30 opacity-50 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
 			data-sortable-source-id={source.sourceId}
-			id={`source-${source.sourceId}`}
+			id={sourceCardElementId(source.sourceId)}
 		>
 			<SourceCardHeader
 				dragHandleProps={dragHandleProps}
@@ -794,7 +792,7 @@ function SourceSection({
 		<section
 			className={`relative border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-opacity after:pointer-events-none after:absolute after:inset-0 after:z-40 after:content-[''] data-[drop-target=true]:after:border-2 data-[drop-target=true]:after:border-[var(--accent-blue)] ${isDragging ? "z-30 opacity-80 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
 			data-sortable-source-id={source.sourceId}
-			id={`source-${source.sourceId}`}
+			id={sourceCardElementId(source.sourceId)}
 		>
 			<SourceSectionHeader
 				dragHandleProps={dragHandleProps}

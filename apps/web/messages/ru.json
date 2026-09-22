@@ -174,8 +174,7 @@
   "footer_github": "GitHub",
   "common_not_found": "Страница не найдена",
   "sign_dialog_title": "Войти в OpenTrends",
-  "sign_dialog_description": "После входа выбранные источники, их порядок и скрытые источники синхронизируются между устройствами.",
-  "sign_dialog_footnote": "Мы читаем только имя, аватар и email и ничего не публикуем от вашего имени.",
+  "sign_dialog_description": "Войдите, чтобы синхронизировать настройки чтения между устройствами.",
   "nav_skills_title": "Дайте своему ИИ-агенту читать OpenTrends",
   "search_label": "Поиск",
   "search_placeholder": "Искать источники или заголовки…",
@@ -187,5 +186,6 @@
   "search_source_pinned": "Закреплён",
   "search_shortcut": "⌘K",
   "card_unpin_source": "Открепить",
-  "card_pinned": "Закреплено"
+  "card_pinned": "Закреплено",
+  "summary_label": "ИИ-сводка"
 }

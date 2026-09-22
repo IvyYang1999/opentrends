@@ -30,9 +30,6 @@ export function SignInDialog({ onOpenChange, open }: SignInDialogProps) {
 				<div className="flex flex-col gap-4 px-4 py-4">
 					<DialogDescription>{t("sign.dialogDescription")}</DialogDescription>
 					<SocialSignIn />
-					<p className="text-[11px] text-[var(--text-muted)]">
-						{t("sign.dialogFootnote")}
-					</p>
 				</div>
 			</DialogContent>
 		</Dialog>

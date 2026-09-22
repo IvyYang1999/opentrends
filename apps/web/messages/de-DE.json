@@ -174,8 +174,7 @@
   "footer_github": "GitHub",
   "common_not_found": "Nicht gefunden",
   "sign_dialog_title": "Bei OpenTrends anmelden",
-  "sign_dialog_description": "Nach der Anmeldung werden deine gefolgten Quellen, ihre Reihenfolge und ausgeblendete Quellen geräteübergreifend synchronisiert.",
-  "sign_dialog_footnote": "Wir lesen nur Name, Avatar und E-Mail. Es wird nichts in deinem Namen veröffentlicht.",
+  "sign_dialog_description": "Melde dich an, um deine Leseeinstellungen geräteübergreifend zu synchronisieren.",
   "nav_skills_title": "Lass deinen KI-Agenten OpenTrends lesen",
   "search_label": "Suchen",
   "search_placeholder": "Quellen oder Schlagzeilen suchen…",
@@ -187,5 +186,6 @@
   "search_source_pinned": "Angeheftet",
   "search_shortcut": "⌘K",
   "card_unpin_source": "Lösen",
-  "card_pinned": "Angeheftet"
+  "card_pinned": "Angeheftet",
+  "summary_label": "KI-Zusammenfassung"
 }

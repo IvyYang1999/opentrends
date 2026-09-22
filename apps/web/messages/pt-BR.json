@@ -174,8 +174,7 @@
   "footer_github": "GitHub",
   "common_not_found": "Não encontrado",
   "sign_dialog_title": "Entrar no OpenTrends",
-  "sign_dialog_description": "Ao entrar, as fontes que você segue, a ordem delas e as que você oculta ficam sincronizadas entre dispositivos.",
-  "sign_dialog_footnote": "Só lemos seu nome, avatar e e-mail. Nada é publicado em seu nome.",
+  "sign_dialog_description": "Entre para sincronizar suas preferências de leitura entre dispositivos.",
   "nav_skills_title": "Deixe seu agente de IA ler o OpenTrends",
   "search_label": "Buscar",
   "search_placeholder": "Buscar fontes ou manchetes…",
@@ -187,5 +186,6 @@
   "search_source_pinned": "Fixada",
   "search_shortcut": "⌘K",
   "card_unpin_source": "Desafixar",
-  "card_pinned": "Fixada"
+  "card_pinned": "Fixada",
+  "summary_label": "Resumo de IA"
 }

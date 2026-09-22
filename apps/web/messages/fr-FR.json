@@ -174,8 +174,7 @@
   "footer_github": "GitHub",
   "common_not_found": "Introuvable",
   "sign_dialog_title": "Se connecter à OpenTrends",
-  "sign_dialog_description": "Une fois connecté, vos sources suivies, leur ordre et celles que vous masquez sont synchronisés entre vos appareils.",
-  "sign_dialog_footnote": "Nous lisons uniquement votre nom, votre avatar et votre e-mail. Rien n’est publié en votre nom.",
+  "sign_dialog_description": "Connectez-vous pour synchroniser vos préférences de lecture entre vos appareils.",
   "nav_skills_title": "Laissez votre agent IA lire OpenTrends",
   "search_label": "Rechercher",
   "search_placeholder": "Rechercher des sources ou des titres…",
@@ -187,5 +186,6 @@
   "search_source_pinned": "Épinglée",
   "search_shortcut": "⌘K",
   "card_unpin_source": "Désépingler",
-  "card_pinned": "Épinglée"
+  "card_pinned": "Épinglée",
+  "summary_label": "Résumé IA"
 }

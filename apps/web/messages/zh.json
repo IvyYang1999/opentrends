@@ -174,8 +174,7 @@
   "footer_github": "GitHub",
   "common_not_found": "页面未找到",
   "sign_dialog_title": "登录 OpenTrends",
-  "sign_dialog_description": "登录后，你关注的来源、排序和隐藏设置会在设备之间同步。",
-  "sign_dialog_footnote": "我们只读取你的名字、头像和邮箱，不会代你发布任何内容。",
+  "sign_dialog_description": "登录后，你的阅读偏好会在设备之间同步。",
   "nav_skills_title": "让你的 AI Agent 读取 OpenTrends",
   "search_label": "搜索",
   "search_placeholder": "搜索来源或标题…",
@@ -187,5 +186,6 @@
   "search_source_pinned": "已置顶",
   "search_shortcut": "⌘K",
   "card_unpin_source": "取消置顶",
-  "card_pinned": "已置顶"
+  "card_pinned": "已置顶",
+  "summary_label": "AI 摘要"
 }

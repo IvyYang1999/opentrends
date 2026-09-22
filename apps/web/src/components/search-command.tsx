@@ -9,6 +9,7 @@ import { ArrowUpRight, Search } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { loadSourcesStatus } from "@/components/trends/load-sources";
+import { revealSourceCard } from "@/components/trends/reveal-source-card";
 import { SourceFavicon } from "@/components/trends/source-favicon";
 import type { SourceStatusEntry } from "@/components/trends/sources-types";
 import type { TrendsPageData } from "@/components/trends/types";
@@ -98,18 +99,23 @@ function collectHeadlines(
 	return hits;
 }
 
+// Looks like a search field so it reads as one; the real input lives in the
+// dialog so results can take the space they need.
 export function SearchTrigger({ onClick }: { onClick: () => void }) {
 	const t = useT();
 	return (
 		<button
 			aria-label={t("search.label")}
-			className="inline-flex h-7 items-center gap-1.5 rounded px-2 text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
+			className="inline-flex h-7 items-center gap-2 rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 text-[12px] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text-secondary)] lg:w-52"
 			onClick={onClick}
 			title={`${t("search.label")} (${t("search.shortcut")})`}
 			type="button"
 		>
-			<Search aria-hidden className="size-3.5" />
-			<kbd className="hidden font-mono text-[10px] text-[var(--text-muted)] xl:inline">
+			<Search aria-hidden className="size-3.5 shrink-0" />
+			<span className="hidden min-w-0 flex-1 truncate text-left lg:inline">
+				{t("search.placeholder")}
+			</span>
+			<kbd className="hidden rounded border border-[var(--border-default)] px-1 font-mono text-[10px] leading-4 lg:inline">
 				{t("search.shortcut")}
 			</kbd>
 		</button>
@@ -178,6 +184,10 @@ export function SearchCommand({ onOpenChange, open }: SearchCommandProps) {
 		onOpenChange(false);
 		if (hit.kind === "headline") {
 			window.open(hit.url, "_blank", "noopener,noreferrer");
+			return;
+		}
+		// Already on a page that holds the card: no navigation, no re-render.
+		if (revealSourceCard(hit.entry.sourceId)) {
 			return;
 		}
 		const topic = navigableTopics(hit.entry)[0];

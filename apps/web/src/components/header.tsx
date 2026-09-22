@@ -10,8 +10,13 @@ import {
 } from "@opentrends/ui/components/dropdown-menu";
 import { cn } from "@opentrends/ui/lib/utils";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useParams } from "@tanstack/react-router";
-import { Bot, LogIn, LogOut, Star, UserRound } from "lucide-react";
+import {
+	Link,
+	useLocation,
+	useParams,
+	useSearch,
+} from "@tanstack/react-router";
+import { LogOut, Star, UserRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -29,15 +34,26 @@ import LanguageToggle from "./language-toggle";
 import Logo from "./logo";
 import ThemeToggle from "./theme-toggle";
 
-const linkClassName =
-	"shrink-0 rounded px-2 py-1 text-[var(--text-secondary)] whitespace-nowrap transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[status=active]:bg-[var(--accent-blue-bg)] data-[status=active]:text-[var(--accent-blue)]";
+const TOPIC_IDS = [
+	"ai",
+	"embodied",
+	"hardware",
+	"biotech",
+	"programming",
+	"cn",
+] as const;
+
+const topicClassName =
+	"shrink-0 rounded px-2 py-1 text-[var(--text-secondary)] whitespace-nowrap transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]";
+const topicActiveClassName =
+	"bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] hover:bg-[var(--accent-blue-bg)] hover:text-[var(--accent-blue)]";
 
 const GITHUB_STATS_STALE_MS = 10 * 60_000;
 const GITHUB_STATS_GC_MS = 60 * 60_000;
 
-function formatStars(stars: number | null | undefined): string {
+function formatStars(stars: number | null | undefined): string | null {
 	if (typeof stars !== "number") {
-		return "--";
+		return null;
 	}
 
 	return new Intl.NumberFormat("en", {
@@ -66,16 +82,14 @@ function AccountMenu() {
 		return (
 			<>
 				<button
-					aria-label={t("userMenu.signIn")}
 					className={cn(
-						buttonVariants({ size: "sm", variant: "ghost" }),
-						"h-7 gap-1.5 px-2 text-[var(--text-secondary)]"
+						buttonVariants({ size: "sm", variant: "outline" }),
+						"h-7 border-[var(--border-default)] bg-transparent px-2.5 text-[var(--text-primary)] hover:bg-[var(--state-hover-subtle)]"
 					)}
 					onClick={() => setSignInOpen(true)}
 					type="button"
 				>
-					<LogIn aria-hidden className="size-3.5" />
-					<span className="hidden xl:inline">{t("userMenu.signIn")}</span>
+					{t("userMenu.signIn")}
 				</button>
 				<SignInDialog onOpenChange={setSignInOpen} open={signInOpen} />
 			</>
@@ -126,6 +140,33 @@ function AccountMenu() {
 	);
 }
 
+// A topic tab is active on its trends page and on the events feed filtered
+// to it, so switching between the two views keeps the tab lit.
+function TopicLink({
+	id,
+	localeParam,
+}: {
+	id: (typeof TOPIC_IDS)[number];
+	localeParam: ReturnType<typeof localePathParam>;
+}) {
+	const t = useT();
+	const { topic } = useParams({ strict: false }) as { topic?: string };
+	const search = useSearch({ strict: false }) as { topic?: string };
+	const location = useLocation();
+	const onEvents = location.pathname.includes("/events");
+	const active = onEvents ? search.topic === id : topic === id;
+	return (
+		<Link
+			className={cn(topicClassName, active && topicActiveClassName)}
+			params={{ locale: localeParam, topic: id }}
+			search={onEvents ? { topic: id } : undefined}
+			to={onEvents ? "/{-$locale}/events" : "/{-$locale}/trends/$topic"}
+		>
+			{t(`topic.${id}`)}
+		</Link>
+	);
+}
+
 interface HeaderProps {
 	initialGithubStats: GitHubRepositoryStats;
 }
@@ -134,8 +175,6 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 	const t = useT();
 	const locale = useLocale();
 	const localeParam = localePathParam(locale);
-	// The Trends/Events switch keeps the topic the reader is looking at.
-	const { topic } = useParams({ strict: false }) as { topic?: string };
 	const [searchOpen, setSearchOpen] = useState(false);
 	const githubStats = useQuery({
 		queryKey: ["github-repository-stats"],
@@ -146,12 +185,15 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 		staleTime: GITHUB_STATS_STALE_MS,
 	});
 	const githubStars = formatStars(githubStats.data?.stars);
+	const githubLabel = githubStars
+		? `Open OpenTrends on GitHub, ${githubStars} stars`
+		: "Open OpenTrends on GitHub";
 	const githubUrl = githubStats.data?.url ?? GITHUB_REPOSITORY_URL;
 
 	return (
 		<header className="sticky top-0 z-[80] min-w-0 overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] shadow-[0_1px_0_rgba(0,0,0,0.02)]">
-			<div className="flex min-h-11 min-w-0 flex-col gap-2 px-3 py-2 sm:px-4 lg:h-11 lg:flex-row lg:items-center lg:justify-between lg:gap-3 lg:py-0">
-				<div className="order-1 flex items-center justify-between gap-3 lg:order-2 lg:ml-auto">
+			<div className="flex min-h-10 min-w-0 flex-col gap-2 px-3 py-2 sm:px-4 lg:h-10 lg:flex-row lg:items-center lg:justify-between lg:gap-3 lg:py-0">
+				<div className="order-1 flex items-center justify-between gap-3 lg:order-2 lg:ml-auto lg:shrink-0">
 					<Link
 						aria-label={t("nav.homeAria")}
 						className="inline-flex h-5 shrink-0 items-center leading-none lg:hidden"
@@ -163,19 +205,15 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 					<div className="flex shrink-0 items-center gap-2">
 						<SearchTrigger onClick={() => setSearchOpen(true)} />
 						<Link
-							className={cn(
-								buttonVariants({ size: "sm", variant: "ghost" }),
-								"h-7 gap-1.5 px-2 text-[var(--text-secondary)]"
-							)}
+							className="hidden h-7 items-center rounded px-2 text-[13px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] lg:inline-flex"
 							params={{ locale: localeParam }}
 							title={t("nav.skillsTitle")}
 							to="/{-$locale}/skills/opentrends"
 						>
-							<Bot aria-hidden className="size-3.5" />
-							<span className="hidden xl:inline">{t("nav.skills")}</span>
+							{t("nav.skills")}
 						</Link>
 						<a
-							aria-label={`Open OpenTrends on GitHub, ${githubStars} stars`}
+							aria-label={githubLabel}
 							className={cn(
 								buttonVariants({ size: "sm", variant: "outline" }),
 								"h-7 gap-1.5 border-[var(--border-default)] bg-transparent px-2 text-[var(--text-secondary)] hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
@@ -187,7 +225,9 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 						>
 							<span>GitHub</span>
 							<Star className="size-3.5" />
-							<span className="tabular-nums">{githubStars}</span>
+							{githubStars ? (
+								<span className="tabular-nums">{githubStars}</span>
+							) : null}
 						</a>
 						<LanguageToggle />
 						<ThemeToggle />
@@ -203,23 +243,9 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 					>
 						<Logo />
 					</Link>
-					<Link
-						activeOptions={{ exact: false }}
-						className={linkClassName}
-						params={{ locale: localeParam }}
-						to="/{-$locale}/trends"
-					>
-						{t("nav.trends")}
-					</Link>
-					<Link
-						activeOptions={{ exact: false, includeSearch: false }}
-						className={linkClassName}
-						params={{ locale: localeParam }}
-						search={topic ? { topic } : {}}
-						to="/{-$locale}/events"
-					>
-						{t("nav.events")}
-					</Link>
+					{TOPIC_IDS.map((id) => (
+						<TopicLink id={id} key={id} localeParam={localeParam} />
+					))}
 				</nav>
 			</div>
 			<SearchCommand onOpenChange={setSearchOpen} open={searchOpen} />

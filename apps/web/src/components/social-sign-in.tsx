@@ -71,7 +71,7 @@ export function SocialSignIn() {
 	}
 
 	const buttonClassName =
-		"h-9 w-full justify-start gap-3 border-[var(--border-default)] bg-[var(--surface-card)] px-3 text-[13px] text-[var(--text-primary)] hover:bg-[var(--state-hover-subtle)]";
+		"h-9 w-full justify-center gap-2.5 border-[var(--border-default)] bg-[var(--surface-card)] px-3 text-[13px] text-[var(--text-primary)] hover:bg-[var(--state-hover-subtle)]";
 
 	return (
 		<div className="flex flex-col gap-2">
