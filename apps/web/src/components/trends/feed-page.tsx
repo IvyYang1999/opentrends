@@ -6,7 +6,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Loader from "@/components/loader";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
 
-import { CoverImage } from "./cover-image";
 import { setDisplaySetting, useDisplaySettings } from "./display-settings";
 import { coverRatio, GeneratedCover } from "./feed-cover";
 import { type FeedEntry, rankFeed } from "./feed-model";
@@ -191,6 +190,10 @@ function FeedCard({
 }) {
 	const { item, source, heat } = entry;
 	const heatLabel = heat === undefined ? undefined : formatHeat(heat);
+	// A cover that fails to load (blocked, oversized, gone) falls back to the
+	// generated poster rather than an empty grey block.
+	const [coverFailed, setCoverFailed] = useState(false);
+	const hasCover = Boolean(item.imageUrl) && !coverFailed;
 	const original =
 		item.original && item.original.title !== item.title
 			? item.original.title
@@ -204,20 +207,22 @@ function FeedCard({
 			target="_blank"
 			title={original}
 		>
-			{item.imageUrl ? (
-				<CoverImage
+			{hasCover ? (
+				// biome-ignore lint/a11y/noNoninteractiveElementInteractions: the error listener only swaps a failed cover for the poster
+				<img
 					alt=""
 					className={`w-full bg-[var(--surface-sidebar)] object-cover ${coverRatio(item)}`}
 					height={240}
 					loading="lazy"
-					src={proxiedImageUrl(item.imageUrl)}
+					onError={() => setCoverFailed(true)}
+					src={proxiedImageUrl(item.imageUrl as string)}
 					width={320}
 				/>
 			) : (
 				<GeneratedCover heat={heatLabel} item={item} source={source} />
 			)}
 			<span className="flex flex-col gap-1.5 p-3">
-				{item.imageUrl ? (
+				{hasCover ? (
 					<span className="line-clamp-3 font-medium text-[13px] text-current leading-[1.45] group-hover:text-[var(--accent-blue)]">
 						{item.title}
 					</span>
@@ -225,7 +230,7 @@ function FeedCard({
 				<span className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
 					<SourceFavicon homeUrl={source.homeUrl} />
 					<span className="min-w-0 flex-1 truncate">{source.title}</span>
-					{heatLabel && item.imageUrl ? (
+					{heatLabel && hasCover ? (
 						<span className="inline-flex items-center gap-0.5 text-[var(--accent-orange)] tabular-nums">
 							<Flame aria-hidden className="size-3" />
 							{heatLabel}
