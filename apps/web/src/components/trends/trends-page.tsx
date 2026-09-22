@@ -110,10 +110,11 @@ interface SourceDragPreview {
 
 // Titles the reader has already opened fade, with nothing stored anywhere:
 // the browser's own :visited state does the work.
-// Browsers drop custom properties inside :visited rules, so the colours are
-// literal here (light / dark).
+// The link carries the title colour and the title inherits it, because
+// :visited can only recolour the link element itself, and only with literal
+// colours (custom properties are ignored there).
 const VISITED_TITLE_CLASS =
-	"[&:visited_[data-title]]:text-[#9b9893] dark:[&:visited_[data-title]]:text-[#6f685f]";
+	"text-[var(--text-primary)] visited:text-[#9b9893] hover:text-[var(--accent-blue)] visited:hover:text-[var(--accent-blue)] dark:visited:text-[#6f685f]";
 
 function proxiedImageUrl(imageUrl: string, variant: "card" | "row"): string {
 	return `${env.VITE_SERVER_URL}/api/image?variant=${variant}&url=${encodeURIComponent(imageUrl)}`;
@@ -1248,7 +1249,7 @@ function NewsRow({
 			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<span className="flex min-w-0 items-start gap-1.5">
 					<span
-						className={`line-clamp-3 min-w-0 flex-1 text-[13px] text-[var(--text-primary)] leading-[1.45] group-hover:text-[var(--accent-blue)] sm:line-clamp-2 ${ranking ? "" : "font-medium"}`}
+						className={`line-clamp-3 min-w-0 flex-1 text-[13px] text-current leading-[1.45] sm:line-clamp-2 ${ranking ? "" : "font-medium"}`}
 						data-title
 					>
 						{item.title}
@@ -1322,7 +1323,7 @@ function NewsCard({
 						</span>
 					) : null}
 					<span
-						className="line-clamp-3 min-w-0 flex-1 font-medium text-[13px] text-[var(--text-primary)] leading-[1.45] group-hover:text-[var(--accent-blue)]"
+						className="line-clamp-3 min-w-0 flex-1 font-medium text-[13px] text-current leading-[1.45]"
 						data-title
 					>
 						{item.title}
