@@ -64,7 +64,7 @@ function AccountMenu() {
 		return (
 			<span
 				aria-hidden
-				className="size-7 animate-pulse rounded bg-[var(--state-hover-subtle)]"
+				className="size-7 animate-pulse rounded-full bg-[var(--state-hover-subtle)]"
 			/>
 		);
 	}
@@ -91,12 +91,12 @@ function AccountMenu() {
 		<DropdownMenu>
 			<DropdownMenuTrigger
 				aria-label={t("userMenu.myAccount")}
-				className="inline-flex size-7 items-center justify-center overflow-hidden rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[popup-open]:bg-[var(--state-hover-subtle)]"
+				className="inline-flex size-7 items-center justify-center overflow-hidden rounded-full text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[popup-open]:bg-[var(--state-hover-subtle)]"
 			>
 				{user.image ? (
 					<img
 						alt=""
-						className="size-6 rounded object-cover"
+						className="size-6 rounded-full object-cover"
 						height={24}
 						src={user.image}
 						width={24}

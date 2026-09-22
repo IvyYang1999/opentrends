@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { redditAdapter } from "../adapters/native/reddit";
+import { createRedditAdapter, redditAdapter } from "../adapters/native/reddit";
 
 const originalFetch = globalThis.fetch;
 const SUBREDDIT_ERROR_RE = /subreddit/;
@@ -157,6 +157,49 @@ describe("redditAdapter", () => {
 		expect(items[0]).toMatchObject({
 			sourceId: "reddit-machinelearning",
 			title: "Fallback post",
+		});
+	});
+
+	test("falls back to RSSHub when Reddit blocks both endpoints", async () => {
+		const requestedUrls: string[] = [];
+		globalThis.fetch = ((input) => {
+			const url = String(input);
+			requestedUrls.push(url);
+			if (url.includes("reddit.com/r/")) {
+				return Promise.resolve(new Response("blocked", { status: 429 }));
+			}
+			return Promise.resolve(
+				new Response(
+					JSON.stringify({
+						items: [
+							{
+								id: "rsshub-fallback",
+								title: "RSSHub fallback post",
+								url: "https://www.reddit.com/r/LocalLLaMA/comments/fallback",
+							},
+						],
+					}),
+					{
+						headers: { "content-type": "application/json" },
+						status: 200,
+					}
+				)
+			);
+		}) as unknown as typeof fetch;
+
+		const items = await createRedditAdapter({
+			rssHubBaseUrls: ["https://rsshub.test"],
+		}).fetch({
+			sourceId: "reddit-localllama",
+			signal: new AbortController().signal,
+			params: { subreddit: "LocalLLaMA" },
+		});
+
+		expect(requestedUrls.some((url) => url.includes("format=json"))).toBe(true);
+		expect(items).toHaveLength(1);
+		expect(items[0]).toMatchObject({
+			sourceId: "reddit-localllama",
+			title: "RSSHub fallback post",
 		});
 	});
 });

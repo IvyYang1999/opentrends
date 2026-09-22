@@ -4,7 +4,7 @@ import { streamText } from "ai";
 
 import { type CacheEnvelope, hotCache } from "../cache/hot-cache";
 import { readSourceItemHistory } from "../cache/source-cache";
-import { readSummary, writeSummary } from "../cache/summary-cache";
+import { readSummary } from "../cache/summary-cache";
 import { getSourcePreset } from "../config/sources";
 import { getTopicPreset } from "../config/topics";
 import type { NewsItem, SourceId, TopicPreset, TrendsPageData } from "../types";
@@ -99,7 +99,7 @@ const SUMMARY_HOT_CACHE_TTL_SECONDS = Math.ceil(
 const SUMMARY_FIRST_CHUNK_TIMEOUT_MS = 60_000;
 const SUMMARY_IDLE_CHUNK_TIMEOUT_MS = 75_000;
 const SUMMARY_CACHE_READ_TIMEOUT_MS = 1200;
-const SUMMARY_CACHE_WRITE_TIMEOUT_MS = 1200;
+const SUMMARY_BACKGROUND_CACHE_TIMEOUT_MS = 10_000;
 const FALLBACK_ITEM_LIMIT = 6;
 const CACHED_CHUNK_SIZE = 128;
 const CACHED_CHUNK_DELAY_MS = 4;
@@ -129,7 +129,6 @@ export interface PreparedSummary {
 }
 
 interface TrendsSummaryCacheOptions {
-	waitUntil?: (promise: Promise<unknown>) => void;
 	window?: SummaryWindow;
 }
 
@@ -154,6 +153,20 @@ export class TrendsSummaryNotConfiguredError extends Error {
 	constructor() {
 		super("Trends summary is not configured. Set LLM_API_KEY to enable it.");
 		this.name = "TrendsSummaryNotConfiguredError";
+	}
+}
+
+export class TrendsSummaryPendingError extends Error {
+	constructor() {
+		super("Trends summary is being prepared in the background.");
+		this.name = "TrendsSummaryPendingError";
+	}
+}
+
+class SummaryCacheWriteError extends Error {
+	constructor() {
+		super("Failed to persist the generated trends summary to KV.");
+		this.name = "SummaryCacheWriteError";
 	}
 }
 
@@ -334,7 +347,7 @@ function formatSourceItemDate(item: NewsItem): string {
 	return item.publishedAt ? `published ${day}` : `fetched ${day}`;
 }
 
-function hasCurrentPromptVersion(prompt: string): boolean {
+export function hasCurrentSummaryPromptVersion(prompt: string): boolean {
 	return prompt.includes(`Prompt version: ${SUMMARY_PROMPT_VERSION}`);
 }
 
@@ -543,17 +556,17 @@ async function readHotSummaryCache(
 		return null;
 	}
 	const text = envelope.value.text.trim();
-	if (!hasCurrentPromptVersion(envelope.value.prompt)) {
+	if (!hasCurrentSummaryPromptVersion(envelope.value.prompt)) {
 		return null;
 	}
 	return text ? envelope.value : null;
 }
 
-async function writeHotSummaryCache(
+function writeHotSummaryCache(
 	topicId: string,
 	lang: TranslationLanguage,
 	entry: CachedSummaryEntry
-): Promise<void> {
+): Promise<boolean> {
 	const now = Date.now();
 	const envelope: CacheEnvelope<CachedSummaryEntry> = {
 		createdAt: now,
@@ -562,16 +575,24 @@ async function writeHotSummaryCache(
 		staleUntil: entry.staleUntil,
 		value: entry,
 	};
-	await hotCache.put(
+	return hotCache.put(
 		makeSummaryHotCacheKey(topicId, lang),
 		envelope,
 		SUMMARY_HOT_CACHE_TTL_SECONDS
 	);
 }
 
-async function readSummaryWithTimeout(
+export async function hasCurrentHotSummaryCache(
 	topicId: string,
 	lang: TranslationLanguage
+): Promise<boolean> {
+	return Boolean(await readHotSummaryCache(topicId, lang));
+}
+
+async function readSummaryWithTimeout(
+	topicId: string,
+	lang: TranslationLanguage,
+	timeoutMs = SUMMARY_CACHE_READ_TIMEOUT_MS
 ): Promise<Awaited<ReturnType<typeof readSummary>>> {
 	let timeout: ReturnType<typeof setTimeout> | undefined;
 	try {
@@ -580,7 +601,7 @@ async function readSummaryWithTimeout(
 			new Promise<never>((_, reject) => {
 				timeout = setTimeout(
 					() => reject(new SummaryCacheReadTimeoutError()),
-					SUMMARY_CACHE_READ_TIMEOUT_MS
+					timeoutMs
 				);
 			}),
 		]);
@@ -602,7 +623,7 @@ function cachedSummaryToEntry(
 	if (!text) {
 		return null;
 	}
-	if (!hasCurrentPromptVersion(cached.prompt)) {
+	if (!hasCurrentSummaryPromptVersion(cached.prompt)) {
 		return null;
 	}
 	return {
@@ -617,7 +638,8 @@ function cachedSummaryToEntry(
 async function readAnyCachedSummary(
 	topicId: string,
 	lang: TranslationLanguage,
-	window: SummaryWindow
+	window: SummaryWindow,
+	readTimeoutMs = SUMMARY_CACHE_READ_TIMEOUT_MS
 ): Promise<CachedSummaryEntry | null> {
 	const memory = readMemorySummary(topicId, lang);
 	if (memory) {
@@ -631,7 +653,7 @@ async function readAnyCachedSummary(
 	}
 
 	try {
-		const cached = await readSummaryWithTimeout(topicId, lang);
+		const cached = await readSummaryWithTimeout(topicId, lang, readTimeoutMs);
 		if (cached) {
 			const entry = cachedSummaryToEntry(cached, window);
 			if (entry) {
@@ -667,11 +689,17 @@ async function refreshSummaryCache(
 		url: item.url,
 	}));
 	const prompt = buildPrompt(topic, cited, lang, window);
-	const cached = await readSummaryWithTimeout(cacheTopicId, lang);
-	const cachedEntry = cachedSummaryToEntry(cached, window);
+	const cachedEntry = await readAnyCachedSummary(
+		cacheTopicId,
+		lang,
+		window,
+		SUMMARY_BACKGROUND_CACHE_TIMEOUT_MS
+	);
 	if (cachedEntry && cachedEntry.prompt === prompt) {
+		if (!(await writeHotSummaryCache(cacheTopicId, lang, cachedEntry))) {
+			throw new SummaryCacheWriteError();
+		}
 		hydrateMemorySummary(cacheTopicId, lang, cachedEntry);
-		await writeHotSummaryCache(cacheTopicId, lang, cachedEntry);
 		return;
 	}
 
@@ -695,6 +723,9 @@ async function refreshSummaryCache(
 			return;
 		}
 	}
+	throw new Error(
+		`Summary generation did not produce a cache entry for ${cacheTopicId}:${lang}.`
+	);
 }
 
 function startSummaryRefresh(
@@ -729,38 +760,6 @@ export function refreshTrendsSummaryCache(
 	return startSummaryRefresh(topicId, lang, window);
 }
 
-function refreshSummaryInBackground(
-	refresh: Promise<void>,
-	waitUntil: TrendsSummaryCacheOptions["waitUntil"]
-): void {
-	const observedRefresh = refresh.catch((error) => {
-		console.warn("[trends-summary] background refresh failed", error);
-	});
-	if (waitUntil) {
-		waitUntil(observedRefresh);
-	}
-}
-
-async function withTimeout<T>(
-	promise: Promise<T>,
-	ms: number,
-	label: string
-): Promise<T> {
-	let timeout: ReturnType<typeof setTimeout> | undefined;
-	try {
-		return await Promise.race([
-			promise,
-			new Promise<never>((_, reject) => {
-				timeout = setTimeout(() => reject(new Error(label)), ms);
-			}),
-		]);
-	} finally {
-		if (timeout) {
-			clearTimeout(timeout);
-		}
-	}
-}
-
 async function writeCachedSummary(params: {
 	citations: Citation[];
 	lang: TranslationLanguage;
@@ -778,25 +777,10 @@ async function writeCachedSummary(params: {
 		staleUntil: now + profile.staleMs,
 		text: params.text,
 	};
-	hydrateMemorySummary(params.topicId, params.lang, entry);
-	await writeHotSummaryCache(params.topicId, params.lang, entry);
-	try {
-		await withTimeout(
-			writeSummary({
-				topicId: params.topicId,
-				lang: params.lang,
-				prompt: params.prompt,
-				text: params.text,
-				citations: params.citations,
-				createdAt: now,
-				ttlMs: profile.ttlMs,
-			}),
-			SUMMARY_CACHE_WRITE_TIMEOUT_MS,
-			"Timed out writing cached trends summary."
-		);
-	} catch (error) {
-		console.warn("[trends-summary] failed to write cached summary", error);
+	if (!(await writeHotSummaryCache(params.topicId, params.lang, entry))) {
+		throw new SummaryCacheWriteError();
 	}
+	hydrateMemorySummary(params.topicId, params.lang, entry);
 }
 
 // Body format for clients that ask for it: one JSON line carrying every
@@ -931,6 +915,9 @@ async function* streamGeneratedSummary(params: {
 			/* Ignore cleanup failures after a generation timeout. */
 		}
 		console.warn("[trends-summary] failed to stream model summary", error);
+		if (error instanceof SummaryCacheWriteError) {
+			throw error;
+		}
 		if (chunks.length === 0) {
 			yield buildFallbackSummary(params.topic, params.cited, params.lang);
 		}
@@ -1010,12 +997,6 @@ export async function prepareTrendsSummary(
 
 	const cachedSummary = await readAnyCachedSummary(cacheTopicId, lang, window);
 	if (cachedSummary) {
-		if (cachedSummary.expiresAt <= Date.now()) {
-			refreshSummaryInBackground(
-				startSummaryRefresh(topicId, lang, window),
-				options.waitUntil
-			);
-		}
 		return {
 			citations: cachedSummary.citations,
 			stream: (abortSignal) =>
@@ -1023,25 +1004,5 @@ export async function prepareTrendsSummary(
 		};
 	}
 
-	const cited = await collectWindowCitedItems(topicId, topic, lang, window);
-	const citations: Citation[] = cited.map(({ n, item }) => ({
-		n,
-		url: item.url,
-	}));
-	const prompt = buildPrompt(topic, cited, lang, window);
-
-	return {
-		citations,
-		stream: (abortSignal) =>
-			streamGeneratedSummary({
-				cacheTopicId,
-				citations,
-				cited,
-				lang,
-				prompt,
-				topic,
-				window,
-				abortSignal,
-			}),
-	};
+	throw new TrendsSummaryPendingError();
 }

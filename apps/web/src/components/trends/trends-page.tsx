@@ -25,11 +25,13 @@ import {
 	ArrowUpRight,
 	CircleAlert,
 	CircleDashed,
+	ExternalLink,
 	EyeOff,
 	GripVertical,
 	Languages,
 	LoaderCircle,
 	MoreHorizontal,
+	Pin,
 } from "lucide-react";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
@@ -37,6 +39,7 @@ import {
 	type PointerEvent as ReactPointerEvent,
 	useCallback,
 	useEffect,
+	useMemo,
 	useRef,
 	useState,
 } from "react";
@@ -59,16 +62,22 @@ import {
 	DisplaySettingsMenuContent,
 	LayoutSettingsMenuContent,
 } from "./display-settings-menu";
-import { translateTrendsPageSnapshot } from "./load-trends";
 import { formatRelativeTime } from "./relative-time";
-import { sourceCardViewportClasses } from "./source-card-model";
+import {
+	isDecorativeBadgeImage,
+	sourceCardViewportClasses,
+} from "./source-card-model";
 import { SourceFavicon } from "./source-favicon";
 import { useSourcePreferences } from "./source-preferences";
-import { moveSource } from "./source-preferences-model";
+import { moveSource, pinSource } from "./source-preferences-model";
 import {
 	applyCachedTranslations,
 	storePageTranslations,
 } from "./translation-snapshot-cache";
+import {
+	pageNeedsTranslationWarmup,
+	textNeedsTranslation,
+} from "./translation-status";
 import { trendSourceQueryOptions } from "./trends-query";
 import { TrendsSummary } from "./trends-summary";
 import type {
@@ -77,9 +86,6 @@ import type {
 	SourceStatus,
 	TrendsPageData,
 } from "./types";
-
-const CJK_RE = /[\u3400-\u9fff]/;
-const CYRILLIC_RE = /\p{Script=Cyrillic}/u;
 
 interface TrendsPageProps {
 	displaySettingsStore?: DisplaySettingsStoreOptions;
@@ -103,67 +109,17 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	const locale = useLocale();
 	const localeParam = localePathParam(locale);
 	const t = useT();
-	const [displayPage, setDisplayPage] = useState(page);
-	const [translationPending, setTranslationPending] = useState(false);
-	const translationMountedRef = useRef(false);
-	const translationRequestKeyRef = useRef<string | null>(null);
-	const settings = useDisplaySettings(displaySettingsStore);
-	useEffect(() => {
-		translationMountedRef.current = true;
-		return () => {
-			translationMountedRef.current = false;
-		};
-	}, []);
-	const translationRef = useCallback(
-		(el: HTMLDivElement | null) => {
-			if (!el) {
-				return;
-			}
-			const requestKey = `${page.id}:${page.updatedAt}:${locale}`;
-			const cachedPage = applyCachedTranslations(page, locale);
-			setDisplayPage(cachedPage);
-			storePageTranslations(cachedPage, locale);
-			if (!needsTranslationWarmup(cachedPage, locale)) {
-				translationRequestKeyRef.current = requestKey;
-				setTranslationPending(false);
-				return;
-			}
-			if (translationRequestKeyRef.current === requestKey) {
-				return;
-			}
-
-			translationRequestKeyRef.current = requestKey;
-			setTranslationPending(true);
-			translateTrendsPageSnapshot(cachedPage, locale)
-				.then((translatedPage) => {
-					if (
-						translationMountedRef.current &&
-						translationRequestKeyRef.current === requestKey
-					) {
-						setTranslationPending(false);
-						storePageTranslations(translatedPage, locale);
-						if (needsTranslationWarmup(translatedPage, locale)) {
-							translationRequestKeyRef.current = null;
-						}
-						setDisplayPage({
-							...translatedPage,
-							updatedAt: page.updatedAt,
-						});
-					}
-				})
-				.catch(() => {
-					if (
-						translationMountedRef.current &&
-						translationRequestKeyRef.current === requestKey
-					) {
-						setTranslationPending(false);
-						translationRequestKeyRef.current = null;
-					}
-					/* The original page is already rendered. */
-				});
-		},
+	const displayPage = useMemo(
+		() => applyCachedTranslations(page, locale),
 		[locale, page]
 	);
+	const translationPending =
+		(locale === "zh" || locale === "en") &&
+		pageNeedsTranslationWarmup(displayPage, locale);
+	const settings = useDisplaySettings(displaySettingsStore);
+	useEffect(() => {
+		storePageTranslations(displayPage, locale);
+	}, [displayPage, locale]);
 	const sources = displayPage.sections.flatMap((section) =>
 		section.sources.map((source) => ({
 			sectionId: section.id,
@@ -183,8 +139,11 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	const hiddenSourceIdSet = new Set(
 		sourcePreferences.preference.hiddenSourceIds
 	);
-	const visibleSources = orderedSources.filter(
+	const userVisibleSources = orderedSources.filter(
 		({ source }) => !hiddenSourceIdSet.has(source.sourceId)
+	);
+	const visibleSources = userVisibleSources.filter(
+		({ source }) => source.items.length > 0 || source.status !== "error"
 	);
 	const [draggingSourceId, setDraggingSourceId] = useState<string | undefined>(
 		undefined
@@ -244,6 +203,15 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 			return;
 		}
 		commitSourceOrder(activeSourceId, nextOrder);
+	}
+
+	function pinAndAnnounce(sourceId: string) {
+		const currentOrder = sourceOrderRef.current;
+		const nextOrder = pinSource(currentOrder, sourceId);
+		if (nextOrder.join("\u0000") === currentOrder.join("\u0000")) {
+			return;
+		}
+		commitSourceOrder(sourceId, nextOrder);
 	}
 
 	function dragHandleProps(sourceId: string): SourceDragHandleProps {
@@ -379,7 +347,7 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	}
 
 	let sourceContent: ReactNode;
-	if (visibleSources.length === 0) {
+	if (userVisibleSources.length === 0) {
 		sourceContent = (
 			<div className="flex min-h-48 flex-col items-center justify-center gap-3 border-[var(--border-default)] border-b bg-[var(--surface-card)] px-4 text-center">
 				<p className="text-[13px] text-[var(--text-secondary)]">
@@ -394,6 +362,12 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				</button>
 			</div>
 		);
+	} else if (visibleSources.length === 0) {
+		sourceContent = (
+			<div className="flex min-h-32 items-center justify-center border-[var(--border-default)] border-b bg-[var(--surface-card)] px-4 text-center text-[13px] text-[var(--text-secondary)]">
+				{t("card.unavailable")}
+			</div>
+		);
 	} else if (settings.layout === "sourceSections") {
 		sourceContent = (
 			<SourceSectionsLayout
@@ -403,6 +377,8 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				onHideSource={(sourceId) =>
 					sourcePreferences.setSourceVisible(sourceId, false)
 				}
+				onPinSource={pinAndAnnounce}
+				pinnedSourceId={orderedSources[0]?.source.sourceId}
 				settings={settings}
 				sources={visibleSources}
 				t={t}
@@ -419,6 +395,8 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				onHideSource={(sourceId) =>
 					sourcePreferences.setSourceVisible(sourceId, false)
 				}
+				onPinSource={pinAndAnnounce}
+				pinnedSourceId={orderedSources[0]?.source.sourceId}
 				settings={settings}
 				sources={visibleSources}
 				t={t}
@@ -429,7 +407,7 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	}
 	return (
 		<ScrollArea className="min-w-0 flex-1 overflow-hidden bg-[var(--surface-app)] text-[var(--text-primary)]">
-			<div ref={translationRef}>
+			<div>
 				<p aria-live="polite" className="sr-only">
 					{dragAnnouncement}
 				</p>
@@ -508,64 +486,6 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	);
 }
 
-function needsTranslationWarmup(page: TrendsPageData, locale: Locale): boolean {
-	for (const section of page.sections) {
-		for (const source of section.sources) {
-			for (const item of source.items) {
-				if (item.original) {
-					continue;
-				}
-				if (shouldTranslateItem(item, locale)) {
-					return true;
-				}
-			}
-		}
-	}
-	return false;
-}
-
-function hasCjk(value: string | undefined): boolean {
-	return value ? CJK_RE.test(value) : false;
-}
-
-function hasCyrillic(value: string | undefined): boolean {
-	return value ? CYRILLIC_RE.test(value) : false;
-}
-
-function shouldTranslateItem(item: NewsItem, locale: Locale): boolean {
-	return (
-		shouldTranslateText(item.title, locale) ||
-		shouldTranslateText(item.description, locale)
-	);
-}
-
-function shouldTranslateText(
-	value: string | undefined,
-	locale: Locale
-): boolean {
-	if (!value?.trim()) {
-		return false;
-	}
-	if (locale === "zh") {
-		return !hasCjk(value);
-	}
-	if (locale === "zh-Hant") {
-		return true;
-	}
-	if (locale === "ru") {
-		return !hasCyrillic(value);
-	}
-	if (
-		locale === "fr-FR" ||
-		locale === "es-ES" ||
-		locale === "de-DE" ||
-		locale === "pt-BR"
-	) {
-		return true;
-	}
-	return hasCjk(value) || hasCyrillic(value);
-}
-
 interface SourceWithSection {
 	sectionId: string;
 	source: SourceCardData;
@@ -592,6 +512,8 @@ function SourceGridLayout({
 	dragHandleProps,
 	draggingSourceId,
 	onHideSource,
+	onPinSource,
+	pinnedSourceId,
 }: {
 	sources: SourceWithSection[];
 	settings: DisplaySettings;
@@ -602,6 +524,8 @@ function SourceGridLayout({
 	dragHandleProps: (sourceId: string) => SourceDragHandleProps;
 	draggingSourceId?: string;
 	onHideSource: (sourceId: string) => void;
+	onPinSource: (sourceId: string) => void;
+	pinnedSourceId?: string;
 }) {
 	return (
 		<div className="grid grid-cols-1 items-start sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -612,6 +536,8 @@ function SourceGridLayout({
 					key={`${sectionId}:${source.sourceId}`}
 					locale={locale}
 					onHide={() => onHideSource(source.sourceId)}
+					onPin={() => onPinSource(source.sourceId)}
+					pinned={pinnedSourceId === source.sourceId}
 					settings={settings}
 					source={source}
 					t={t}
@@ -633,6 +559,8 @@ function SourceSectionsLayout({
 	dragHandleProps,
 	draggingSourceId,
 	onHideSource,
+	onPinSource,
+	pinnedSourceId,
 }: {
 	sources: SourceWithSection[];
 	settings: DisplaySettings;
@@ -643,6 +571,8 @@ function SourceSectionsLayout({
 	dragHandleProps: (sourceId: string) => SourceDragHandleProps;
 	draggingSourceId?: string;
 	onHideSource: (sourceId: string) => void;
+	onPinSource: (sourceId: string) => void;
+	pinnedSourceId?: string;
 }) {
 	return (
 		<div className="bg-[var(--surface-app)]">
@@ -653,6 +583,8 @@ function SourceSectionsLayout({
 					key={`${sectionId}:${source.sourceId}`}
 					locale={locale}
 					onHide={() => onHideSource(source.sourceId)}
+					onPin={() => onPinSource(source.sourceId)}
+					pinned={pinnedSourceId === source.sourceId}
 					settings={settings}
 					source={source}
 					t={t}
@@ -674,6 +606,8 @@ function SourceCard({
 	dragHandleProps,
 	isDragging,
 	onHide,
+	onPin,
+	pinned,
 }: {
 	source: SourceCardData;
 	settings: DisplaySettings;
@@ -684,6 +618,8 @@ function SourceCard({
 	dragHandleProps: SourceDragHandleProps;
 	isDragging: boolean;
 	onHide: () => void;
+	onPin: () => void;
+	pinned: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	const [overflowing, setOverflowing] = useState(false);
@@ -708,6 +644,8 @@ function SourceCard({
 			<SourceCardHeader
 				dragHandleProps={dragHandleProps}
 				onHide={onHide}
+				onPin={onPin}
+				pinned={pinned}
 				source={source}
 				t={t}
 			/>
@@ -773,6 +711,8 @@ function SourceSection({
 	dragHandleProps,
 	isDragging,
 	onHide,
+	onPin,
+	pinned,
 }: {
 	source: SourceCardData;
 	settings: DisplaySettings;
@@ -783,6 +723,8 @@ function SourceSection({
 	dragHandleProps: SourceDragHandleProps;
 	isDragging: boolean;
 	onHide: () => void;
+	onPin: () => void;
+	pinned: boolean;
 }) {
 	const [open, setOpen] = useState(false);
 	return (
@@ -793,6 +735,8 @@ function SourceSection({
 			<SourceSectionHeader
 				dragHandleProps={dragHandleProps}
 				onHide={onHide}
+				onPin={onPin}
+				pinned={pinned}
 				source={source}
 				t={t}
 			/>
@@ -898,11 +842,15 @@ function SourceCardHeader({
 	t,
 	dragHandleProps,
 	onHide,
+	onPin,
+	pinned,
 }: {
 	source: SourceCardData;
 	t: Translator;
 	dragHandleProps: SourceDragHandleProps;
 	onHide: () => void;
+	onPin: () => void;
+	pinned: boolean;
 }) {
 	return (
 		<div className="flex items-start justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-2 sm:items-baseline">
@@ -918,7 +866,13 @@ function SourceCardHeader({
 				</h3>
 				<StatusDot status={source.status} t={t} />
 			</div>
-			<SourceHeaderMeta onHide={onHide} source={source} t={t} />
+			<SourceHeaderMeta
+				onHide={onHide}
+				onPin={onPin}
+				pinned={pinned}
+				source={source}
+				t={t}
+			/>
 		</div>
 	);
 }
@@ -928,11 +882,15 @@ function SourceSectionHeader({
 	t,
 	dragHandleProps,
 	onHide,
+	onPin,
+	pinned,
 }: {
 	source: SourceCardData;
 	t: Translator;
 	dragHandleProps: SourceDragHandleProps;
 	onHide: () => void;
+	onPin: () => void;
+	pinned: boolean;
 }) {
 	return (
 		<div className="flex flex-col gap-2 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:px-4">
@@ -951,6 +909,8 @@ function SourceSectionHeader({
 			<SourceHeaderMeta
 				itemCount={source.items.length}
 				onHide={onHide}
+				onPin={onPin}
+				pinned={pinned}
 				source={source}
 				t={t}
 			/>
@@ -963,11 +923,15 @@ function SourceHeaderMeta({
 	t,
 	itemCount,
 	onHide,
+	onPin,
+	pinned,
 }: {
 	source: SourceCardData;
 	t: Translator;
 	itemCount?: number;
 	onHide: () => void;
+	onPin: () => void;
+	pinned: boolean;
 }) {
 	return (
 		<div className="flex shrink-0 flex-wrap items-center justify-end gap-2 text-[11px] text-[var(--text-muted)] max-sm:justify-start">
@@ -997,11 +961,16 @@ function SourceHeaderMeta({
 									rel="noopener noreferrer"
 									target="_blank"
 								>
+									<ExternalLink aria-hidden className="size-3.5" />
 									{t("card.openHome")}
 								</a>
 							}
 						/>
 					) : null}
+					<DropdownMenuItem disabled={pinned} onClick={onPin}>
+						<Pin aria-hidden className="size-3.5" />
+						{t("card.pinSource")}
+					</DropdownMenuItem>
 					<DropdownMenuItem onClick={onHide}>
 						<EyeOff aria-hidden className="size-3.5" />
 						{t("card.hideSource")}
@@ -1144,7 +1113,10 @@ function NewsRow({
 }) {
 	const t = useT();
 	const meta = buildMeta(item, settings, t);
-	const showCover = settings.showCover && Boolean(item.imageUrl);
+	const showCover =
+		settings.showCover &&
+		Boolean(item.imageUrl) &&
+		!isDecorativeBadgeImage(item.imageUrl);
 	const showDescription = settings.showDescription && Boolean(item.description);
 
 	return (
@@ -1206,7 +1178,10 @@ function NewsCard({
 }) {
 	const t = useT();
 	const meta = buildMeta(item, settings, t);
-	const showCover = settings.showCover && Boolean(item.imageUrl);
+	const showCover =
+		settings.showCover &&
+		Boolean(item.imageUrl) &&
+		!isDecorativeBadgeImage(item.imageUrl);
 	const showDescription = settings.showDescription && Boolean(item.description);
 
 	return (
@@ -1266,7 +1241,7 @@ function TitleTranslationIndicator({
 	pending: boolean;
 	t: Translator;
 }) {
-	if (!pending || item.original || !shouldTranslateText(item.title, locale)) {
+	if (!pending || item.original || !textNeedsTranslation(item.title, locale)) {
 		return null;
 	}
 

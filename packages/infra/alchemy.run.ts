@@ -137,6 +137,7 @@ export const api = await Worker("api", {
 			queue: summaryPrewarmQueue,
 			settings: {
 				batchSize: 2,
+				maxConcurrency: 1,
 				maxRetries: 3,
 				maxWaitTimeMs: 5000,
 				retryDelay: 60,

@@ -3,9 +3,10 @@ import {
 	readSnapshot,
 	readSnapshotSummaries,
 	readSnapshots,
+	readSourceRefreshStates,
 } from "../cache/source-cache";
 import { getSourcePreset } from "../config/sources";
-import { getTopicPreset } from "../config/topics";
+import { getTopicPreset, topicPresets } from "../config/topics";
 import type {
 	SourceCardData,
 	SourceId,
@@ -15,8 +16,12 @@ import type {
 	TrendsSectionData,
 } from "../types";
 import { refreshSource } from "./refresh-source";
-import { prioritizeExpiredSourceIds } from "./source-refresh-priority";
 import {
+	prioritizeExpiredSourceIds,
+	selectDueSourceIds,
+} from "./source-refresh-priority";
+import {
+	needsTranslation,
 	type TranslationLanguage,
 	type TranslationMode,
 	translateTrendsPage,
@@ -38,6 +43,7 @@ const TRENDS_PAGE_HOT_CACHE_TTL_SECONDS = Math.ceil(
 	TRENDS_PAGE_CACHE_RETENTION_MS / 1000
 );
 const NO_SNAPSHOT_MESSAGE = "Source has no snapshot yet.";
+const MAX_PAGE_BACKGROUND_REFRESHES = 4;
 export const DEFAULT_TRENDS_ITEMS_PER_SOURCE = 30;
 export const PREVIEW_TRENDS_ITEMS_PER_SOURCE = 16;
 const memoryTrendsPageCache = new Map<
@@ -81,13 +87,52 @@ function isMemoryCacheableTrendsPage(
 	return translationMode === "background";
 }
 
-function makeTrendsPageCacheKey(
+export function makeTrendsPageCacheKey(
 	topicId: string,
 	lang: TranslationLanguage,
 	translationMode: TranslationMode,
 	itemsPerSource: number
 ): string {
-	return `trends:v4:page:${topicId}:${lang}:${translationMode}:${itemsPerSource}`;
+	return `trends:v5:page:${topicId}:${lang}:${translationMode}:${itemsPerSource}`;
+}
+
+export function translationPageCacheKeysForSource(
+	sourceId: SourceId,
+	lang: TranslationLanguage
+): string[] {
+	const keys: string[] = [];
+	for (const [topicId, topic] of Object.entries(topicPresets)) {
+		if (
+			!topic.sections.some((section) =>
+				section.sourceIds.some(
+					(candidateSourceId) => candidateSourceId === sourceId
+				)
+			)
+		) {
+			continue;
+		}
+		for (const itemsPerSource of [
+			PREVIEW_TRENDS_ITEMS_PER_SOURCE,
+			DEFAULT_TRENDS_ITEMS_PER_SOURCE,
+		]) {
+			keys.push(
+				makeTrendsPageCacheKey(topicId, lang, "background", itemsPerSource)
+			);
+		}
+	}
+	return keys;
+}
+
+export async function invalidateTranslatedTrendsPageCache(
+	sourceId: SourceId,
+	lang: TranslationLanguage
+): Promise<void> {
+	clearTrendsPageCache();
+	await Promise.all(
+		translationPageCacheKeysForSource(sourceId, lang).map((key) =>
+			hotCache.delete(key)
+		)
+	);
 }
 
 function writeMemoryTrendsPageCache(
@@ -182,7 +227,11 @@ async function refreshTrendsPage(
 	// Missing or expired snapshots are refreshed in the background. The page is
 	// still cached briefly: leaving it uncached made every request rebuild it
 	// from D1 for as long as a single source stayed expired.
-	if (hasMissingSnapshots(page) || hasExpiredSnapshots(page, now)) {
+	if (
+		hasMissingSnapshots(page) ||
+		hasExpiredSnapshots(page, now) ||
+		hasPendingTranslations(page, lang)
+	) {
 		freshUntil = now + TRENDS_PAGE_CACHE_MIN_FRESH_MS;
 	}
 	const staleUntil = now + TRENDS_PAGE_CACHE_STALE_MS;
@@ -206,6 +255,17 @@ async function refreshTrendsPage(
 		TRENDS_PAGE_HOT_CACHE_TTL_SECONDS
 	);
 	return page;
+}
+
+function hasPendingTranslations(
+	page: TrendsPageData,
+	lang: TranslationLanguage
+): boolean {
+	return page.sections.some((section) =>
+		section.sources.some((source) =>
+			source.items.some((item) => needsTranslation(item, lang))
+		)
+	);
 }
 
 function hasMissingSnapshots(page: TrendsPageData): boolean {
@@ -300,13 +360,18 @@ function refreshSourceIdsInBackground(
 	}
 
 	const refresh = (async () => {
-		let refreshed = false;
-		for (const sourceId of sourceIds) {
-			const outcome = await refreshSource(sourceId);
-			if (outcome.kind === "ok" || outcome.kind === "error") {
-				refreshed = true;
-			}
-		}
+		const uniqueSourceIds = [...new Set(sourceIds)];
+		const refreshStates = await readSourceRefreshStates(uniqueSourceIds);
+		const dueSourceIds = selectDueSourceIds(
+			uniqueSourceIds,
+			refreshStates,
+			Date.now(),
+			MAX_PAGE_BACKGROUND_REFRESHES
+		);
+		const outcomes = await Promise.all(dueSourceIds.map(refreshSource));
+		const refreshed = outcomes.some(
+			(outcome) => outcome.kind === "ok" || outcome.kind === "error"
+		);
 		if (refreshed) {
 			clearTrendsPageCache();
 		}

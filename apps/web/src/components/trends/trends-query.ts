@@ -10,6 +10,7 @@ import {
 	TRENDS_FULL_ITEMS_PER_SOURCE,
 	TRENDS_PREVIEW_ITEMS_PER_SOURCE,
 } from "./load-trends";
+import { pageNeedsTranslationWarmup } from "./translation-status";
 import type {
 	EventDetailData,
 	EventFeedData,
@@ -23,9 +24,12 @@ export const TRENDS_PAGE_STALE_MS = 10 * 60_000;
 export function trendsPageQueryOptions(topic: string, locale: Locale) {
 	return queryOptions<TrendsPageData, Error>({
 		queryKey: ["trends-page", topic, locale, TRENDS_PREVIEW_ITEMS_PER_SOURCE],
-		queryFn: () =>
-			loadTrends(topic, locale, "background", TRENDS_PREVIEW_ITEMS_PER_SOURCE),
+		queryFn: () => loadTrends(topic, locale, TRENDS_PREVIEW_ITEMS_PER_SOURCE),
 		gcTime: TRENDS_PAGE_GC_MS,
+		refetchInterval: (query) =>
+			query.state.data && pageNeedsTranslationWarmup(query.state.data, locale)
+				? 10_000
+				: false,
 		refetchOnWindowFocus: false,
 		staleTime: TRENDS_PAGE_STALE_MS,
 	});
@@ -42,17 +46,11 @@ export function trendSourceQueryOptions(
 			topic,
 			sourceId,
 			locale,
-			"sync",
+			"background",
 			TRENDS_FULL_ITEMS_PER_SOURCE,
 		],
 		queryFn: () =>
-			loadTrendSource(
-				topic,
-				sourceId,
-				locale,
-				"sync",
-				TRENDS_FULL_ITEMS_PER_SOURCE
-			),
+			loadTrendSource(topic, sourceId, locale, TRENDS_FULL_ITEMS_PER_SOURCE),
 		gcTime: TRENDS_PAGE_GC_MS,
 		refetchOnWindowFocus: false,
 		staleTime: TRENDS_PAGE_STALE_MS,

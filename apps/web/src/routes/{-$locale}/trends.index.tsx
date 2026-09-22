@@ -1,5 +1,6 @@
 import { createFileRoute, notFound, redirect } from "@tanstack/react-router";
-import { isLocale } from "@/lib/i18n";
+import { defaultTopicForLocale } from "@/lib/default-topic";
+import { isLocale, resolveLocale } from "@/lib/i18n";
 
 export const Route = createFileRoute("/{-$locale}/trends/")({
 	loader: ({ params }) => {
@@ -8,7 +9,10 @@ export const Route = createFileRoute("/{-$locale}/trends/")({
 		}
 		throw redirect({
 			to: "/{-$locale}/trends/$topic",
-			params: { ...params, topic: "ai" },
+			params: {
+				...params,
+				topic: defaultTopicForLocale(resolveLocale(params.locale)),
+			},
 		});
 	},
 });

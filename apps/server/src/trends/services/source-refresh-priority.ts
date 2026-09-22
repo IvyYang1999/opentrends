@@ -1,3 +1,4 @@
+import type { SourceRefreshState } from "../cache/source-cache";
 import type { SourceId } from "../types";
 
 interface RefreshableSource {
@@ -34,4 +35,33 @@ export function prioritizeExpiredSourceIds(
 			return a.expiresAt - b.expiresAt || a.index - b.index;
 		})
 		.map(([sourceId]) => sourceId);
+}
+
+export function selectDueSourceIds(
+	sourceIds: readonly SourceId[],
+	states: ReadonlyMap<SourceId, SourceRefreshState>,
+	now: number,
+	limit: number
+): SourceId[] {
+	return sourceIds
+		.map((sourceId, index) => ({
+			index,
+			sourceId,
+			state: states.get(sourceId),
+		}))
+		.filter(
+			({ state }) =>
+				!state || state.expiresAt === undefined || state.expiresAt <= now
+		)
+		.sort((a, b) => {
+			if (Boolean(a.state) !== Boolean(b.state)) {
+				return a.state ? 1 : -1;
+			}
+			return (
+				(a.state?.expiresAt ?? Number.NEGATIVE_INFINITY) -
+					(b.state?.expiresAt ?? Number.NEGATIVE_INFINITY) || a.index - b.index
+			);
+		})
+		.slice(0, Math.max(0, limit))
+		.map(({ sourceId }) => sourceId);
 }

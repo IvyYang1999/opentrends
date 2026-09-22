@@ -155,17 +155,19 @@ export default {
 	},
 	queue(batch, bindings) {
 		return runWithWorkerBindings(bindings, async () => {
-			for (const message of batch.messages) {
-				try {
-					await processQueueMessage(message.body);
-					message.ack();
-				} catch (error) {
-					console.warn("[cloudflare-queue] message failed", error);
-					message.retry({
-						delaySeconds: message.body.kind === "event-merge" ? 120 : 60,
-					});
-				}
-			}
+			await Promise.all(
+				batch.messages.map(async (message) => {
+					try {
+						await processQueueMessage(message.body);
+						message.ack();
+					} catch (error) {
+						console.warn("[cloudflare-queue] message failed", error);
+						message.retry({
+							delaySeconds: message.body.kind === "event-merge" ? 120 : 60,
+						});
+					}
+				})
+			);
 		});
 	},
 	scheduled(controller, bindings, executionContext) {

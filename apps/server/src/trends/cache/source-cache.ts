@@ -34,6 +34,12 @@ export interface SourceRefreshDelta {
 	unchangedCount: number;
 }
 
+export interface SourceRefreshState {
+	expiresAt?: number;
+	sourceId: SourceId;
+	status: SourceStatus;
+}
+
 interface SourceRow {
 	errorCount: number;
 	expiresAt: Date | null;
@@ -279,6 +285,33 @@ export async function readSnapshotSummaries(
 		});
 	}
 	return snapshots;
+}
+
+// Unlike snapshot summaries, refresh state includes generation-0 rows. Those
+// rows record a failed first attempt and its retry deadline; ignoring them made
+// every cold Worker retry the same failing sources and starve the rest.
+export async function readSourceRefreshStates(
+	sourceIds: readonly SourceId[]
+): Promise<Map<SourceId, SourceRefreshState>> {
+	if (sourceIds.length === 0) {
+		return new Map();
+	}
+
+	const rows: SourceRow[] = [];
+	for (const batch of chunk(sourceIds, SNAPSHOT_READ_BATCH_SIZE)) {
+		rows.push(...(await readSnapshotSummaryBatch(batch)));
+	}
+
+	return new Map(
+		rows.map((row) => [
+			row.sourceId as SourceId,
+			{
+				expiresAt: row.expiresAt?.getTime(),
+				sourceId: row.sourceId as SourceId,
+				status: row.status as SourceStatus,
+			},
+		])
+	);
 }
 
 async function readSnapshotSummaryBatch(

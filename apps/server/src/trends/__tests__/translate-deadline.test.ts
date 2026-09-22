@@ -25,6 +25,44 @@ function makeCandidates(count: number): TranslationCandidate[] {
 }
 
 describe("sync translation deadline", () => {
+	test("does not split provider failures into more paid requests", async () => {
+		setServerEnv();
+		const { shouldSplitTranslationFailure } = await import(
+			"../services/translate-news-items"
+		);
+		const providerError = Object.assign(new Error("Payment Required"), {
+			name: "AI_APICallError",
+			statusCode: 402,
+		});
+		const shapeError = Object.assign(new Error("invalid object"), {
+			name: "AI_NoObjectGeneratedError",
+		});
+
+		expect(shouldSplitTranslationFailure(providerError)).toBe(false);
+		expect(shouldSplitTranslationFailure(shapeError)).toBe(true);
+	});
+
+	test("lets queue callers retry when every provider batch fails", async () => {
+		setServerEnv();
+		const { translateMissingWithinTimeout } = await import(
+			"../services/translate-news-items"
+		);
+		const providerError = Object.assign(new Error("Payment Required"), {
+			name: "AI_APICallError",
+			statusCode: 402,
+		});
+
+		await expect(
+			translateMissingWithinTimeout(
+				"zh",
+				makeCandidates(6),
+				100,
+				{ throwOnTotalFailure: true },
+				() => Promise.reject(providerError)
+			)
+		).rejects.toBe(providerError);
+	});
+
 	test("returns on time and lets in-flight batches finish for the cache", async () => {
 		setServerEnv();
 		const { translateMissingWithinTimeout } = await import(

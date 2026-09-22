@@ -4,22 +4,12 @@ import { createORPCClient } from "@orpc/client";
 import { RPCLink } from "@orpc/client/fetch";
 import type { RouterClient } from "@orpc/server";
 import { createTanstackQueryUtils } from "@orpc/tanstack-query";
-import { QueryCache, QueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { QueryClient } from "@tanstack/react-query";
 
-export const createQueryClient = () =>
-	new QueryClient({
-		queryCache: new QueryCache({
-			onError: (error, query) => {
-				toast.error(`Error: ${error.message}`, {
-					action: {
-						label: "retry",
-						onClick: query.invalidate,
-					},
-				});
-			},
-		}),
-	});
+// Query surfaces own their loading/error UI. A global query-cache toast exposed
+// raw server errors for harmless background refetches even when cached data was
+// still on screen, making a transient failure look like a page-wide outage.
+export const createQueryClient = () => new QueryClient();
 
 const link = new RPCLink({
 	url: `${env.VITE_SERVER_URL}/rpc`,

@@ -17,7 +17,7 @@ const OPENTRENDS_SKILL_MANIFEST = {
 	query: {
 		lang: ["zh", "en", "zh-Hant", "ru"],
 		items: "preview | 1..defaultMax",
-		translations: ["background", "sync"],
+		translations: ["background"],
 	},
 } as const;
 

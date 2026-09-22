@@ -39,7 +39,7 @@ type WritableTranslation = Omit<
 >;
 
 const BATCH_SIZE = 6;
-const BACKGROUND_TRANSLATION_CACHE_TIMEOUT_MS = 1200;
+const BACKGROUND_TRANSLATION_CACHE_TIMEOUT_MS = 3000;
 const SYNC_TRANSLATION_CONCURRENCY = 4;
 const SYNC_TRANSLATION_TIMEOUT_MS = 12_000;
 const SYNC_TRANSLATION_STRAGGLER_MS = 25_000;
@@ -335,6 +335,9 @@ async function translateBatchResilient(
 		if (abortSignal?.aborted) {
 			throw error;
 		}
+		if (!shouldSplitTranslationFailure(error)) {
+			throw error;
+		}
 		if (candidates.length <= 1) {
 			console.warn("[trends-translation] failed to translate item", error);
 			return [];
@@ -348,7 +351,25 @@ async function translateBatchResilient(
 	}
 }
 
+// Splitting is useful when a model returned malformed structured output: a
+// smaller payload often fixes that one item. It is actively harmful for auth,
+// billing, rate-limit, and network failures because one failed request becomes
+// a request tree. Those failures must stay a single queue retry.
+export function shouldSplitTranslationFailure(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false;
+	}
+	return (
+		error.name === "AI_NoObjectGeneratedError" ||
+		error.name === "AI_TypeValidationError" ||
+		error.name === "AI_JSONParseError"
+	);
+}
+
 export interface TranslationOptions {
+	// Queue prewarm jobs should be retried when the provider rejected every
+	// batch. Interactive requests keep their existing best-effort behavior.
+	throwOnTotalFailure?: boolean;
 	// Lets batches that outlive the response finish and reach the cache. Without
 	// it a slow model loses every batch it has not completed at the deadline,
 	// and each new request starts the same work again.
@@ -372,6 +393,8 @@ export async function translateMissingWithinTimeout(
 	const stragglerLimit = new AbortController();
 	const batches = chunk(candidates, BATCH_SIZE);
 	const translations: WritableTranslation[] = [];
+	const failures: unknown[] = [];
+	let successfulBatches = 0;
 	let nextBatch = 0;
 	let deadlineReached = false;
 
@@ -383,10 +406,15 @@ export async function translateMissingWithinTimeout(
 				continue;
 			}
 			try {
-				translations.push(
-					...(await translate(lang, batch, stragglerLimit.signal))
+				const batchTranslations = await translate(
+					lang,
+					batch,
+					stragglerLimit.signal
 				);
+				successfulBatches += 1;
+				translations.push(...batchTranslations);
 			} catch (error) {
+				failures.push(error);
 				if (!stragglerLimit.signal.aborted) {
 					console.warn("[trends-translation] failed to translate batch", error);
 				}
@@ -418,6 +446,14 @@ export async function translateMissingWithinTimeout(
 			SYNC_TRANSLATION_STRAGGLER_MS
 		);
 		options.waitUntil?.(workers.finally(() => clearTimeout(stragglerTimer)));
+	}
+	if (
+		!deadlineReached &&
+		options.throwOnTotalFailure &&
+		successfulBatches === 0 &&
+		failures.length > 0
+	) {
+		throw failures[0];
 	}
 	return [...translations];
 }
@@ -621,7 +657,8 @@ export async function prewarmItemTranslations(
 	const translated = await translateMissingWithinTimeout(
 		lang,
 		missing.slice(0, MAX_PREWARM_TRANSLATION_CANDIDATES),
-		PREWARM_TRANSLATION_TIMEOUT_MS
+		PREWARM_TRANSLATION_TIMEOUT_MS,
+		{ throwOnTotalFailure: true }
 	);
 	return translated.length;
 }

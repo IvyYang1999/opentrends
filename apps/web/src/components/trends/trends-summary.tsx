@@ -22,7 +22,13 @@ interface TrendsSummaryProps {
 	topicId: string;
 }
 
-type SummaryStatus = "loading" | "streaming" | "done" | "unavailable" | "error";
+type SummaryStatus =
+	| "loading"
+	| "pending"
+	| "streaming"
+	| "done"
+	| "unavailable"
+	| "error";
 
 const SUMMARY_WINDOWS = ["today", "week", "month"] as const;
 type SummaryWindow = (typeof SUMMARY_WINDOWS)[number];
@@ -41,6 +47,7 @@ interface StreamHandlers {
 	onCitations: (citations: CitationMap) => void;
 	onDone: () => void;
 	onError: (message: string) => void;
+	onPending: () => void;
 	onStreamingStart: () => void;
 	onUnavailable: () => void;
 	signal: AbortSignal;
@@ -48,6 +55,7 @@ interface StreamHandlers {
 
 const CITATIONS_HEADER = "X-Trends-Citations";
 const CITATION_RE = /\[(\d+)\]/g;
+const SUMMARY_PENDING_RETRY_MS = 10_000;
 
 const CITATION_PREAMBLE_PREFIX = '{"citations":';
 
@@ -163,12 +171,13 @@ async function streamSummary(
 	topicId: string,
 	locale: Locale,
 	summaryWindow: SummaryWindow,
+	requestVersion: number,
 	handlers: StreamHandlers
 ): Promise<void> {
 	const search = new URLSearchParams({
 		citations: "body",
 		lang: locale,
-		_: String(Date.now()),
+		_: String(requestVersion),
 	});
 	if (summaryWindow !== "today") {
 		search.set("window", summaryWindow);
@@ -184,6 +193,12 @@ async function streamSummary(
 		if (response.status === 503) {
 			if (!handlers.isCancelled()) {
 				handlers.onUnavailable();
+			}
+			return;
+		}
+		if (response.status === 202) {
+			if (!handlers.isCancelled()) {
+				handlers.onPending();
 			}
 			return;
 		}
@@ -386,10 +401,10 @@ function SummaryBody({
 			</>
 		);
 	}
-	if (status === "loading" || status === "streaming") {
+	if (status === "loading" || status === "pending" || status === "streaming") {
 		return (
 			<p className="text-[13px] text-[var(--text-secondary)]">
-				{t("summary.reading")}
+				{status === "pending" ? t("summary.preparing") : t("summary.reading")}
 			</p>
 		);
 	}
@@ -411,6 +426,7 @@ export function TrendsSummary({
 	const [error, setError] = useState<string | null>(null);
 	const [citations, setCitations] = useState<CitationMap>(EMPTY_CITATIONS);
 	const [summaryWindow, setSummaryWindow] = useState<SummaryWindow>("today");
+	const [retryNonce, setRetryNonce] = useState(0);
 	const metadata = useMemo(() => buildMetadataMap(page), [page]);
 	const stats = useMemo(() => computeSummaryStats(page), [page]);
 	const [shareOpen, setShareOpen] = useState(false);
@@ -429,13 +445,14 @@ export function TrendsSummary({
 
 			const controller = new AbortController();
 			let cancelled = false;
+			let retryTimer: number | undefined;
 
 			setText("");
 			setError(null);
 			setStatus("loading");
 			setCitations(EMPTY_CITATIONS);
 
-			streamSummary(topicId, locale, summaryWindow, {
+			streamSummary(topicId, locale, summaryWindow, retryNonce, {
 				signal: controller.signal,
 				isCancelled: () => cancelled,
 				onStreamingStart: () => setStatus("streaming"),
@@ -446,6 +463,13 @@ export function TrendsSummary({
 				},
 				onCitations: (next) => setCitations(next),
 				onUnavailable: () => setStatus("unavailable"),
+				onPending: () => {
+					setStatus("pending");
+					retryTimer = window.setTimeout(
+						() => setRetryNonce((value) => value + 1),
+						SUMMARY_PENDING_RETRY_MS
+					);
+				},
 				onDone: () => setStatus("done"),
 				onError: (message) => {
 					setStatus("error");
@@ -458,14 +482,23 @@ export function TrendsSummary({
 
 			return () => {
 				cancelled = true;
+				if (retryTimer !== undefined) {
+					window.clearTimeout(retryTimer);
+				}
 				controller.abort();
 			};
 		},
-		[topicId, locale, summaryWindow]
+		[topicId, locale, summaryWindow, retryNonce]
 	);
 
 	if (status === "unavailable") {
 		return null;
+	}
+	let activityLabel = t("summary.writing");
+	if (status === "pending") {
+		activityLabel = t("summary.preparing");
+	} else if (status === "loading") {
+		activityLabel = t("summary.thinking");
 	}
 
 	return (
@@ -496,15 +529,15 @@ export function TrendsSummary({
 							</span>
 							<span>{t("summary.items")}</span>
 						</span>
-						{status === "loading" || status === "streaming" ? (
+						{status === "loading" ||
+						status === "pending" ||
+						status === "streaming" ? (
 							<span className="inline-flex items-center gap-1 text-[11px] text-[var(--text-muted)]">
 								<span
 									aria-hidden
 									className="inline-block size-1.5 animate-pulse rounded-full bg-[var(--accent-blue)]"
 								/>
-								{status === "loading"
-									? t("summary.thinking")
-									: t("summary.writing")}
+								{activityLabel}
 							</span>
 						) : null}
 						<fieldset

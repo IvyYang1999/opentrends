@@ -16,14 +16,16 @@ import {
 	normalizeSummaryWindow,
 	prepareTrendsSummary,
 	TrendsSummaryNotConfiguredError,
+	TrendsSummaryPendingError,
 	withCitationPreamble,
 } from "../trends/services/get-trends-summary";
+import { requestSummaryPrewarmJob } from "../trends/services/summary-prewarm-jobs";
 import {
 	normalizeTranslationLanguage,
 	type TranslationMode,
-	translateTrendsPage,
 } from "../trends/services/translate-news-items";
-import type { TrendsPageData } from "../trends/types";
+import { requestTranslationPrewarmsForPage } from "../trends/services/translation-prewarm-jobs";
+import type { TopicId } from "../trends/types";
 
 interface WaitUntilContext {
 	executionCtx?: {
@@ -31,10 +33,8 @@ interface WaitUntilContext {
 	};
 }
 
-function parseTranslationMode(value: string | undefined): TranslationMode {
-	// The sync path is request-bound and internally time-boxed. It does not start
-	// request-external translation work, which is unsafe on Workers.
-	return value === "sync" ? "sync" : "background";
+function parseTranslationMode(_value: string | undefined): TranslationMode {
+	return "background";
 }
 
 function parseItemsPerSource(value: string | undefined): number {
@@ -122,29 +122,17 @@ function withTrendsCacheHeaders(
 	return response;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
-}
-
-function isTrendsPagePayload(value: unknown): value is TrendsPageData {
-	return (
-		isRecord(value) &&
-		typeof value.id === "string" &&
-		typeof value.title === "string" &&
-		typeof value.updatedAt === "number" &&
-		Array.isArray(value.sections)
+function scheduleTranslationPrewarms(
+	page: Awaited<ReturnType<typeof getTrendsPageWithCacheInfo>>["page"],
+	lang: ReturnType<typeof normalizeTranslationLanguage>,
+	waitUntil: ReturnType<typeof getWaitUntil>
+): void {
+	const prewarm = requestTranslationPrewarmsForPage(page, lang).catch(
+		(error) => {
+			console.warn("[trends-translation] page reconciliation failed", error);
+		}
 	);
-}
-
-async function readTrendsPagePayload(request: {
-	json: () => Promise<unknown>;
-}): Promise<TrendsPageData | null> {
-	try {
-		const value = await request.json();
-		return isTrendsPagePayload(value) ? value : null;
-	} catch {
-		return null;
-	}
+	waitUntil?.(prewarm);
 }
 
 export const trendsRoutes = new Hono()
@@ -153,13 +141,15 @@ export const trendsRoutes = new Hono()
 		const translationMode = parseTranslationMode(c.req.query("translations"));
 		const itemsPerSource = parseItemsPerSource(c.req.query("items"));
 		try {
+			const waitUntil = getWaitUntil(c);
 			const { cacheStatus, page } = await getTrendsPageWithCacheInfo(
 				"ai",
 				lang,
 				translationMode,
 				itemsPerSource,
-				{ waitUntil: getWaitUntil(c) }
+				{ waitUntil }
 			);
+			scheduleTranslationPrewarms(page, lang, waitUntil);
 			const response = withTrendsCacheHeaders(
 				c.json(page),
 				translationMode,
@@ -178,12 +168,12 @@ export const trendsRoutes = new Hono()
 	.get("/:topic/summary", async (c) => {
 		const topic = c.req.param("topic");
 		const lang = normalizeTranslationLanguage(c.req.query("lang"));
+		const window = normalizeSummaryWindow(c.req.query("window"));
 
 		let prepared: Awaited<ReturnType<typeof prepareTrendsSummary>>;
 		try {
 			prepared = await prepareTrendsSummary(topic, lang, {
-				waitUntil: getWaitUntil(c),
-				window: normalizeSummaryWindow(c.req.query("window")),
+				window,
 			});
 		} catch (error) {
 			if (error instanceof TopicNotFoundError) {
@@ -196,6 +186,18 @@ export const trendsRoutes = new Hono()
 			}
 			if (error instanceof TrendsSummaryNotConfiguredError) {
 				return c.json({ error: "summary_not_configured" }, 503);
+			}
+			if (error instanceof TrendsSummaryPendingError) {
+				const prewarm = requestSummaryPrewarmJob({
+					lang,
+					topicId: topic as TopicId,
+					window,
+				});
+				getWaitUntil(c)?.(prewarm);
+				return c.json({ status: "pending" }, 202, {
+					"Cache-Control": "no-store",
+					"Retry-After": "30",
+				});
 			}
 			throw error;
 		}
@@ -292,24 +294,6 @@ export const trendsRoutes = new Hono()
 			throw error;
 		}
 	})
-	.post("/:topic/translations", async (c) => {
-		const topic = c.req.param("topic");
-		const lang = normalizeTranslationLanguage(c.req.query("lang"));
-		const page = await readTrendsPagePayload(c.req);
-		if (!page || page.id !== topic) {
-			return c.json({ error: "invalid_trends_page", topic }, 400);
-		}
-		let translatedPage: TrendsPageData;
-		try {
-			translatedPage = await translateTrendsPage(page, lang, "sync", {
-				waitUntil: getWaitUntil(c),
-			});
-		} catch (error) {
-			console.warn("[trends-translation] failed to translate page", error);
-			translatedPage = page;
-		}
-		return withTrendsCacheHeaders(c.json(translatedPage), "sync", "bypass");
-	})
 	.get("/:topic/sources/:sourceId", async (c) => {
 		const topic = c.req.param("topic");
 		const sourceId = c.req.param("sourceId");
@@ -348,13 +332,15 @@ export const trendsRoutes = new Hono()
 		const translationMode = parseTranslationMode(c.req.query("translations"));
 		const itemsPerSource = parseItemsPerSource(c.req.query("items"));
 		try {
+			const waitUntil = getWaitUntil(c);
 			const { cacheStatus, page } = await getTrendsPageWithCacheInfo(
 				topic,
 				lang,
 				translationMode,
 				itemsPerSource,
-				{ waitUntil: getWaitUntil(c) }
+				{ waitUntil }
 			);
+			scheduleTranslationPrewarms(page, lang, waitUntil);
 			const response = withTrendsCacheHeaders(
 				c.json(page),
 				translationMode,

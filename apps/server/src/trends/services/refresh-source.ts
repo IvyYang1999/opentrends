@@ -15,9 +15,16 @@ import { dispatchEventMergeJob } from "./event-merge-jobs";
 import { dispatchTranslationPrewarmJobs } from "./translation-prewarm-jobs";
 
 export type RefreshOutcome =
-	| { kind: "ok"; snapshot: SourceSnapshot }
+	| { changed: boolean; kind: "ok"; snapshot: SourceSnapshot }
 	| { kind: "skipped"; reason: "locked" | "unknown-source" }
 	| { kind: "error"; error: Error };
+
+export class EmptySourceResultError extends Error {
+	constructor(sourceId: SourceId) {
+		super(`Source ${sourceId} returned no usable items.`);
+		this.name = "EmptySourceResultError";
+	}
+}
 
 export async function refreshSource(
 	sourceId: SourceId
@@ -47,6 +54,9 @@ export async function refreshSource(
 			signal: controller.signal,
 			params: "params" in preset ? preset.params : undefined,
 		});
+		if (items.length === 0) {
+			throw new EmptySourceResultError(sourceId);
+		}
 		const fetchedAt = Date.now();
 		const delta = await writeSnapshotSuccess({
 			sourceId,
@@ -64,17 +74,14 @@ export async function refreshSource(
 				);
 			}
 		);
-		const changedItemIds = new Set(itemsToProcess.map((item) => item.itemId));
-		await dispatchTranslationPrewarmJobs(
-			sourceId,
-			items.filter((item) => changedItemIds.has(item.id))
-		).catch((error) => {
+		await dispatchTranslationPrewarmJobs(sourceId, items).catch((error) => {
 			console.warn(
 				"[trends-translation] dispatch failed after source refresh",
 				error
 			);
 		});
 		return {
+			changed: itemsToProcess.length > 0,
 			kind: "ok",
 			snapshot: {
 				sourceId,

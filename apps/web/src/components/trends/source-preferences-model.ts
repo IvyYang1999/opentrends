@@ -15,3 +15,17 @@ export function moveSource(
 	}
 	return next;
 }
+
+export function pinSource(
+	orderedSourceIds: readonly string[],
+	sourceId: string
+): string[] {
+	const currentIndex = orderedSourceIds.indexOf(sourceId);
+	if (currentIndex <= 0) {
+		return [...orderedSourceIds];
+	}
+	return [
+		sourceId,
+		...orderedSourceIds.filter((candidate) => candidate !== sourceId),
+	];
+}

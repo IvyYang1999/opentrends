@@ -1,6 +1,8 @@
 import { getWorkerBindings } from "../../runtime";
+import { hotCache } from "../cache/hot-cache";
 import { readSnapshot } from "../cache/source-cache";
-import type { NewsItem, SourceId } from "../types";
+import type { NewsItem, SourceId, TrendsPageData } from "../types";
+import { invalidateTranslatedTrendsPageCache } from "./get-trends-page";
 import {
 	isTranslationConfigured,
 	needsTranslation,
@@ -21,11 +23,66 @@ export interface TranslationPrewarmMessage {
 	sourceId: SourceId;
 }
 
+const REQUEST_PREWARM_COOLDOWN_MS = 15 * 60_000;
+const REQUEST_PREWARM_LIMIT = 24;
+
+function requestMarkerKey(message: TranslationPrewarmMessage): string {
+	return `trends:v1:translation-prewarm-request:${message.sourceId}:${message.lang}`;
+}
+
+async function clearRequestMarker(
+	message: TranslationPrewarmMessage
+): Promise<void> {
+	await hotCache.delete(requestMarkerKey(message));
+}
+
+async function reserveRequestMarker(
+	message: TranslationPrewarmMessage
+): Promise<boolean> {
+	const now = Date.now();
+	const key = requestMarkerKey(message);
+	const existing = await hotCache.get<boolean>(key);
+	if (existing && existing.freshUntil > now) {
+		return false;
+	}
+	await hotCache.put(
+		key,
+		{
+			createdAt: now,
+			freshUntil: now + REQUEST_PREWARM_COOLDOWN_MS,
+			schemaVersion: 1,
+			staleUntil: now + REQUEST_PREWARM_COOLDOWN_MS,
+			value: true,
+		},
+		Math.ceil(REQUEST_PREWARM_COOLDOWN_MS / 1000)
+	);
+	return true;
+}
+
+export function translationPrewarmMessagesForPage(
+	page: TrendsPageData,
+	lang: TranslationLanguage
+): TranslationPrewarmMessage[] {
+	if (!(TRANSLATION_PREWARM_LANGUAGES as readonly string[]).includes(lang)) {
+		return [];
+	}
+	const sourceIds = new Set<SourceId>();
+	for (const section of page.sections) {
+		for (const source of section.sources) {
+			if (source.items.some((item) => needsTranslation(item, lang))) {
+				sourceIds.add(source.sourceId);
+			}
+		}
+	}
+	return [...sourceIds].map((sourceId) => ({ lang, sourceId }));
+}
+
 export async function runTranslationPrewarmJob(
 	message: TranslationPrewarmMessage
 ): Promise<void> {
 	const snapshot = await readSnapshot(message.sourceId);
 	if (!snapshot || snapshot.items.length === 0) {
+		await clearRequestMarker(message);
 		return;
 	}
 	const translated = await prewarmItemTranslations(
@@ -33,10 +90,12 @@ export async function runTranslationPrewarmJob(
 		message.lang
 	);
 	if (translated > 0) {
+		await invalidateTranslatedTrendsPageCache(message.sourceId, message.lang);
 		console.info(
 			`[trends-translation] prewarmed ${translated} ${message.lang} items for ${message.sourceId}`
 		);
 	}
+	await clearRequestMarker(message);
 }
 
 async function sendToCloudflareQueue(
@@ -60,9 +119,9 @@ async function sendToCloudflareQueue(
 	}
 }
 
-// Called after a source refresh with the items that are new or changed. A job
-// is only queued for a language those items actually need, so an English feed
-// never costs an English job and an unchanged feed costs nothing.
+// Called after a source refresh with its current items. Cached items are
+// skipped inside the job, while passing the whole snapshot makes provider
+// outages self-healing on the next refresh even when the source did not change.
 export async function dispatchTranslationPrewarmJobs(
 	sourceId: SourceId,
 	changedItems: NewsItem[]
@@ -79,4 +138,29 @@ export async function dispatchTranslationPrewarmJobs(
 			await runTranslationPrewarmJob(message);
 		}
 	}
+}
+
+export async function requestTranslationPrewarmsForPage(
+	page: TrendsPageData,
+	lang: TranslationLanguage
+): Promise<number> {
+	let dispatched = 0;
+	for (const message of translationPrewarmMessagesForPage(page, lang)) {
+		if (dispatched >= REQUEST_PREWARM_LIMIT) {
+			break;
+		}
+		if (!(await reserveRequestMarker(message))) {
+			continue;
+		}
+		try {
+			if (!(await sendToCloudflareQueue(message))) {
+				await runTranslationPrewarmJob(message);
+			}
+			dispatched += 1;
+		} catch (error) {
+			await clearRequestMarker(message);
+			console.warn("[trends-translation] request prewarm failed", error);
+		}
+	}
+	return dispatched;
 }

@@ -30,8 +30,8 @@ function parseOffset(value: string | undefined): number | undefined {
 	return Number.isFinite(parsed) && parsed >= 0 ? parsed : undefined;
 }
 
-function parseTranslationMode(value: string | undefined): TranslationMode {
-	return value === "sync" ? "sync" : "background";
+function parseTranslationMode(_value: string | undefined): TranslationMode {
+	return "background";
 }
 
 function getWaitUntil(c: WaitUntilContext) {

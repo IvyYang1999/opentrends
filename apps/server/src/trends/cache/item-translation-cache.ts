@@ -4,9 +4,10 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import type { TranslationLanguage } from "../services/translate-news-items";
 
 const { sourceItemTranslation } = schema;
-// D1 rejects statements with more than 100 bound parameters. One parameter is
-// the language; the rest are shared between source ids and item ids.
+// D1 rejects statements with more than 100 bound parameters. Each exact
+// source lookup binds the language and source id before its item ids.
 const TRANSLATION_READ_PARAM_BUDGET = 90;
+const BROAD_SOURCE_READ_THRESHOLD = 8;
 
 type TranslationRow = typeof sourceItemTranslation.$inferSelect;
 
@@ -55,10 +56,10 @@ function groupItemsBySource(
 	return itemsBySource;
 }
 
-// Splits a lookup into statements that each stay under D1's bound-parameter
-// limit. `sourceIds` and `itemIds` are index-aligned pairs when they have the
-// same length; items are kept next to their own source so a batch never needs
-// more source ids than it has items.
+// Keep every statement scoped to one source. The previous cross-product query
+// (`source_id IN (...) AND item_id IN (...)`) made SQLite examine many
+// impossible source/item combinations on a full topic page and regularly
+// missed the reader's deadline despite all translations already being cached.
 export function packTranslationReadBatches(
 	sourceIds: readonly string[],
 	itemIds: readonly string[]
@@ -69,31 +70,20 @@ export function packTranslationReadBatches(
 		);
 	}
 
+	const itemsBySource = groupItemsBySource(sourceIds, itemIds);
+	if (itemsBySource.size > BROAD_SOURCE_READ_THRESHOLD) {
+		return chunk([...itemsBySource.keys()], TRANSLATION_READ_PARAM_BUDGET).map(
+			(batch) => ({ itemIds: [], sourceIds: batch })
+		);
+	}
+
 	const batches: TranslationReadBatch[] = [];
-	let sources = new Set<string>();
-	let items = new Set<string>();
-	const flush = () => {
-		if (items.size > 0) {
-			batches.push({ itemIds: [...items], sourceIds: [...sources] });
-		}
-		sources = new Set();
-		items = new Set();
-	};
-	for (const [sourceId, sourceItems] of groupItemsBySource(
-		sourceIds,
-		itemIds
-	)) {
-		for (const itemId of sourceItems) {
-			const added =
-				(sources.has(sourceId) ? 0 : 1) + (items.has(itemId) ? 0 : 1);
-			if (sources.size + items.size + added > TRANSLATION_READ_PARAM_BUDGET) {
-				flush();
-			}
-			sources.add(sourceId);
-			items.add(itemId);
+	const itemBudget = TRANSLATION_READ_PARAM_BUDGET - 1;
+	for (const [sourceId, sourceItems] of itemsBySource) {
+		for (const itemBatch of chunk([...sourceItems], itemBudget)) {
+			batches.push({ itemIds: itemBatch, sourceIds: [sourceId] });
 		}
 	}
-	flush();
 	return batches;
 }
 
@@ -119,6 +109,14 @@ export async function readItemTranslations(params: {
 	lang: TranslationLanguage;
 	sourceIds: string[];
 }): Promise<CachedItemTranslation[]> {
+	const requestedPairs =
+		params.itemIds?.length === params.sourceIds.length
+			? new Set(
+					params.sourceIds.map(
+						(sourceId, index) => `${sourceId}:${params.itemIds?.[index]}`
+					)
+				)
+			: undefined;
 	const [first, ...rest] = packTranslationReadBatches(
 		params.sourceIds,
 		params.itemIds ?? []
@@ -128,7 +126,11 @@ export async function readItemTranslations(params: {
 	}
 
 	const results: TranslationRow[][] = await db.batch([first, ...rest]);
-	const rows = results.flat();
+	const rows = requestedPairs
+		? results
+				.flat()
+				.filter((row) => requestedPairs.has(`${row.sourceId}:${row.itemId}`))
+		: results.flat();
 
 	return rows.map((row) => ({
 		createdAt: row.createdAt.getTime(),
