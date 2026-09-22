@@ -197,5 +197,6 @@
   "followed_browse_featured": "Parcourir la sélection",
   "card_follow_source": "Suivre la source",
   "card_unfollow_source": "Ne plus suivre",
-  "card_collapse": "Réduire"
+  "card_collapse": "Réduire",
+  "display_original_title": "Titre original"
 }

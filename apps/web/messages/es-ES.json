@@ -197,5 +197,6 @@
   "followed_browse_featured": "Ver la selección",
   "card_follow_source": "Seguir fuente",
   "card_unfollow_source": "Dejar de seguir",
-  "card_collapse": "Contraer"
+  "card_collapse": "Contraer",
+  "display_original_title": "Título original"
 }

@@ -45,6 +45,7 @@ const TOGGLES: readonly ToggleEntry[] = [
 	{ key: "showRank", labelKey: "display.rank" },
 	{ key: "showHotValue", labelKey: "display.hotValue" },
 	{ key: "showRelativeTime", labelKey: "display.publishedTime" },
+	{ key: "showOriginalTitle", labelKey: "display.originalTitle" },
 ];
 
 const MENU_TRIGGER_CLASS =

@@ -7,6 +7,7 @@ export interface DisplaySettings {
 	showCover: boolean;
 	showDescription: boolean;
 	showHotValue: boolean;
+	showOriginalTitle: boolean;
 	showRank: boolean;
 	showRelativeTime: boolean;
 	summaryCollapsed: boolean;
@@ -25,6 +26,7 @@ export const DISPLAY_SETTINGS_DEFAULTS: DisplaySettings = {
 	showHotValue: true,
 	showRank: true,
 	showRelativeTime: true,
+	showOriginalTitle: false,
 };
 
 export const SOURCE_SECTIONS_DISPLAY_SETTINGS: DisplaySettings = {
@@ -35,6 +37,7 @@ export const SOURCE_SECTIONS_DISPLAY_SETTINGS: DisplaySettings = {
 	showHotValue: true,
 	showRank: true,
 	showRelativeTime: true,
+	showOriginalTitle: false,
 };
 
 const DISPLAY_SETTINGS_BY_LAYOUT: Record<DisplayLayout, DisplaySettings> = {

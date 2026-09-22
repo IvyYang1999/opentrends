@@ -140,6 +140,7 @@ const MESSAGE_IDS = {
 	"display.rank": "display_rank",
 	"display.hotValue": "display_hot_value",
 	"display.publishedTime": "display_published_time",
+	"display.originalTitle": "display_original_title",
 	"events.heading": "events_heading",
 	"events.count": "events_count",
 	"events.all": "events_all",

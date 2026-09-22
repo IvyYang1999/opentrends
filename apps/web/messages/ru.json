@@ -197,5 +197,6 @@
   "followed_browse_featured": "Посмотреть избранное",
   "card_follow_source": "Подписаться",
   "card_unfollow_source": "Отписаться",
-  "card_collapse": "Свернуть"
+  "card_collapse": "Свернуть",
+  "display_original_title": "Оригинальный заголовок"
 }

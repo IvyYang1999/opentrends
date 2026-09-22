@@ -197,5 +197,6 @@
   "followed_browse_featured": "Browse featured sources",
   "card_follow_source": "Follow source",
   "card_unfollow_source": "Unfollow source",
-  "card_collapse": "Collapse"
+  "card_collapse": "Collapse",
+  "display_original_title": "Original title"
 }

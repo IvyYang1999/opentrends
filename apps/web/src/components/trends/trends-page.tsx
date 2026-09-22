@@ -892,9 +892,7 @@ function SourceCardHeader({
 					t={t}
 				/>
 				<SourceFavicon homeUrl={source.homeUrl} />
-				<h3 className="truncate font-semibold text-[13px] text-[var(--text-heading)] tracking-tight">
-					{source.title}
-				</h3>
+				<SourceTitle as="h3" className="text-[13px]" title={source.title} />
 				<StatusDot status={source.status} t={t} />
 				{pinned ? <PinnedBadge t={t} /> : null}
 			</div>
@@ -933,9 +931,7 @@ function SourceSectionHeader({
 					t={t}
 				/>
 				<SourceFavicon homeUrl={source.homeUrl} />
-				<h2 className="min-w-0 truncate font-semibold text-[15px] text-[var(--text-heading)] tracking-tight">
-					{source.title}
-				</h2>
+				<SourceTitle as="h2" className="text-[15px]" title={source.title} />
 				<StatusDot status={source.status} t={t} />
 				{pinned ? <PinnedBadge t={t} /> : null}
 			</div>
@@ -1042,6 +1038,43 @@ function FollowMenuItem({
 			{followed ? t("card.unfollowSource") : t("card.followSource")}
 		</DropdownMenuItem>
 	);
+}
+
+// Source names carry their list flavour after a middle dot ("微博 · 实时热搜",
+// "GitHub Trending · Weekly"); it is shown as a badge so hot lists, daily
+// digests and topic feeds read differently at a glance.
+function SourceTitle({
+	as: Tag,
+	className,
+	title,
+}: {
+	as: "h2" | "h3";
+	className: string;
+	title: string;
+}) {
+	const [name, flavour] = splitSourceTitle(title);
+	return (
+		<span className="flex min-w-0 items-center gap-1.5">
+			<Tag
+				className={`min-w-0 truncate font-semibold text-[var(--text-heading)] tracking-tight ${className}`}
+			>
+				{name}
+			</Tag>
+			{flavour ? (
+				<span className="shrink-0 rounded border border-[var(--border-default)] px-1 py-px text-[10px] text-[var(--text-secondary)] leading-4">
+					{flavour}
+				</span>
+			) : null}
+		</span>
+	);
+}
+
+function splitSourceTitle(title: string): [string, string | undefined] {
+	const index = title.indexOf(" · ");
+	if (index === -1) {
+		return [title, undefined];
+	}
+	return [title.slice(0, index), title.slice(index + 3)];
 }
 
 function PinnedBadge({ t }: { t: Translator }) {
@@ -1224,12 +1257,18 @@ function NewsRow({
 			? formatHeat(item.hotValue)
 			: null;
 
+	const original =
+		item.original && item.original.title !== item.title
+			? item.original.title
+			: undefined;
+
 	return (
 		<a
 			className={`group relative flex items-start gap-2.5 px-3 transition-colors hover:bg-[var(--state-hover-subtle)] sm:gap-3 ${ranking ? "py-1.5" : "py-2.5 sm:py-2"} ${VISITED_TITLE_CLASS}`}
 			href={item.url}
 			rel="noopener noreferrer"
 			target="_blank"
+			title={original}
 		>
 			{settings.showRank ? (
 				<span className="mt-[1px] inline-flex w-5 shrink-0 select-none font-mono text-[11px] text-[var(--text-muted)] tabular-nums sm:w-6">
@@ -1260,13 +1299,12 @@ function NewsRow({
 						pending={translationPending}
 						t={t}
 					/>
-					{heat ? (
-						<span className="mt-[2px] inline-flex shrink-0 items-center gap-0.5 text-[11px] text-[var(--accent-orange)] tabular-nums">
-							<Flame aria-hidden className="size-3" />
-							{heat}
-						</span>
-					) : null}
 				</span>
+				{original && settings.showOriginalTitle ? (
+					<span className="line-clamp-2 text-[11px] text-[var(--text-muted)] leading-[1.4]">
+						{original}
+					</span>
+				) : null}
 				{showDescription ? (
 					<span className="line-clamp-2 text-[12px] text-[var(--text-secondary)] leading-[1.45]">
 						{item.description}
@@ -1274,7 +1312,15 @@ function NewsRow({
 				) : null}
 				<NewsItemMeta item={item} meta={meta} t={t} />
 			</span>
-			<ArrowUpRight className="mt-[3px] hidden size-3 shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100 sm:block" />
+			{heat ? (
+				<span className="mt-[2px] inline-flex shrink-0 items-center gap-0.5 text-[11px] text-[var(--accent-orange)] tabular-nums">
+					<Flame aria-hidden className="size-3" />
+					{heat}
+				</span>
+			) : null}
+			{ranking ? null : (
+				<ArrowUpRight className="mt-[3px] hidden size-3 shrink-0 text-[var(--text-muted)] opacity-0 transition-opacity group-hover:opacity-100 sm:block" />
+			)}
 		</a>
 	);
 }
@@ -1304,6 +1350,11 @@ function NewsCard({
 			href={item.url}
 			rel="noopener noreferrer"
 			target="_blank"
+			title={
+				item.original && item.original.title !== item.title
+					? item.original.title
+					: undefined
+			}
 		>
 			{showCover ? (
 				<CoverImage
