@@ -6,7 +6,7 @@
   "nav_skills": "Skills",
   "nav_dashboard": "Dashboard",
   "nav_home_aria": "OpenTrends home",
-  "topic_mine": "Mine",
+  "topic_mine": "Following",
   "topic_featured": "Featured",
   "topic_ai": "AI",
   "topic_embodied": "Embodied AI",
@@ -193,8 +193,9 @@
   "source_manager_title": "Sources",
   "source_manager_count": "{shown} of {total} shown",
   "card_show_source": "Show source",
-  "card_follow": "Follow {title}",
-  "card_unfollow": "Unfollow {title}",
   "followed_empty": "You are not following any sources yet. Star a source on any card and it shows up here.",
-  "followed_browse_featured": "Browse featured sources"
+  "followed_browse_featured": "Browse featured sources",
+  "card_follow_source": "Follow source",
+  "card_unfollow_source": "Unfollow source",
+  "card_collapse": "Collapse"
 }

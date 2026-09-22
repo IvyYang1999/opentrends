@@ -6,7 +6,7 @@
   "nav_skills": "Skills",
   "nav_dashboard": "Dashboard",
   "nav_home_aria": "OpenTrends Startseite",
-  "topic_mine": "Meine",
+  "topic_mine": "Gefolgt",
   "topic_featured": "Auswahl",
   "topic_ai": "KI",
   "topic_embodied": "Verkörperte KI",
@@ -193,8 +193,9 @@
   "source_manager_title": "Quellen",
   "source_manager_count": "{shown} von {total} sichtbar",
   "card_show_source": "Quelle anzeigen",
-  "card_follow": "{title} folgen",
-  "card_unfollow": "{title} nicht mehr folgen",
   "followed_empty": "Du folgst noch keiner Quelle. Markiere eine Quelle auf einer Karte mit dem Stern, dann erscheint sie hier.",
-  "followed_browse_featured": "Auswahl ansehen"
+  "followed_browse_featured": "Auswahl ansehen",
+  "card_follow_source": "Quelle folgen",
+  "card_unfollow_source": "Nicht mehr folgen",
+  "card_collapse": "Einklappen"
 }

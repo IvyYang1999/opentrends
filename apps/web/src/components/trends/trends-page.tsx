@@ -1,11 +1,5 @@
 import { env } from "@opentrends/env/web";
 import {
-	Dialog,
-	DialogContent,
-	DialogHeader,
-	DialogTitle,
-} from "@opentrends/ui/components/dialog";
-import {
 	DropdownMenu,
 	DropdownMenuContent,
 	DropdownMenuItem,
@@ -22,10 +16,12 @@ import {
 import { useQuery } from "@tanstack/react-query";
 import {
 	ArrowUpRight,
+	ChevronUp,
 	CircleAlert,
 	CircleDashed,
 	ExternalLink,
 	EyeOff,
+	Flame,
 	GripVertical,
 	Languages,
 	LoaderCircle,
@@ -114,8 +110,10 @@ interface SourceDragPreview {
 
 // Titles the reader has already opened fade, with nothing stored anywhere:
 // the browser's own :visited state does the work.
+// Browsers drop custom properties inside :visited rules, so the colours are
+// literal here (light / dark).
 const VISITED_TITLE_CLASS =
-	"[&:visited_[data-title]]:font-normal [&:visited_[data-title]]:text-[var(--text-muted)]";
+	"[&:visited_[data-title]]:text-[#9b9893] dark:[&:visited_[data-title]]:text-[#6f685f]";
 
 function proxiedImageUrl(imageUrl: string, variant: "card" | "row"): string {
 	return `${env.VITE_SERVER_URL}/api/image?variant=${variant}&url=${encodeURIComponent(imageUrl)}`;
@@ -692,9 +690,16 @@ function SourceCard({
 	onPin: () => void;
 	pinned: boolean;
 }) {
-	const [open, setOpen] = useState(false);
+	const [expanded, setExpanded] = useState(false);
 	const [overflowing, setOverflowing] = useState(false);
 	const hasItems = source.items.length > 0;
+	// Expanding loads the source's full list and lets the body scroll in
+	// place; nothing opens over the page.
+	const fullSource = useQuery({
+		...trendSourceQueryOptions(topicId, source.sourceId, locale),
+		enabled: expanded && Boolean(source.itemsTruncated),
+	});
+	const shownSource = expanded ? (fullSource.data ?? source) : source;
 
 	const bodyRef = useCallback((el: HTMLDivElement | null) => {
 		if (!el) {
@@ -723,17 +728,17 @@ function SourceCard({
 			/>
 			{hasItems ? (
 				<div
-					className="relative min-h-0 flex-1 overflow-hidden max-sm:max-h-[70svh]"
+					className={`relative min-h-0 flex-1 max-sm:max-h-[70svh] ${expanded ? "overflow-y-auto" : "overflow-hidden"}`}
 					ref={bodyRef}
 				>
 					<SourceCardBody
 						locale={locale}
 						settings={settings}
-						source={source}
+						source={shownSource}
 						t={t}
-						translationPending={translationPending}
+						translationPending={translationPending || fullSource.isFetching}
 					/>
-					{overflowing || source.itemsTruncated ? (
+					{!expanded && (overflowing || source.itemsTruncated) ? (
 						<>
 							<div
 								aria-hidden
@@ -741,7 +746,7 @@ function SourceCard({
 							/>
 							<button
 								className="absolute inset-x-0 bottom-2 mx-auto flex w-fit items-center gap-1 rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 py-1 text-[11px] text-[var(--text-secondary)] shadow-sm transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
-								onClick={() => setOpen(true)}
+								onClick={() => setExpanded(true)}
 								type="button"
 							>
 								{t("card.viewAll", {
@@ -749,6 +754,19 @@ function SourceCard({
 								})}
 							</button>
 						</>
+					) : null}
+					{expanded ? (
+						<button
+							className="sticky bottom-0 flex w-full items-center justify-center gap-1 border-[var(--border-default)] border-t bg-[var(--surface-card)] py-1.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+							onClick={(event) => {
+								setExpanded(false);
+								event.currentTarget.parentElement?.scrollTo({ top: 0 });
+							}}
+							type="button"
+						>
+							<ChevronUp aria-hidden className="size-3" />
+							{t("card.collapse")}
+						</button>
 					) : null}
 				</div>
 			) : (
@@ -760,15 +778,6 @@ function SourceCard({
 					translationPending={translationPending}
 				/>
 			)}
-			<SourceDialog
-				locale={locale}
-				onOpenChange={setOpen}
-				open={open}
-				settings={settings}
-				source={source}
-				topicId={topicId}
-				translationPending={translationPending}
-			/>
 		</article>
 	);
 }
@@ -798,7 +807,12 @@ function SourceSection({
 	onPin: () => void;
 	pinned: boolean;
 }) {
-	const [open, setOpen] = useState(false);
+	const [expanded, setExpanded] = useState(false);
+	const fullSource = useQuery({
+		...trendSourceQueryOptions(topicId, source.sourceId, locale),
+		enabled: expanded && Boolean(source.itemsTruncated),
+	});
+	const shownSource = expanded ? (fullSource.data ?? source) : source;
 	return (
 		<section
 			className={`relative border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-opacity after:pointer-events-none after:absolute after:inset-0 after:z-40 after:content-[''] data-[drop-target=true]:after:border-2 data-[drop-target=true]:after:border-[var(--accent-blue)] ${isDragging ? "z-30 opacity-80 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
@@ -819,7 +833,7 @@ function SourceSection({
 				</div>
 			) : (
 				<ul className={SOURCE_SECTION_GRID}>
-					{source.items.map((item) => (
+					{shownSource.items.map((item) => (
 						<li
 							className="min-w-0 border-[var(--border-default)] border-b sm:border-r sm:last:border-b"
 							key={item.id}
@@ -828,7 +842,7 @@ function SourceSection({
 								item={item}
 								locale={locale}
 								settings={settings}
-								translationPending={translationPending}
+								translationPending={translationPending || fullSource.isFetching}
 							/>
 						</li>
 					))}
@@ -838,75 +852,18 @@ function SourceSection({
 				<div className="border-[var(--border-default)] border-t px-3 py-2">
 					<button
 						className="inline-flex items-center gap-1 rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
-						onClick={() => setOpen(true)}
+						onClick={() => setExpanded((value) => !value)}
 						type="button"
 					>
-						{t("card.viewAll", {
-							count: source.itemCount ?? source.items.length,
-						})}
+						{expanded
+							? t("card.collapse")
+							: t("card.viewAll", {
+									count: source.itemCount ?? source.items.length,
+								})}
 					</button>
 				</div>
 			) : null}
-			<SourceDialog
-				locale={locale}
-				onOpenChange={setOpen}
-				open={open}
-				settings={settings}
-				source={source}
-				topicId={topicId}
-				translationPending={translationPending}
-			/>
 		</section>
-	);
-}
-
-function SourceDialog({
-	source,
-	open,
-	onOpenChange,
-	settings,
-	topicId,
-	locale,
-	translationPending,
-}: {
-	source: SourceCardData;
-	open: boolean;
-	onOpenChange: (open: boolean) => void;
-	settings: DisplaySettings;
-	topicId: string;
-	locale: Locale;
-	translationPending: boolean;
-}) {
-	const sourceQuery = useQuery({
-		...trendSourceQueryOptions(topicId, source.sourceId, locale),
-		enabled: open && Boolean(source.itemsTruncated),
-	});
-	const dialogSource = sourceQuery.data ?? source;
-	return (
-		<Dialog onOpenChange={onOpenChange} open={open}>
-			<DialogContent>
-				<DialogHeader>
-					<SourceFavicon homeUrl={dialogSource.homeUrl} />
-					<DialogTitle>{dialogSource.title}</DialogTitle>
-				</DialogHeader>
-				<ScrollArea className="min-h-0 flex-1 overflow-hidden">
-					<ul className="flex flex-col divide-y divide-[var(--border-subtle)]">
-						{dialogSource.items.map((item) => (
-							<li key={item.id}>
-								<NewsRow
-									item={item}
-									locale={locale}
-									settings={settings}
-									translationPending={
-										translationPending || sourceQuery.isFetching
-									}
-								/>
-							</li>
-						))}
-					</ul>
-				</ScrollArea>
-			</DialogContent>
-		</Dialog>
 	);
 }
 
@@ -1020,7 +977,6 @@ function SourceHeaderMeta({
 			) : (
 				<span>—</span>
 			)}
-			<FollowButton source={source} t={t} />
 			<DropdownMenu>
 				<DropdownMenuTrigger
 					aria-label={t("card.actionsFor", { title: source.title })}
@@ -1043,6 +999,7 @@ function SourceHeaderMeta({
 							}
 						/>
 					) : null}
+					<FollowMenuItem source={source} t={t} />
 					<DropdownMenuItem onClick={onPin}>
 						{pinned ? (
 							<PinOff aria-hidden className="size-3.5" />
@@ -1063,9 +1020,9 @@ function SourceHeaderMeta({
 
 // Pinned cards sit in a block at the top, which is invisible once they are
 // there; the badge is what tells the reader why a card stays put.
-// Following is the one action worth a button of its own on the card; the
-// rest stay in the menu. Muted until followed, then a filled accent star.
-function FollowButton({
+// Following lives in the menu with pin and hide: it changes nothing on this
+// page, only what the Following tab shows.
+function FollowMenuItem({
 	source,
 	t,
 }: {
@@ -1074,24 +1031,15 @@ function FollowButton({
 }) {
 	const { isFollowed, toggleFollowed } = useFollowedSourcesContext();
 	const followed = isFollowed(source.sourceId);
-	const label = followed
-		? t("card.unfollow", { title: source.title })
-		: t("card.follow", { title: source.title });
 	return (
-		<button
-			aria-label={label}
-			aria-pressed={followed}
-			className="-my-1 inline-flex size-7 items-center justify-center rounded text-[var(--text-muted)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] aria-pressed:text-[var(--accent-blue)]"
-			onClick={() => toggleFollowed(source.sourceId)}
-			title={label}
-			type="button"
-		>
+		<DropdownMenuItem onClick={() => toggleFollowed(source.sourceId)}>
 			<Star
 				aria-hidden
 				className="size-3.5"
 				fill={followed ? "currentColor" : "none"}
 			/>
-		</button>
+			{followed ? t("card.unfollowSource") : t("card.followSource")}
+		</DropdownMenuItem>
 	);
 }
 
@@ -1156,6 +1104,7 @@ function SourceCardBody({
 		return empty;
 	}
 
+	const ranking = isRankingSource(source);
 	return (
 		<ul className="flex flex-col divide-y divide-[var(--border-subtle)]">
 			{source.items.map((item) => (
@@ -1163,6 +1112,7 @@ function SourceCardBody({
 					<NewsRow
 						item={item}
 						locale={locale}
+						ranking={ranking}
 						settings={settings}
 						translationPending={translationPending}
 					/>
@@ -1226,28 +1176,56 @@ function buildMeta(
 	return null;
 }
 
+// A hot list (Weibo, Zhihu, Hacker News, GitHub Trending…) is a ranking, not
+// a feed: rows are one line, no cover or blurb, and the platform's own heat
+// number sits at the right where it can be read.
+function isRankingSource(source: SourceCardData): boolean {
+	const withHeat = source.items.filter(
+		(item) => item.hotValue !== undefined && item.hotValue !== ""
+	).length;
+	return source.items.length > 0 && withHeat * 2 >= source.items.length;
+}
+
+function formatHeat(value: string | number): string {
+	if (typeof value === "number") {
+		return new Intl.NumberFormat("en", {
+			maximumFractionDigits: 1,
+			notation: "compact",
+		}).format(value);
+	}
+	return value;
+}
+
 function NewsRow({
 	item,
 	settings,
 	locale,
+	ranking = false,
 	translationPending,
 }: {
 	item: NewsItem;
 	settings: DisplaySettings;
 	locale: Locale;
+	ranking?: boolean;
 	translationPending: boolean;
 }) {
 	const t = useT();
-	const meta = buildMeta(item, settings, t);
+	const meta = ranking ? null : buildMeta(item, settings, t);
 	const showCover =
+		!ranking &&
 		settings.showCover &&
 		Boolean(item.imageUrl) &&
 		!isDecorativeBadgeImage(item.imageUrl);
-	const showDescription = settings.showDescription && Boolean(item.description);
+	const showDescription =
+		!ranking && settings.showDescription && Boolean(item.description);
+	const heat =
+		ranking && item.hotValue !== undefined && item.hotValue !== ""
+			? formatHeat(item.hotValue)
+			: null;
 
 	return (
 		<a
-			className={`group relative flex items-start gap-2.5 px-3 py-2.5 transition-colors hover:bg-[var(--state-hover-subtle)] sm:gap-3 sm:py-2 ${VISITED_TITLE_CLASS}`}
+			className={`group relative flex items-start gap-2.5 px-3 transition-colors hover:bg-[var(--state-hover-subtle)] sm:gap-3 ${ranking ? "py-1.5" : "py-2.5 sm:py-2"} ${VISITED_TITLE_CLASS}`}
 			href={item.url}
 			rel="noopener noreferrer"
 			target="_blank"
@@ -1269,7 +1247,10 @@ function NewsRow({
 			) : null}
 			<span className="flex min-w-0 flex-1 flex-col gap-0.5">
 				<span className="flex min-w-0 items-start gap-1.5">
-					<span className="line-clamp-3 min-w-0 flex-1 font-medium text-[13px] text-[var(--text-primary)] leading-[1.45] group-hover:text-[var(--accent-blue)] sm:line-clamp-2">
+					<span
+						className={`line-clamp-3 min-w-0 flex-1 text-[13px] text-[var(--text-primary)] leading-[1.45] group-hover:text-[var(--accent-blue)] sm:line-clamp-2 ${ranking ? "" : "font-medium"}`}
+						data-title
+					>
 						{item.title}
 					</span>
 					<TitleTranslationIndicator
@@ -1278,6 +1259,12 @@ function NewsRow({
 						pending={translationPending}
 						t={t}
 					/>
+					{heat ? (
+						<span className="mt-[2px] inline-flex shrink-0 items-center gap-0.5 text-[11px] text-[var(--accent-orange)] tabular-nums">
+							<Flame aria-hidden className="size-3" />
+							{heat}
+						</span>
+					) : null}
 				</span>
 				{showDescription ? (
 					<span className="line-clamp-2 text-[12px] text-[var(--text-secondary)] leading-[1.45]">
@@ -1449,13 +1436,15 @@ function TranslatedItemMarker({ item, t }: { item: NewsItem; t: Translator }) {
 	);
 }
 
+// A healthy source shows nothing; the dot only appears when the feed is
+// stale or failing, which is when the reader needs to know.
 function StatusDot({ status, t }: { status: SourceStatus; t: Translator }) {
+	if (status === "ok") {
+		return null;
+	}
 	let colorVar = "var(--accent-red)";
 	let label = t("card.statusFailed");
-	if (status === "ok") {
-		colorVar = "var(--accent-green)";
-		label = t("card.statusLive");
-	} else if (status === "stale") {
+	if (status === "stale") {
 		colorVar = "var(--accent-orange)";
 		label = t("card.statusStale");
 	}
