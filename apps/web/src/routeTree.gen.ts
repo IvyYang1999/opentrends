@@ -13,6 +13,7 @@ import { Route as Char123LocaleChar125IndexRouteImport } from './routes/{-$local
 import { Route as Char123LocaleChar125TrendsRouteImport } from './routes/{-$locale}/trends'
 import { Route as Char123LocaleChar125SourcesRouteImport } from './routes/{-$locale}/sources'
 import { Route as Char123LocaleChar125LoginRouteImport } from './routes/{-$locale}/login'
+import { Route as Char123LocaleChar125FeedRouteImport } from './routes/{-$locale}/feed'
 import { Route as Char123LocaleChar125EventsRouteImport } from './routes/{-$locale}/events'
 import { Route as Char123LocaleChar125DashboardRouteImport } from './routes/{-$locale}/dashboard'
 import { Route as DotwellKnownApiCatalogRouteImport } from './routes/[.]well-known.api-catalog'
@@ -43,6 +44,12 @@ const Char123LocaleChar125LoginRoute =
   Char123LocaleChar125LoginRouteImport.update({
     id: '/{-$locale}/login',
     path: '/{-$locale}/login',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const Char123LocaleChar125FeedRoute =
+  Char123LocaleChar125FeedRouteImport.update({
+    id: '/{-$locale}/feed',
+    path: '/{-$locale}/feed',
     getParentRoute: () => rootRouteImport,
   } as any)
 const Char123LocaleChar125EventsRoute =
@@ -91,6 +98,7 @@ export interface FileRoutesByFullPath {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
   '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
+  '/{-$locale}/feed': typeof Char123LocaleChar125FeedRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
   '/{-$locale}/sources': typeof Char123LocaleChar125SourcesRoute
   '/{-$locale}/trends': typeof Char123LocaleChar125TrendsRouteWithChildren
@@ -104,6 +112,7 @@ export interface FileRoutesByTo {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
   '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
+  '/{-$locale}/feed': typeof Char123LocaleChar125FeedRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
   '/{-$locale}/sources': typeof Char123LocaleChar125SourcesRoute
   '/{-$locale}': typeof Char123LocaleChar125IndexRoute
@@ -117,6 +126,7 @@ export interface FileRoutesById {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
   '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
+  '/{-$locale}/feed': typeof Char123LocaleChar125FeedRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
   '/{-$locale}/sources': typeof Char123LocaleChar125SourcesRoute
   '/{-$locale}/trends': typeof Char123LocaleChar125TrendsRouteWithChildren
@@ -132,6 +142,7 @@ export interface FileRouteTypes {
     | '/.well-known/api-catalog'
     | '/{-$locale}/dashboard'
     | '/{-$locale}/events'
+    | '/{-$locale}/feed'
     | '/{-$locale}/login'
     | '/{-$locale}/sources'
     | '/{-$locale}/trends'
@@ -145,6 +156,7 @@ export interface FileRouteTypes {
     | '/.well-known/api-catalog'
     | '/{-$locale}/dashboard'
     | '/{-$locale}/events'
+    | '/{-$locale}/feed'
     | '/{-$locale}/login'
     | '/{-$locale}/sources'
     | '/{-$locale}'
@@ -157,6 +169,7 @@ export interface FileRouteTypes {
     | '/.well-known/api-catalog'
     | '/{-$locale}/dashboard'
     | '/{-$locale}/events'
+    | '/{-$locale}/feed'
     | '/{-$locale}/login'
     | '/{-$locale}/sources'
     | '/{-$locale}/trends'
@@ -171,6 +184,7 @@ export interface RootRouteChildren {
   DotwellKnownApiCatalogRoute: typeof DotwellKnownApiCatalogRoute
   Char123LocaleChar125DashboardRoute: typeof Char123LocaleChar125DashboardRoute
   Char123LocaleChar125EventsRoute: typeof Char123LocaleChar125EventsRoute
+  Char123LocaleChar125FeedRoute: typeof Char123LocaleChar125FeedRoute
   Char123LocaleChar125LoginRoute: typeof Char123LocaleChar125LoginRoute
   Char123LocaleChar125SourcesRoute: typeof Char123LocaleChar125SourcesRoute
   Char123LocaleChar125TrendsRoute: typeof Char123LocaleChar125TrendsRouteWithChildren
@@ -207,6 +221,13 @@ declare module '@tanstack/react-router' {
       path: '/{-$locale}/login'
       fullPath: '/{-$locale}/login'
       preLoaderRoute: typeof Char123LocaleChar125LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/{-$locale}/feed': {
+      id: '/{-$locale}/feed'
+      path: '/{-$locale}/feed'
+      fullPath: '/{-$locale}/feed'
+      preLoaderRoute: typeof Char123LocaleChar125FeedRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/{-$locale}/events': {
@@ -281,6 +302,7 @@ const rootRouteChildren: RootRouteChildren = {
   DotwellKnownApiCatalogRoute: DotwellKnownApiCatalogRoute,
   Char123LocaleChar125DashboardRoute: Char123LocaleChar125DashboardRoute,
   Char123LocaleChar125EventsRoute: Char123LocaleChar125EventsRoute,
+  Char123LocaleChar125FeedRoute: Char123LocaleChar125FeedRoute,
   Char123LocaleChar125LoginRoute: Char123LocaleChar125LoginRoute,
   Char123LocaleChar125SourcesRoute: Char123LocaleChar125SourcesRoute,
   Char123LocaleChar125TrendsRoute: Char123LocaleChar125TrendsRouteWithChildren,

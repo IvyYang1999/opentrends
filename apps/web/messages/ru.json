@@ -2,6 +2,7 @@
   "nav_home": "Главная",
   "nav_trends": "Тренды",
   "nav_events": "Events",
+  "nav_feed": "Для вас",
   "nav_sources": "Источники",
   "nav_skills": "Skills",
   "nav_dashboard": "Панель",
@@ -199,5 +200,7 @@
   "card_unfollow_source": "Отписаться",
   "card_collapse": "Свернуть",
   "display_original_title": "Оригинальный заголовок",
-  "card_hot_list": "Топ"
+  "card_hot_list": "Топ",
+  "feed_count": "{count} материалов",
+  "feed_seo_description": "Одна лента нового и популярного из ваших источников."
 }

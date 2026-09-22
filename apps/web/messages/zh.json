@@ -2,6 +2,7 @@
   "nav_home": "首页",
   "nav_trends": "趋势",
   "nav_events": "事件",
+  "nav_feed": "推荐",
   "nav_sources": "来源",
   "nav_skills": "Skills",
   "nav_dashboard": "仪表盘",
@@ -199,5 +200,7 @@
   "card_unfollow_source": "取消关注",
   "card_collapse": "收起",
   "display_original_title": "原文标题",
-  "card_hot_list": "热榜"
+  "card_hot_list": "热榜",
+  "feed_count": "{count} 条",
+  "feed_seo_description": "把你关注的和正在热的内容汇成一条瀑布流。"
 }

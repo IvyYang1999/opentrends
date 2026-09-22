@@ -154,15 +154,44 @@ function TopicLink({
 	const { topic } = useParams({ strict: false }) as { topic?: string };
 	const search = useSearch({ strict: false }) as { topic?: string };
 	const location = useLocation();
-	// The followed page has no events view, so its tab always opens trends.
+	// Switching topic keeps the current view (feed or events), except that
+	// the followed list has no events view.
 	const onEvents = location.pathname.includes("/events") && id !== "mine";
-	const active = onEvents ? search.topic === id : topic === id;
+	const onFeed = location.pathname.includes("/feed");
+	const className = cn(
+		segmentClassName,
+		(onEvents || onFeed ? search.topic === id : topic === id) &&
+			segmentActiveClassName
+	);
+	if (onFeed) {
+		return (
+			<Link
+				className={className}
+				params={{ locale: localeParam }}
+				search={{ topic: id }}
+				to="/{-$locale}/feed"
+			>
+				{t(`topic.${id}`)}
+			</Link>
+		);
+	}
+	if (onEvents) {
+		return (
+			<Link
+				className={className}
+				params={{ locale: localeParam }}
+				search={{ topic: id }}
+				to="/{-$locale}/events"
+			>
+				{t(`topic.${id}`)}
+			</Link>
+		);
+	}
 	return (
 		<Link
-			className={cn(segmentClassName, active && segmentActiveClassName)}
+			className={className}
 			params={{ locale: localeParam, topic: id }}
-			search={onEvents ? { topic: id } : undefined}
-			to={onEvents ? "/{-$locale}/events" : "/{-$locale}/trends/$topic"}
+			to="/{-$locale}/trends/$topic"
 		>
 			{t(`topic.${id}`)}
 		</Link>
