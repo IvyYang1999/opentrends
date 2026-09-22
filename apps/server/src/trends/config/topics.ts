@@ -1,12 +1,12 @@
 import type { TopicId, TopicPreset } from "../types";
 
 export const topicPresets = {
-	// The landing tab: the most-read general sources plus the Chinese hot
-	// lists, so a first visit is not narrowed to one field. Its digest is
-	// drawn from every topic, see collectAllTopicsCitedItems.
-	all: {
-		path: "/trends/all",
-		title: "All",
+	// The landing tab: a hand-picked set of the most-read general sources plus
+	// the Chinese hot lists, so a first visit is not narrowed to one field. Its
+	// digest is drawn from every topic, see digestTopics().
+	featured: {
+		path: "/trends/featured",
+		title: "Featured",
 		description:
 			"Top stories across technology, AI, developers and Chinese communities",
 		sections: [
@@ -422,8 +422,8 @@ export const topicPresets = {
 	},
 } as const satisfies Record<TopicId, TopicPreset>;
 
-export const DEFAULT_TOPIC_ID: TopicId = "all";
-export const ALL_TOPIC_ID: TopicId = "all";
+export const DEFAULT_TOPIC_ID: TopicId = "featured";
+export const FEATURED_TOPIC_ID: TopicId = "featured";
 
 export function getTopicPreset(id: string): TopicPreset | undefined {
 	return (topicPresets as Record<string, TopicPreset>)[id];

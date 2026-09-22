@@ -6,7 +6,8 @@
   "nav_skills": "Skills",
   "nav_dashboard": "Панель",
   "nav_home_aria": "Главная OpenTrends",
-  "topic_all": "Все",
+  "topic_mine": "Мои",
+  "topic_featured": "Избранное",
   "topic_ai": "ИИ",
   "topic_embodied": "Воплощенный ИИ",
   "topic_hardware": "Железо",
@@ -191,5 +192,9 @@
   "summary_label": "ИИ-сводка",
   "source_manager_title": "Источники",
   "source_manager_count": "Показано {shown} из {total}",
-  "card_show_source": "Показать источник"
+  "card_show_source": "Показать источник",
+  "card_follow": "Подписаться на {title}",
+  "card_unfollow": "Отписаться от {title}",
+  "followed_empty": "Вы пока ни на что не подписаны. Отметьте источник звездой на любой карточке, и он появится здесь.",
+  "followed_browse_featured": "Посмотреть избранное"
 }

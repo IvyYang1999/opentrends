@@ -33,6 +33,7 @@ import {
 	Pin,
 	PinOff,
 	Rss,
+	Star,
 } from "lucide-react";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
@@ -63,6 +64,11 @@ import {
 	DisplaySettingsMenuContent,
 	LayoutSettingsMenuContent,
 } from "./display-settings-menu";
+import {
+	FollowedSourcesContext,
+	useFollowedSources,
+	useFollowedSourcesContext,
+} from "./followed-sources";
 import { formatRelativeTime } from "./relative-time";
 
 import { revealSourceCard, sourceCardElementId } from "./reveal-source-card";
@@ -105,6 +111,11 @@ interface SourceDragPreview {
 	top: number;
 	width: number;
 }
+
+// Titles the reader has already opened fade, with nothing stored anywhere:
+// the browser's own :visited state does the work.
+const VISITED_TITLE_CLASS =
+	"[&:visited_[data-title]]:font-normal [&:visited_[data-title]]:text-[var(--text-muted)]";
 
 function proxiedImageUrl(imageUrl: string, variant: "card" | "row"): string {
 	return `${env.VITE_SERVER_URL}/api/image?variant=${variant}&url=${encodeURIComponent(imageUrl)}`;
@@ -169,6 +180,14 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 		({ source }) => source.items.length > 0 || source.status !== "error"
 	);
 	const [sourceManagerOpen, setSourceManagerOpen] = useState(false);
+	const followed = useFollowedSources();
+	const followedContext = useMemo(
+		() => ({
+			isFollowed: followed.isFollowed,
+			toggleFollowed: followed.toggleFollowed,
+		}),
+		[followed.isFollowed, followed.toggleFollowed]
+	);
 	const [draggingSourceId, setDraggingSourceId] = useState<string | undefined>(
 		undefined
 	);
@@ -421,74 +440,76 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 		);
 	}
 	return (
-		<ScrollArea className="min-w-0 flex-1 overflow-hidden bg-[var(--surface-app)] text-[var(--text-primary)]">
-			<div>
-				<p aria-live="polite" className="sr-only">
-					{dragAnnouncement}
-				</p>
-				<TrendsSummary
-					collapsed={settings.summaryCollapsed}
-					key={displayPage.id}
-					onCollapsedChange={(collapsed) =>
-						setDisplaySetting(
-							"summaryCollapsed",
-							collapsed,
-							displaySettingsStore
-						)
-					}
-					page={displayPage}
-					topicId={displayPage.id}
-				/>
-				<ViewBar
-					displaySettingsStore={displaySettingsStore}
-					localeParam={localeParam}
-					onOpenSources={() => setSourceManagerOpen(true)}
-					settings={settings}
-					t={t}
-					topicId={displayPage.id}
-				/>
-				{sourceManagerOpen ? (
-					<SourceManagerDialog
-						hiddenSourceIds={sourcePreferences.preference.hiddenSourceIds}
-						onOpenChange={setSourceManagerOpen}
-						onOrderChange={sourcePreferences.setOrder}
-						onShowAll={sourcePreferences.showAllSources}
-						onTogglePinned={sourcePreferences.togglePinned}
-						onVisibilityChange={sourcePreferences.setSourceVisible}
-						open={sourceManagerOpen}
-						pinnedSourceIds={sourcePreferences.preference.pinnedSourceIds}
-						sources={orderedSources.map(({ source }) => ({
-							homeUrl: source.homeUrl,
-							id: source.sourceId,
-							title: source.title,
-						}))}
-						t={t}
+		<FollowedSourcesContext.Provider value={followedContext}>
+			<ScrollArea className="min-w-0 flex-1 overflow-hidden bg-[var(--surface-app)] text-[var(--text-primary)]">
+				<div>
+					<p aria-live="polite" className="sr-only">
+						{dragAnnouncement}
+					</p>
+					<TrendsSummary
+						collapsed={settings.summaryCollapsed}
+						key={displayPage.id}
+						onCollapsedChange={(collapsed) =>
+							setDisplaySetting(
+								"summaryCollapsed",
+								collapsed,
+								displaySettingsStore
+							)
+						}
+						page={displayPage}
+						topicId={displayPage.id}
 					/>
-				) : null}
-				{sourceContent}
-			</div>
-			{dragPreview ? (
-				<div
-					aria-hidden
-					className="pointer-events-none fixed z-[100] flex flex-col overflow-hidden border border-[var(--accent-blue)] bg-[var(--surface-card)] opacity-95 shadow-lg [contain:strict] [will-change:transform]"
-					ref={dragPreviewElementRef}
-					style={{
-						height: dragPreview.height,
-						left: dragPreview.left,
-						top: dragPreview.top,
-						width: dragPreview.width,
-					}}
-				>
-					<div className="flex items-center gap-2 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-2">
-						<GripVertical className="size-3.5 text-[var(--accent-blue)]" />
-						<SourceFavicon homeUrl={dragPreview.homeUrl} />
-						<span className="truncate font-semibold text-[13px] text-[var(--text-heading)]">
-							{dragPreview.title}
-						</span>
-					</div>
+					<ViewBar
+						displaySettingsStore={displaySettingsStore}
+						localeParam={localeParam}
+						onOpenSources={() => setSourceManagerOpen(true)}
+						settings={settings}
+						t={t}
+						topicId={displayPage.id}
+					/>
+					{sourceManagerOpen ? (
+						<SourceManagerDialog
+							hiddenSourceIds={sourcePreferences.preference.hiddenSourceIds}
+							onOpenChange={setSourceManagerOpen}
+							onOrderChange={sourcePreferences.setOrder}
+							onShowAll={sourcePreferences.showAllSources}
+							onTogglePinned={sourcePreferences.togglePinned}
+							onVisibilityChange={sourcePreferences.setSourceVisible}
+							open={sourceManagerOpen}
+							pinnedSourceIds={sourcePreferences.preference.pinnedSourceIds}
+							sources={orderedSources.map(({ source }) => ({
+								homeUrl: source.homeUrl,
+								id: source.sourceId,
+								title: source.title,
+							}))}
+							t={t}
+						/>
+					) : null}
+					{sourceContent}
 				</div>
-			) : null}
-		</ScrollArea>
+				{dragPreview ? (
+					<div
+						aria-hidden
+						className="pointer-events-none fixed z-[100] flex flex-col overflow-hidden border border-[var(--accent-blue)] bg-[var(--surface-card)] opacity-95 shadow-lg [contain:strict] [will-change:transform]"
+						ref={dragPreviewElementRef}
+						style={{
+							height: dragPreview.height,
+							left: dragPreview.left,
+							top: dragPreview.top,
+							width: dragPreview.width,
+						}}
+					>
+						<div className="flex items-center gap-2 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-2">
+							<GripVertical className="size-3.5 text-[var(--accent-blue)]" />
+							<SourceFavicon homeUrl={dragPreview.homeUrl} />
+							<span className="truncate font-semibold text-[13px] text-[var(--text-heading)]">
+								{dragPreview.title}
+							</span>
+						</div>
+					</div>
+				) : null}
+			</ScrollArea>
+		</FollowedSourcesContext.Provider>
 	);
 }
 
@@ -999,6 +1020,7 @@ function SourceHeaderMeta({
 			) : (
 				<span>—</span>
 			)}
+			<FollowButton source={source} t={t} />
 			<DropdownMenu>
 				<DropdownMenuTrigger
 					aria-label={t("card.actionsFor", { title: source.title })}
@@ -1041,6 +1063,38 @@ function SourceHeaderMeta({
 
 // Pinned cards sit in a block at the top, which is invisible once they are
 // there; the badge is what tells the reader why a card stays put.
+// Following is the one action worth a button of its own on the card; the
+// rest stay in the menu. Muted until followed, then a filled accent star.
+function FollowButton({
+	source,
+	t,
+}: {
+	source: SourceCardData;
+	t: Translator;
+}) {
+	const { isFollowed, toggleFollowed } = useFollowedSourcesContext();
+	const followed = isFollowed(source.sourceId);
+	const label = followed
+		? t("card.unfollow", { title: source.title })
+		: t("card.follow", { title: source.title });
+	return (
+		<button
+			aria-label={label}
+			aria-pressed={followed}
+			className="-my-1 inline-flex size-7 items-center justify-center rounded text-[var(--text-muted)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] aria-pressed:text-[var(--accent-blue)]"
+			onClick={() => toggleFollowed(source.sourceId)}
+			title={label}
+			type="button"
+		>
+			<Star
+				aria-hidden
+				className="size-3.5"
+				fill={followed ? "currentColor" : "none"}
+			/>
+		</button>
+	);
+}
+
 function PinnedBadge({ t }: { t: Translator }) {
 	return (
 		<span
@@ -1193,7 +1247,7 @@ function NewsRow({
 
 	return (
 		<a
-			className="group relative flex items-start gap-2.5 px-3 py-2.5 transition-colors hover:bg-[var(--state-hover-subtle)] sm:gap-3 sm:py-2"
+			className={`group relative flex items-start gap-2.5 px-3 py-2.5 transition-colors hover:bg-[var(--state-hover-subtle)] sm:gap-3 sm:py-2 ${VISITED_TITLE_CLASS}`}
 			href={item.url}
 			rel="noopener noreferrer"
 			target="_blank"
@@ -1258,7 +1312,7 @@ function NewsCard({
 
 	return (
 		<a
-			className="group flex h-full min-h-[148px] flex-col bg-[var(--surface-card)] transition-colors hover:bg-[var(--state-hover-subtle)] sm:min-h-[168px]"
+			className={`group flex h-full min-h-[148px] flex-col bg-[var(--surface-card)] transition-colors hover:bg-[var(--state-hover-subtle)] sm:min-h-[168px] ${VISITED_TITLE_CLASS}`}
 			href={item.url}
 			rel="noopener noreferrer"
 			target="_blank"
@@ -1280,7 +1334,10 @@ function NewsCard({
 							{item.rank ? String(item.rank).padStart(2, "0") : ""}
 						</span>
 					) : null}
-					<span className="line-clamp-3 min-w-0 flex-1 font-medium text-[13px] text-[var(--text-primary)] leading-[1.45] group-hover:text-[var(--accent-blue)]">
+					<span
+						className="line-clamp-3 min-w-0 flex-1 font-medium text-[13px] text-[var(--text-primary)] leading-[1.45] group-hover:text-[var(--accent-blue)]"
+						data-title
+					>
 						{item.title}
 					</span>
 					<TitleTranslationIndicator

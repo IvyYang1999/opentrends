@@ -46,7 +46,7 @@ interface EventFeedPageProps {
 }
 
 const TOPIC_IDS = [
-	"all",
+	"featured",
 	"ai",
 	"embodied",
 	"hardware",

@@ -1,9 +1,14 @@
 import { Hono } from "hono";
 import { captureWorkerContext } from "../runtime";
+import {
+	FOLLOWED_TOPIC_ID,
+	parseFollowedSourceIds,
+} from "../trends/config/followed-topic";
 import { EventEmbeddingNotConfiguredError } from "../trends/services/event-embedding";
 import { getEventDetail, getEventFeed } from "../trends/services/event-feed";
 import {
 	DEFAULT_TRENDS_ITEMS_PER_SOURCE,
+	getFollowedSourcesPage,
 	getTrendSourceCard,
 	getTrendsPageWithCacheInfo,
 	PREVIEW_TRENDS_ITEMS_PER_SOURCE,
@@ -165,14 +170,44 @@ export const trendsRoutes = new Hono()
 			throw error;
 		}
 	})
+	// Followed sources: the reader's list arrives with the request, so this
+	// page is built each time and skips the shared caches.
+	.get(`/${FOLLOWED_TOPIC_ID}`, async (c) => {
+		const lang = normalizeTranslationLanguage(c.req.query("lang"));
+		const translationMode = parseTranslationMode(c.req.query("translations"));
+		const itemsPerSource = parseItemsPerSource(c.req.query("items"));
+		const sourceIds = parseFollowedSourceIds(c.req.query("sources"));
+		try {
+			const page = await getFollowedSourcesPage(
+				sourceIds,
+				lang,
+				translationMode,
+				itemsPerSource
+			);
+			scheduleTranslationPrewarms(page, lang, getWaitUntil(c));
+			return withTrendsCacheHeaders(c.json(page), "sync", "bypass");
+		} catch (error) {
+			if (error instanceof TrendsSnapshotsUnavailableError) {
+				return c.json({ error: "snapshots_unavailable" }, 503, {
+					"Retry-After": "1",
+				});
+			}
+			throw error;
+		}
+	})
 	.get("/:topic/summary", async (c) => {
 		const topic = c.req.param("topic");
 		const lang = normalizeTranslationLanguage(c.req.query("lang"));
 		const window = normalizeSummaryWindow(c.req.query("window"));
+		const sourceIds =
+			topic === FOLLOWED_TOPIC_ID
+				? parseFollowedSourceIds(c.req.query("sources"))
+				: undefined;
 
 		let prepared: Awaited<ReturnType<typeof prepareTrendsSummary>>;
 		try {
 			prepared = await prepareTrendsSummary(topic, lang, {
+				sourceIds,
 				window,
 			});
 		} catch (error) {
@@ -190,6 +225,7 @@ export const trendsRoutes = new Hono()
 			if (error instanceof TrendsSummaryPendingError) {
 				const prewarm = requestSummaryPrewarmJob({
 					lang,
+					sourceIds: sourceIds ? [...sourceIds] : undefined,
 					topicId: topic as TopicId,
 					window,
 				});

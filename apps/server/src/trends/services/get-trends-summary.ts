@@ -5,10 +5,15 @@ import { streamText } from "ai";
 import { type CacheEnvelope, hotCache } from "../cache/hot-cache";
 import { readSourceItemHistory } from "../cache/source-cache";
 import { readSummary } from "../cache/summary-cache";
+import { FOLLOWED_TOPIC_ID, resolveTopic } from "../config/followed-topic";
 import { getSourcePreset } from "../config/sources";
-import { ALL_TOPIC_ID, getTopicPreset, topicPresets } from "../config/topics";
+import { FEATURED_TOPIC_ID, topicPresets } from "../config/topics";
 import type { NewsItem, SourceId, TopicPreset, TrendsPageData } from "../types";
-import { getTrendsPage, TopicNotFoundError } from "./get-trends-page";
+import {
+	getFollowedSourcesPage,
+	getTrendsPage,
+	TopicNotFoundError,
+} from "./get-trends-page";
 import { llmProviderOptions } from "./llm";
 import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
 import type { TranslationLanguage } from "./translate-news-items";
@@ -129,6 +134,8 @@ export interface PreparedSummary {
 }
 
 interface TrendsSummaryCacheOptions {
+	// Followed sources for the "mine" pseudo-topic.
+	sourceIds?: readonly SourceId[];
 	window?: SummaryWindow;
 }
 
@@ -326,13 +333,13 @@ function dedupeSources(sources: SourceCandidates[]): SourceCandidates[] {
 	});
 }
 
-// The "all" tab's digest is drawn from every topic, not just its own cards,
+// The featured tab's digest is drawn from every topic, not just its own cards,
 // so the landing page shows the day's biggest stories across the site.
 function digestTopics(
 	topicId: string,
 	topic: TopicPreset
 ): [string, TopicPreset][] {
-	if (topicId !== ALL_TOPIC_ID) {
+	if (topicId !== FEATURED_TOPIC_ID) {
 		return [[topicId, topic]];
 	}
 	return Object.entries(topicPresets);
@@ -348,7 +355,14 @@ async function collectWindowCitedItems(
 	const topics = digestTopics(topicId, topic);
 	if (profile.historyItemsPerSourcePerDay === undefined) {
 		const pages = await Promise.all(
-			topics.map(([id]) => getTrendsPage(id, lang))
+			topics.map(([id, preset]) =>
+				id === FOLLOWED_TOPIC_ID
+					? getFollowedSourcesPage(
+							preset.sections.flatMap((section) => section.sourceIds),
+							lang
+						)
+					: getTrendsPage(id, lang)
+			)
 		);
 		return collectCitedItems(pages);
 	}
@@ -708,16 +722,18 @@ async function readAnyCachedSummary(
 async function refreshSummaryCache(
 	topicId: string,
 	lang: TranslationLanguage,
-	window: SummaryWindow
+	window: SummaryWindow,
+	sourceIds?: readonly SourceId[]
 ): Promise<void> {
 	if (!env.LLM_API_KEY) {
 		throw new TrendsSummaryNotConfiguredError();
 	}
-	const topic = getTopicPreset(topicId);
-	if (!topic) {
+	const resolved = resolveTopic(topicId, sourceIds);
+	if (!resolved) {
 		throw new TopicNotFoundError(topicId);
 	}
-	const cacheTopicId = summaryCacheTopicId(topicId, window);
+	const topic = resolved.preset;
+	const cacheTopicId = summaryCacheTopicId(resolved.cacheTopicId, window);
 	const cited = await collectWindowCitedItems(topicId, topic, lang, window);
 	const citations: Citation[] = cited.map(({ n, item }) => ({
 		n,
@@ -766,10 +782,14 @@ async function refreshSummaryCache(
 function startSummaryRefresh(
 	topicId: string,
 	lang: TranslationLanguage,
-	window: SummaryWindow
+	window: SummaryWindow,
+	sourceIds?: readonly SourceId[]
 ): Promise<void> {
 	const cacheKey = makeSummaryCacheKey(
-		summaryCacheTopicId(topicId, window),
+		summaryCacheTopicId(
+			resolveTopic(topicId, sourceIds)?.cacheTopicId ?? topicId,
+			window
+		),
 		lang
 	);
 	const inFlight = inFlightSummaryRefreshes.get(cacheKey);
@@ -778,7 +798,7 @@ function startSummaryRefresh(
 	}
 	const refresh = (async () => {
 		try {
-			await refreshSummaryCache(topicId, lang, window);
+			await refreshSummaryCache(topicId, lang, window, sourceIds);
 		} finally {
 			inFlightSummaryRefreshes.delete(cacheKey);
 		}
@@ -790,9 +810,10 @@ function startSummaryRefresh(
 export function refreshTrendsSummaryCache(
 	topicId: string,
 	lang: TranslationLanguage,
-	window: SummaryWindow = "today"
+	window: SummaryWindow = "today",
+	sourceIds?: readonly SourceId[]
 ): Promise<void> {
-	return startSummaryRefresh(topicId, lang, window);
+	return startSummaryRefresh(topicId, lang, window, sourceIds);
 }
 
 async function writeCachedSummary(params: {
@@ -1023,12 +1044,12 @@ export async function prepareTrendsSummary(
 	if (!env.LLM_API_KEY) {
 		throw new TrendsSummaryNotConfiguredError();
 	}
-	const topic = getTopicPreset(topicId);
-	if (!topic) {
+	const resolved = resolveTopic(topicId, options.sourceIds);
+	if (!resolved) {
 		throw new TopicNotFoundError(topicId);
 	}
 	const window = options.window ?? "today";
-	const cacheTopicId = summaryCacheTopicId(topicId, window);
+	const cacheTopicId = summaryCacheTopicId(resolved.cacheTopicId, window);
 
 	const cachedSummary = await readAnyCachedSummary(cacheTopicId, lang, window);
 	if (cachedSummary) {

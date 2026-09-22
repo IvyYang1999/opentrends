@@ -6,7 +6,8 @@
   "nav_skills": "Skills",
   "nav_dashboard": "Tableau de bord",
   "nav_home_aria": "Accueil OpenTrends",
-  "topic_all": "Tout",
+  "topic_mine": "Mes sources",
+  "topic_featured": "Sélection",
   "topic_ai": "IA",
   "topic_embodied": "IA incarnée",
   "topic_hardware": "Matériel",
@@ -191,5 +192,9 @@
   "summary_label": "Résumé IA",
   "source_manager_title": "Sources",
   "source_manager_count": "{shown} sur {total} affichées",
-  "card_show_source": "Afficher la source"
+  "card_show_source": "Afficher la source",
+  "card_follow": "Suivre {title}",
+  "card_unfollow": "Ne plus suivre {title}",
+  "followed_empty": "Vous ne suivez encore aucune source. Étoilez une source sur n’importe quelle carte et elle apparaîtra ici.",
+  "followed_browse_featured": "Parcourir la sélection"
 }

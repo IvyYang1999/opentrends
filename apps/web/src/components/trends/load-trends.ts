@@ -30,7 +30,8 @@ export class TrendEventsEmbeddingNotConfiguredError extends Error {
 export async function loadTrends(
 	topic?: string,
 	locale: Locale = "en",
-	itemsPerSource = TRENDS_FULL_ITEMS_PER_SOURCE
+	itemsPerSource = TRENDS_FULL_ITEMS_PER_SOURCE,
+	sourceIds?: readonly string[]
 ): Promise<TrendsPageData> {
 	const path = topic
 		? `/api/trends/${encodeURIComponent(topic)}`
@@ -40,6 +41,9 @@ export async function loadTrends(
 		lang: locale,
 		translations: "background",
 	});
+	if (sourceIds) {
+		search.set("sources", sourceIds.join(","));
+	}
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), TRENDS_FETCH_TIMEOUT_MS);
 	let response: Response;

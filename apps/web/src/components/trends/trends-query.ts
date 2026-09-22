@@ -21,10 +21,21 @@ import type {
 export const TRENDS_PAGE_GC_MS = 30 * 60_000;
 export const TRENDS_PAGE_STALE_MS = 10 * 60_000;
 
-export function trendsPageQueryOptions(topic: string, locale: Locale) {
+export function trendsPageQueryOptions(
+	topic: string,
+	locale: Locale,
+	sourceIds?: readonly string[]
+) {
 	return queryOptions<TrendsPageData, Error>({
-		queryKey: ["trends-page", topic, locale, TRENDS_PREVIEW_ITEMS_PER_SOURCE],
-		queryFn: () => loadTrends(topic, locale, TRENDS_PREVIEW_ITEMS_PER_SOURCE),
+		queryKey: [
+			"trends-page",
+			topic,
+			locale,
+			TRENDS_PREVIEW_ITEMS_PER_SOURCE,
+			...(sourceIds ? [sourceIds.join(",")] : []),
+		],
+		queryFn: () =>
+			loadTrends(topic, locale, TRENDS_PREVIEW_ITEMS_PER_SOURCE, sourceIds),
 		gcTime: TRENDS_PAGE_GC_MS,
 		refetchInterval: (query) =>
 			query.state.data && pageNeedsTranslationWarmup(query.state.data, locale)

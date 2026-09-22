@@ -7,6 +7,8 @@ import {
 } from "@/components/chrome-styles";
 import { type Locale, useT } from "@/lib/i18n";
 
+import { FOLLOWED_TOPIC_ID } from "./followed-sources";
+
 interface ViewSwitchProps {
 	localeParam: Locale | undefined;
 	/** Topic to keep when switching; omitted on the all-topics events feed. */
@@ -29,17 +31,19 @@ export function ViewSwitch({ localeParam, topicId, view }: ViewSwitchProps) {
 			>
 				{t("nav.trends")}
 			</Link>
-			<Link
-				className={cn(
-					segmentClassName,
-					view === "events" && segmentActiveClassName
-				)}
-				params={{ locale: localeParam }}
-				search={topicId ? { topic: topicId } : {}}
-				to="/{-$locale}/events"
-			>
-				{t("nav.events")}
-			</Link>
+			{topicId === FOLLOWED_TOPIC_ID ? null : (
+				<Link
+					className={cn(
+						segmentClassName,
+						view === "events" && segmentActiveClassName
+					)}
+					params={{ locale: localeParam }}
+					search={topicId ? { topic: topicId } : {}}
+					to="/{-$locale}/events"
+				>
+					{t("nav.events")}
+				</Link>
+			)}
 		</nav>
 	);
 }

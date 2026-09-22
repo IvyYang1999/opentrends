@@ -23,12 +23,12 @@ import {
 const MAX_SOURCE_RESULTS = 8;
 const MAX_HEADLINE_RESULTS = 30;
 const MIN_QUERY_LENGTH = 1;
-const ALL_TOPIC = "all";
+const FEATURED_TOPIC = "featured";
 
-// A source's own field is the better destination; the cross-topic tab is only
+// A source's own field is the better destination; the featured tab is only
 // used when it is the source's only home.
 function navigableTopics(entry: SourceStatusEntry): string[] {
-	const specific = entry.topics.filter((topic) => topic !== ALL_TOPIC);
+	const specific = entry.topics.filter((topic) => topic !== FEATURED_TOPIC);
 	return specific.length > 0 ? specific : entry.topics;
 }
 

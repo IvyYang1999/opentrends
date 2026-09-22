@@ -11,6 +11,7 @@ import {
 	type CitationMeta,
 	type CitationMetaMap,
 } from "./citation-link-popover";
+import { FOLLOWED_TOPIC_ID } from "./followed-sources";
 import { parseDigest } from "./share-image";
 import { SourceLogoStack, type SourceLogoStackItem } from "./source-favicon";
 import { SummaryShareDialog } from "./summary-share-dialog";
@@ -173,6 +174,7 @@ async function streamSummary(
 	locale: Locale,
 	summaryWindow: SummaryWindow,
 	requestVersion: number,
+	sourceIds: readonly string[] | undefined,
 	handlers: StreamHandlers
 ): Promise<void> {
 	const search = new URLSearchParams({
@@ -182,6 +184,9 @@ async function streamSummary(
 	});
 	if (summaryWindow !== "today") {
 		search.set("window", summaryWindow);
+	}
+	if (sourceIds) {
+		search.set("sources", sourceIds.join(","));
 	}
 	const url = `${env.VITE_SERVER_URL}/api/trends/${encodeURIComponent(topicId)}/summary?${search}`;
 	try {
@@ -430,6 +435,16 @@ export function TrendsSummary({
 	const [retryNonce, setRetryNonce] = useState(0);
 	const metadata = useMemo(() => buildMetadataMap(page), [page]);
 	const stats = useMemo(() => computeSummaryStats(page), [page]);
+	// The followed page carries the reader's list; the digest needs it too.
+	const followedIds = useMemo(
+		() =>
+			topicId === FOLLOWED_TOPIC_ID
+				? page.sections.flatMap((section) =>
+						section.sources.map((source) => source.sourceId)
+					)
+				: undefined,
+		[page, topicId]
+	);
 	const [shareOpen, setShareOpen] = useState(false);
 	// Sharing is offered once the whole digest has arrived, so the image never
 	// shows a half-written entry.
@@ -453,7 +468,7 @@ export function TrendsSummary({
 			setStatus("loading");
 			setCitations(EMPTY_CITATIONS);
 
-			streamSummary(topicId, locale, summaryWindow, retryNonce, {
+			streamSummary(topicId, locale, summaryWindow, retryNonce, followedIds, {
 				signal: controller.signal,
 				isCancelled: () => cancelled,
 				onStreamingStart: () => setStatus("streaming"),
@@ -489,7 +504,7 @@ export function TrendsSummary({
 				controller.abort();
 			};
 		},
-		[topicId, locale, summaryWindow, retryNonce]
+		[topicId, locale, summaryWindow, retryNonce, followedIds]
 	);
 
 	if (status === "unavailable") {

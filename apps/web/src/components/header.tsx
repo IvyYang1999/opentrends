@@ -39,7 +39,8 @@ import Logo from "./logo";
 import ThemeToggle from "./theme-toggle";
 
 const TOPIC_IDS = [
-	"all",
+	"mine",
+	"featured",
 	"ai",
 	"embodied",
 	"hardware",
@@ -153,7 +154,8 @@ function TopicLink({
 	const { topic } = useParams({ strict: false }) as { topic?: string };
 	const search = useSearch({ strict: false }) as { topic?: string };
 	const location = useLocation();
-	const onEvents = location.pathname.includes("/events");
+	// The followed page has no events view, so its tab always opens trends.
+	const onEvents = location.pathname.includes("/events") && id !== "mine";
 	const active = onEvents ? search.topic === id : topic === id;
 	return (
 		<Link

@@ -5,6 +5,10 @@ import {
 	readSnapshots,
 	readSourceRefreshStates,
 } from "../cache/source-cache";
+import {
+	FOLLOWED_TOPIC_ID,
+	followedTopicPreset,
+} from "../config/followed-topic";
 import { getSourcePreset } from "../config/sources";
 import { getTopicPreset, topicPresets } from "../config/topics";
 import type {
@@ -12,6 +16,7 @@ import type {
 	SourceId,
 	SourceSnapshot,
 	TopicId,
+	TopicPreset,
 	TrendsPageData,
 	TrendsSectionData,
 } from "../types";
@@ -455,7 +460,7 @@ function snapshotToCard(
 	};
 }
 
-async function buildTrendsPage(
+function buildTrendsPage(
 	topicId: string,
 	lang: TranslationLanguage = "en",
 	translationMode: TranslationMode = "background",
@@ -465,7 +470,39 @@ async function buildTrendsPage(
 	if (!topic) {
 		throw new TopicNotFoundError(topicId);
 	}
+	return buildPageFromPreset(
+		topicId,
+		topic,
+		lang,
+		translationMode,
+		itemsPerSource
+	);
+}
 
+// The followed-sources page is assembled per request from the reader's own
+// list and never enters the shared page caches.
+export function getFollowedSourcesPage(
+	sourceIds: readonly SourceId[],
+	lang: TranslationLanguage = "en",
+	translationMode: TranslationMode = "background",
+	itemsPerSource = DEFAULT_TRENDS_ITEMS_PER_SOURCE
+): Promise<TrendsPageData> {
+	return buildPageFromPreset(
+		FOLLOWED_TOPIC_ID,
+		followedTopicPreset(sourceIds),
+		lang,
+		translationMode,
+		itemsPerSource
+	);
+}
+
+async function buildPageFromPreset(
+	topicId: string,
+	topic: TopicPreset,
+	lang: TranslationLanguage,
+	translationMode: TranslationMode,
+	itemsPerSource: number
+): Promise<TrendsPageData> {
 	const sourceIds = [
 		...new Set(topic.sections.flatMap((section) => section.sourceIds)),
 	];

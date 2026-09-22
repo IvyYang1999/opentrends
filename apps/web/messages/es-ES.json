@@ -6,7 +6,8 @@
   "nav_skills": "Skills",
   "nav_dashboard": "Panel",
   "nav_home_aria": "Inicio de OpenTrends",
-  "topic_all": "Todo",
+  "topic_mine": "Mis fuentes",
+  "topic_featured": "Selección",
   "topic_ai": "IA",
   "topic_embodied": "IA física",
   "topic_hardware": "Hardware",
@@ -191,5 +192,9 @@
   "summary_label": "Resumen IA",
   "source_manager_title": "Fuentes",
   "source_manager_count": "{shown} de {total} visibles",
-  "card_show_source": "Mostrar fuente"
+  "card_show_source": "Mostrar fuente",
+  "card_follow": "Seguir {title}",
+  "card_unfollow": "Dejar de seguir {title}",
+  "followed_empty": "Aún no sigues ninguna fuente. Marca una fuente con la estrella en cualquier tarjeta y aparecerá aquí.",
+  "followed_browse_featured": "Ver la selección"
 }

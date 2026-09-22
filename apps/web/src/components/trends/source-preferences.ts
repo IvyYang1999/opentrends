@@ -16,13 +16,18 @@ function storageKey(topicId: string): string {
 	return `${STORAGE_PREFIX}${topicId}`;
 }
 
+// `availableSourceIds` of null keeps whatever the preference lists: the
+// followed-sources list is not bounded by a topic.
 function withTopic(
 	preference: TrendsSourcePreference | undefined,
 	topicId: string,
-	availableSourceIds: readonly string[]
+	availableSourceIds: readonly string[] | null
 ): TrendsSourcePreference {
 	return {
-		...normalizeTrendsSourcePreferences(preference, availableSourceIds),
+		...normalizeTrendsSourcePreferences(
+			preference,
+			availableSourceIds ?? preference?.orderedSourceIds ?? []
+		),
 		topicId,
 	};
 }
@@ -62,11 +67,11 @@ function serialize(preference: TrendsSourcePreference): string {
 
 export function useSourcePreferences(
 	topicId: string,
-	availableSourceIds: readonly string[]
+	availableSourceIds: readonly string[] | null
 ) {
 	const availableKey = JSON.stringify(availableSourceIds);
 	const stableAvailableSourceIds = useMemo(
-		() => JSON.parse(availableKey) as string[],
+		() => JSON.parse(availableKey) as string[] | null,
 		[availableKey]
 	);
 	const session = authClient.useSession();

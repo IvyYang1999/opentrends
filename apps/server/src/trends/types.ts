@@ -1,5 +1,5 @@
 export type TopicId =
-	| "all"
+	| "featured"
 	| "ai"
 	| "programming"
 	| "cn"

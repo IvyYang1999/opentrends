@@ -1,5 +1,9 @@
 import { getWorkerBindings } from "../../runtime";
 import { hotCache } from "../cache/hot-cache";
+import {
+	type FOLLOWED_TOPIC_ID,
+	followedSourcesKey,
+} from "../config/followed-topic";
 import { topicPresets } from "../config/topics";
 import type { SourceId, TopicId } from "../types";
 import {
@@ -22,7 +26,9 @@ export const SUMMARY_PREWARM_WINDOWS: readonly SummaryWindow[] = [
 
 export interface SummaryPrewarmMessage {
 	lang: TranslationLanguage;
-	topicId: TopicId;
+	// Followed sources when topicId is the "mine" pseudo-topic.
+	sourceIds?: SourceId[];
+	topicId: TopicId | typeof FOLLOWED_TOPIC_ID;
 	// Optional so queue messages written by the previous deployment still work.
 	window?: SummaryWindow;
 }
@@ -70,7 +76,10 @@ export function summaryPrewarmMessagesForSource(
 }
 
 function summaryPrewarmMessageKey(message: SummaryPrewarmMessage): string {
-	return `${message.topicId}:${message.lang}:${message.window ?? "today"}`;
+	const topic = message.sourceIds
+		? `${message.topicId}:${followedSourcesKey(message.sourceIds)}`
+		: message.topicId;
+	return `${topic}:${message.lang}:${message.window ?? "today"}`;
 }
 
 export function summaryPrewarmMessagesForSources(
@@ -91,7 +100,8 @@ export async function runSummaryPrewarmJob(
 	await refreshTrendsSummaryCache(
 		message.topicId,
 		message.lang,
-		message.window ?? "today"
+		message.window ?? "today",
+		message.sourceIds
 	);
 	await hotCache.delete(summaryRequestMarkerKey(message));
 }

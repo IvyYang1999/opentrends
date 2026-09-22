@@ -6,7 +6,8 @@
   "nav_skills": "Skills",
   "nav_dashboard": "儀表板",
   "nav_home_aria": "OpenTrends 首頁",
-  "topic_all": "全部",
+  "topic_mine": "我的",
+  "topic_featured": "精選",
   "topic_ai": "AI",
   "topic_embodied": "具身智慧",
   "topic_hardware": "硬體",
@@ -191,5 +192,9 @@
   "summary_label": "AI 摘要",
   "source_manager_title": "來源",
   "source_manager_count": "顯示 {shown} / {total}",
-  "card_show_source": "顯示來源"
+  "card_show_source": "顯示來源",
+  "card_follow": "關注 {title}",
+  "card_unfollow": "取消關注 {title}",
+  "followed_empty": "你還沒有關注任何來源。在任一卡片上點星標，它就會出現在這裡。",
+  "followed_browse_featured": "去精選裡看看"
 }
