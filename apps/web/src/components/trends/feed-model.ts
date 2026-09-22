@@ -23,9 +23,10 @@ const HOUR_MS = 60 * 60 * 1000;
 const RECENCY_HALF_LIFE_MS = 18 * HOUR_MS;
 const FOLLOWED_BOOST = 1.6;
 const HEAT_WEIGHT = 0.35;
-const COVER_BOOST = 1.25;
-// Per ten slots, how many go to illustrated items when enough exist.
-const COVER_QUOTA = 7;
+const COVER_BOOST = 1.1;
+// Per ten slots, how many go to illustrated items when enough exist. Text
+// posters read better than most covers, so they get the larger share.
+const COVER_QUOTA = 4;
 const SLOTS_PER_ROUND = 10;
 // A source may appear at most this many times within a window of recent
 // slots, so one busy feed cannot own a screen.

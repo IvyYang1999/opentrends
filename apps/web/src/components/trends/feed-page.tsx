@@ -7,7 +7,12 @@ import Loader from "@/components/loader";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
 
 import { setDisplaySetting, useDisplaySettings } from "./display-settings";
-import { coverRatio, GeneratedCover, useSourceHue } from "./feed-cover";
+import {
+	coverRatio,
+	Emphasized,
+	GeneratedCover,
+	useSourceHue,
+} from "./feed-cover";
 import {
 	type FeedBlock,
 	type FeedEntry,
@@ -233,23 +238,32 @@ function FeedCard({
 			title={original}
 		>
 			{hasCover ? (
-				// biome-ignore lint/a11y/noNoninteractiveElementInteractions: the error listener only swaps a failed cover for the poster
-				<img
-					alt=""
-					className={`w-full bg-[var(--surface-sidebar)] object-cover ${coverRatio(item)}`}
-					height={240}
-					loading="lazy"
-					onError={() => setCover("failed")}
-					onLoad={(event) =>
-						setCover(
-							event.currentTarget.naturalWidth < SMALL_COVER_WIDTH
-								? "small"
-								: "ok"
-						)
-					}
-					src={proxiedImageUrl(item.imageUrl as string)}
-					width={320}
-				/>
+				// The title sits on the picture over a scrim, where the eye already
+				// is; a caption under the picture goes unread.
+				<span className="relative block">
+					{/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: the load and error listeners only classify the cover */}
+					<img
+						alt=""
+						className={`w-full bg-[var(--surface-sidebar)] object-cover ${coverRatio(item)}`}
+						height={240}
+						loading="lazy"
+						onError={() => setCover("failed")}
+						onLoad={(event) =>
+							setCover(
+								event.currentTarget.naturalWidth < SMALL_COVER_WIDTH
+									? "small"
+									: "ok"
+							)
+						}
+						src={proxiedImageUrl(item.imageUrl as string)}
+						width={320}
+					/>
+					<span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/40 to-transparent px-3 pt-10 pb-3">
+						<span className="line-clamp-3 font-semibold text-[14px] text-white leading-snug tracking-tight [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]">
+							<Emphasized text={item.title} />
+						</span>
+					</span>
+				</span>
 			) : (
 				<GeneratedCover
 					heat={heatLabel}
@@ -262,12 +276,7 @@ function FeedCard({
 					}
 				/>
 			)}
-			<span className="flex flex-col gap-1.5 p-3">
-				{hasCover ? (
-					<span className="line-clamp-3 font-medium text-[13px] text-current leading-[1.45] group-hover:text-[var(--accent-blue)]">
-						{item.title}
-					</span>
-				) : null}
+			<span className="flex flex-col gap-1.5 px-3 py-2">
 				<span className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
 					<SourceFavicon homeUrl={source.homeUrl} />
 					<span className="min-w-0 flex-1 truncate">{source.title}</span>

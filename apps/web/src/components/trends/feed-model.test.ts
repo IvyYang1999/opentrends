@@ -65,7 +65,7 @@ describe("rankFeed", () => {
 });
 
 describe("arrangeFeed", () => {
-	test("gives seven of ten slots to illustrated items and caps a source per window", () => {
+	test("gives four of ten slots to illustrated items and caps a source per window", () => {
 		const a = source(
 			"a",
 			Array.from({ length: 20 }, () => ({ imageUrl: "https://img" }))
@@ -88,7 +88,7 @@ describe("arrangeFeed", () => {
 		}));
 		const arranged = arrangeFeed(entries);
 		const firstTen = arranged.slice(0, 10);
-		expect(firstTen.filter((e) => e.item.imageUrl).length).toBe(7);
+		expect(firstTen.filter((e) => e.item.imageUrl).length).toBe(4);
 		for (let i = 0; i + 12 <= arranged.length; i += 1) {
 			const window = arranged.slice(i, i + 12).map((e) => e.source.sourceId);
 			for (const id of ["a", "b", "c"]) {
