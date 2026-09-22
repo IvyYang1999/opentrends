@@ -189,7 +189,6 @@
   "card_pinned": "Épinglée",
   "summary_label": "Résumé IA",
   "source_manager_title": "Sources",
-  "source_manager_hint": "Glissez pour réordonner. Les sources épinglées restent en haut.",
   "source_manager_count": "{shown} sur {total} affichées",
   "card_show_source": "Afficher la source"
 }

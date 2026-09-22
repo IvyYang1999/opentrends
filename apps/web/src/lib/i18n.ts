@@ -107,7 +107,6 @@ const MESSAGE_IDS = {
 	"card.hideSource": "card_hide_source",
 	"card.showSource": "card_show_source",
 	"sourceManager.title": "source_manager_title",
-	"sourceManager.hint": "source_manager_hint",
 	"sourceManager.count": "source_manager_count",
 	"card.actionsFor": "card_actions_for",
 	"card.statusLive": "card_status_live",

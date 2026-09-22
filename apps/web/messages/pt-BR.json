@@ -189,7 +189,6 @@
   "card_pinned": "Fixada",
   "summary_label": "Resumo de IA",
   "source_manager_title": "Fontes",
-  "source_manager_hint": "Arraste para reordenar. Fontes fixadas ficam no topo.",
   "source_manager_count": "{shown} de {total} exibidas",
   "card_show_source": "Mostrar fonte"
 }
