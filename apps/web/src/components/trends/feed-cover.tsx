@@ -1,6 +1,7 @@
 import { env } from "@opentrends/env/web";
 import { useEffect, useState } from "react";
 
+import { FLAME_PATH, RAY_PATHS } from "./brand-motif-paths";
 import { SourceFavicon } from "./source-favicon";
 import type { NewsItem, SourceCardData } from "./types";
 
@@ -10,8 +11,16 @@ const RATIOS = ["aspect-[4/3]", "aspect-[16/10]", "aspect-[1/1]"] as const;
 
 // Punctuation that splits a title into a kicker and a headline.
 const KICKER_RE = /^(.{2,24}?)[：:｜|—–-]\s*(.{4,})$/;
-const FIGURE_RE = /(\d[\d,.]*\s*[%万亿kKmM]?)/;
+// A figure is only a headline number when it carries a unit or a
+// thousands separator; a bare "8105" is usually a code, not a fact.
+const FIGURE_RE =
+	/(\d{1,3}(?:,\d{3})+|\d[\d.]*\s*(?:%|万|亿|[kKmM]\b|美元|元|人|次|倍|年|条|款|个))/;
 const QUESTION_RE = /[?？]\s*$/;
+// Spans worth setting in bold without a language model: quoted phrases,
+// Latin names and product names, and figures with their units.
+const EMPHASIS_RE =
+	/(「[^」]{1,20}」|“[^”]{1,20}”|"[^"]{2,24}"|《[^》]{1,24}》|\b[A-Z][A-Za-z0-9.+-]{1,}(?:\s[A-Z][A-Za-z0-9.+-]{1,}){0,2}\b|\d[\d,.]*\s*[%万亿kKmM]?(?:美元|元|人|次|倍|年|个|条|款|亿|万)?)/g;
+const MOTIFS = ["flame", "rays", "grid"] as const;
 const HUE_BINS = 12;
 const HUE_CACHE = new Map<string, Promise<number | null>>();
 
@@ -157,18 +166,43 @@ export function pickTemplate(title: string): Template {
 	return "essay";
 }
 
+// Bolds the spans EMPHASIS_RE finds, leaving the rest as is.
+export function Emphasized({ text }: { text: string }) {
+	const parts = text.split(EMPHASIS_RE);
+	return (
+		<>
+			{parts.map((part, index) =>
+				index % 2 === 1 ? (
+					// biome-ignore lint/suspicious/noArrayIndexKey: static text fragments
+					<strong className="font-bold" key={index}>
+						{part}
+					</strong>
+				) : (
+					part
+				)
+			)}
+		</>
+	);
+}
+
+// "谁：说了什么" reads as a quotation: a large opening mark, the words, and
+// the speaker on an attribution line.
 function KickerText({ title }: { title: string }) {
 	const match = KICKER_RE.exec(title);
 	if (!(match?.[1] && match[2])) {
 		return <StatementText title={title} />;
 	}
 	return (
-		<span className="flex flex-col gap-1.5">
-			<span className="truncate font-medium text-[11px] uppercase tracking-wide opacity-70">
-				{match[1]}
+		<span className="flex flex-col gap-1">
+			<span className="-mb-4 font-serif text-[44px] leading-none opacity-25">
+				“
 			</span>
 			<span className="line-clamp-4 font-semibold text-[17px] leading-snug tracking-tight">
-				{match[2]}
+				<Emphasized text={match[2]} />
+			</span>
+			<span className="mt-1 flex items-center gap-1.5 text-[12px] opacity-75">
+				<span className="h-px w-4 bg-current" />
+				<span className="truncate font-medium">{match[1]}</span>
 			</span>
 		</span>
 	);
@@ -194,8 +228,8 @@ function FigureText({ title }: { title: string }) {
 
 function StatementText({ title }: { title: string }) {
 	return (
-		<span className="line-clamp-4 font-bold text-[21px] leading-snug tracking-tight">
-			{title}
+		<span className="line-clamp-4 font-semibold text-[21px] leading-snug tracking-tight">
+			<Emphasized text={title} />
 		</span>
 	);
 }
@@ -219,7 +253,7 @@ function PosterText({
 						?
 					</span>
 					<span className="line-clamp-4 font-semibold text-[16px] leading-snug tracking-tight">
-						{title}
+						<Emphasized text={title} />
 					</span>
 				</span>
 			);
@@ -228,41 +262,111 @@ function PosterText({
 		default:
 			return (
 				<span className="line-clamp-5 border-current border-l-2 pl-3 font-medium text-[14px] leading-relaxed opacity-90">
-					{title}
+					<Emphasized text={title} />
 				</span>
 			);
 	}
 }
 
-// A text-only item gets a poster in a light tint of the source's colour
-// with dark text, so it reads like a card and not like a banner.
+// Brand motifs drawn behind the text in the source's hue: the flame from
+// the logo, its rays, or a dot grid. Flat tint, no gradient, so posters sit
+// with the rest of the site rather than looking like banners.
+function Motif({ hue, kind }: { hue: number; kind: (typeof MOTIFS)[number] }) {
+	const stroke = `hsl(${hue} 55% 45%)`;
+	if (kind === "flame") {
+		return (
+			<svg
+				aria-hidden
+				className="pointer-events-none absolute -right-6 -bottom-8 h-[78%] opacity-[0.10]"
+				fill={stroke}
+				role="presentation"
+				viewBox="0 0 1024 1024"
+			>
+				<path d={FLAME_PATH} />
+			</svg>
+		);
+	}
+	if (kind === "rays") {
+		return (
+			<svg
+				aria-hidden
+				className="pointer-events-none absolute -top-6 -right-10 h-[110%] opacity-[0.16]"
+				fill="none"
+				role="presentation"
+				stroke={stroke}
+				strokeLinecap="round"
+				strokeWidth="10"
+				viewBox="0 0 1024 1024"
+			>
+				{RAY_PATHS.map((d) => (
+					<path d={d} key={d} />
+				))}
+			</svg>
+		);
+	}
+	return (
+		<span
+			aria-hidden
+			className="pointer-events-none absolute inset-0 opacity-[0.12]"
+			style={{
+				backgroundImage: `radial-gradient(${stroke} 1px, transparent 1.5px)`,
+				backgroundSize: "14px 14px",
+			}}
+		/>
+	);
+}
+
+// A text-only item gets a poster: a flat light tint of the source's colour,
+// a brand motif behind, dark text laid out by the title's shape. A thumbnail
+// too small to be a cover is set inside the poster instead.
 export function GeneratedCover({
 	heat,
 	item,
 	source,
+	thumbnail,
 }: {
 	heat?: string;
 	item: NewsItem;
 	source: SourceCardData;
+	thumbnail?: string;
 }) {
 	const hue = useSourceHue(source);
 	const template = pickTemplate(item.title);
+	const motif = MOTIFS[
+		hash(item.url) % MOTIFS.length
+	] as (typeof MOTIFS)[number];
 	return (
 		<span
 			aria-hidden
-			className={`flex w-full flex-col justify-between p-4 ${coverRatio(item)}`}
+			className={`relative flex w-full flex-col justify-between overflow-hidden p-4 ${coverRatio(item)}`}
 			style={{
-				backgroundImage: `linear-gradient(160deg, hsl(${hue} 70% 94%) 0%, hsl(${hue} 60% 86%) 100%)`,
+				backgroundColor: `hsl(${hue} 60% 93%)`,
 				color: `hsl(${hue} 45% 22%)`,
 			}}
 		>
-			<span className="flex items-center gap-1.5 text-[11px] opacity-70">
+			<Motif hue={hue} kind={motif} />
+			<span className="relative flex items-center gap-1.5 text-[11px] opacity-70">
 				<SourceFavicon homeUrl={source.homeUrl} />
 				<span className="truncate">{source.title}</span>
 			</span>
-			<PosterText template={template} title={item.title} />
-			<span className="self-end text-[12px] tabular-nums opacity-70">
-				{heat ?? ""}
+			<span className="relative">
+				<PosterText template={template} title={item.title} />
+			</span>
+			<span className="relative flex items-end justify-between">
+				{thumbnail ? (
+					<img
+						alt=""
+						className="size-12 rounded-sm border border-white/60 object-cover shadow-sm"
+						height={48}
+						src={thumbnail}
+						width={48}
+					/>
+				) : (
+					<span />
+				)}
+				<span className="text-[12px] tabular-nums opacity-70">
+					{heat ?? ""}
+				</span>
 			</span>
 		</span>
 	);

@@ -100,7 +100,7 @@ describe("arrangeFeed", () => {
 });
 
 describe("withListCards", () => {
-	test("slips a ranking card in after every eleventh story", () => {
+	test("slips a ranking card in after every seventh story", () => {
 		const s = source(
 			"s",
 			Array.from({ length: 23 }, () => ({}))
@@ -119,6 +119,6 @@ describe("withListCards", () => {
 		expect(blocks.map((b) => b.kind).filter((k) => k === "list")).toHaveLength(
 			2
 		);
-		expect(blocks[11]?.kind).toBe("list");
+		expect(blocks[7]?.kind).toBe("list");
 	});
 });

@@ -49,7 +49,7 @@ const TOGGLES: readonly ToggleEntry[] = [
 ];
 
 const MENU_TRIGGER_CLASS =
-	"inline-flex h-7 items-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[popup-open]:bg-[var(--state-hover-subtle)] data-[popup-open]:text-[var(--text-primary)] [&>span]:hidden sm:[&>span]:inline";
+	"inline-flex h-7 items-center gap-1.5 border border-[var(--border-default)] bg-[var(--surface-card)] px-2 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[popup-open]:bg-[var(--state-hover-subtle)] data-[popup-open]:text-[var(--text-primary)] [&>span]:hidden sm:[&>span]:inline";
 
 export function LayoutSettingsMenu() {
 	const t = useT();

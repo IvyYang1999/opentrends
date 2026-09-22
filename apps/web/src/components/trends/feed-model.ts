@@ -32,7 +32,9 @@ const SLOTS_PER_ROUND = 10;
 const SOURCE_WINDOW = 12;
 const SOURCE_WINDOW_LIMIT = 2;
 // A ranking card is slipped in after this many story cards.
-const LIST_EVERY = 11;
+// Seven is coprime with every column count in use (2–6), so the cards land
+// in different columns instead of stacking down one.
+const LIST_EVERY = 7;
 // Text posters alternate between short and long titles so a column does not
 // become a stack of identical-looking blocks.
 const SHORT_TITLE_CHARS = 22;

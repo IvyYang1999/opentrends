@@ -108,7 +108,7 @@ export function SearchTrigger({ onClick }: { onClick: () => void }) {
 	return (
 		<button
 			aria-label={t("search.label")}
-			className="inline-flex h-7 items-center gap-2 rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 text-[12px] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text-secondary)] xl:w-52"
+			className="inline-flex h-7 items-center gap-2 border border-[var(--border-default)] bg-[var(--surface-card)] px-2 text-[12px] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text-secondary)] xl:w-52"
 			onClick={onClick}
 			title={`${t("search.label")} (${t("search.shortcut")})`}
 			type="button"

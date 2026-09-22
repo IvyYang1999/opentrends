@@ -419,6 +419,26 @@ function SummaryBody({
 
 const EMPTY_CITATIONS: CitationMap = new Map();
 
+// The last finished digest per topic/locale/window, kept for the session so
+// switching between the feed, trends and events views repaints it at once
+// instead of collapsing to a loading line and growing back.
+interface DigestMemo {
+	at: number;
+	citations: CitationMap;
+	text: string;
+}
+const DIGEST_MEMO = new Map<string, DigestMemo>();
+const DIGEST_MEMO_FRESH_MS = 5 * 60_000;
+
+function digestMemoKey(
+	topicId: string,
+	locale: string,
+	summaryWindow: SummaryWindow,
+	followedIds: readonly string[] | undefined
+): string {
+	return `${topicId}:${locale}:${summaryWindow}:${followedIds?.join(",") ?? ""}`;
+}
+
 export function TrendsSummary({
 	collapsed,
 	onCollapsedChange,
@@ -445,6 +465,7 @@ export function TrendsSummary({
 				: undefined,
 		[page, topicId]
 	);
+	const memoKey = digestMemoKey(topicId, locale, summaryWindow, followedIds);
 	const [shareOpen, setShareOpen] = useState(false);
 	// Sharing is offered once the whole digest has arrived, so the image never
 	// shows a half-written entry.
@@ -463,21 +484,38 @@ export function TrendsSummary({
 			let cancelled = false;
 			let retryTimer: number | undefined;
 
-			setText("");
-			setError(null);
-			setStatus("loading");
-			setCitations(EMPTY_CITATIONS);
+			const memo = DIGEST_MEMO.get(memoKey);
+			if (memo) {
+				setText(memo.text);
+				setCitations(memo.citations);
+				setError(null);
+				setStatus("done");
+				if (Date.now() - memo.at < DIGEST_MEMO_FRESH_MS) {
+					return;
+				}
+			} else {
+				setText("");
+				setError(null);
+				setStatus("loading");
+				setCitations(EMPTY_CITATIONS);
+			}
 
+			let latestText = "";
+			let latestCitations: CitationMap = EMPTY_CITATIONS;
 			streamSummary(topicId, locale, summaryWindow, retryNonce, followedIds, {
 				signal: controller.signal,
 				isCancelled: () => cancelled,
 				onStreamingStart: () => setStatus("streaming"),
 				onChunk: (full) => {
 					if (full.trim()) {
+						latestText = full;
 						setText(full);
 					}
 				},
-				onCitations: (next) => setCitations(next),
+				onCitations: (next) => {
+					latestCitations = next;
+					setCitations(next);
+				},
 				onUnavailable: () => setStatus("unavailable"),
 				onPending: () => {
 					setStatus("pending");
@@ -486,7 +524,16 @@ export function TrendsSummary({
 						SUMMARY_PENDING_RETRY_MS
 					);
 				},
-				onDone: () => setStatus("done"),
+				onDone: () => {
+					setStatus("done");
+					if (latestText.trim()) {
+						DIGEST_MEMO.set(memoKey, {
+							at: Date.now(),
+							citations: latestCitations,
+							text: latestText,
+						});
+					}
+				},
 				onError: (message) => {
 					setStatus("error");
 					setError(message);
@@ -504,7 +551,7 @@ export function TrendsSummary({
 				controller.abort();
 			};
 		},
-		[topicId, locale, summaryWindow, retryNonce, followedIds]
+		[topicId, locale, summaryWindow, retryNonce, followedIds, memoKey]
 	);
 
 	if (status === "unavailable") {

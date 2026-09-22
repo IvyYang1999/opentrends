@@ -24,6 +24,9 @@ import type { SourceCardData, TrendsPageData } from "./types";
 import { ViewSwitch } from "./view-switch";
 
 const PAGE_SIZE = 40;
+// The proxy scales covers down, never up, so a natural width this small
+// means the source only offered a thumbnail.
+const SMALL_COVER_WIDTH = 240;
 const FEATURED_TOPIC_ID = "featured";
 // The featured feed draws on every topic, like its digest does.
 const ALL_TOPIC_IDS = [
@@ -208,10 +211,14 @@ function FeedCard({
 }) {
 	const { item, source, heat } = entry;
 	const heatLabel = heat === undefined ? undefined : formatHeat(heat);
-	// A cover that fails to load (blocked, oversized, gone) falls back to the
-	// generated poster rather than an empty grey block.
-	const [coverFailed, setCoverFailed] = useState(false);
-	const hasCover = Boolean(item.imageUrl) && !coverFailed;
+	// A cover that fails to load falls back to the poster; one that turns out
+	// to be a tiny thumbnail (it would only blur at card width) is set inside
+	// the poster instead.
+	const [cover, setCover] = useState<"pending" | "ok" | "failed" | "small">(
+		"pending"
+	);
+	const hasCover =
+		Boolean(item.imageUrl) && cover !== "failed" && cover !== "small";
 	const original =
 		item.original && item.original.title !== item.title
 			? item.original.title
@@ -232,12 +239,28 @@ function FeedCard({
 					className={`w-full bg-[var(--surface-sidebar)] object-cover ${coverRatio(item)}`}
 					height={240}
 					loading="lazy"
-					onError={() => setCoverFailed(true)}
+					onError={() => setCover("failed")}
+					onLoad={(event) =>
+						setCover(
+							event.currentTarget.naturalWidth < SMALL_COVER_WIDTH
+								? "small"
+								: "ok"
+						)
+					}
 					src={proxiedImageUrl(item.imageUrl as string)}
 					width={320}
 				/>
 			) : (
-				<GeneratedCover heat={heatLabel} item={item} source={source} />
+				<GeneratedCover
+					heat={heatLabel}
+					item={item}
+					source={source}
+					thumbnail={
+						cover === "small" && item.imageUrl
+							? proxiedImageUrl(item.imageUrl)
+							: undefined
+					}
+				/>
 			)}
 			<span className="flex flex-col gap-1.5 p-3">
 				{hasCover ? (
