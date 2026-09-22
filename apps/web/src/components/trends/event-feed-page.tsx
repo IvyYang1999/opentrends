@@ -21,6 +21,10 @@ import {
 import type { ReactNode } from "react";
 import { useMemo, useRef, useState, useSyncExternalStore } from "react";
 
+import {
+	segmentClassName,
+	toolButtonClassName,
+} from "@/components/chrome-styles";
 import { localePathParam, type Translator, useLocale, useT } from "@/lib/i18n";
 
 import { CoverImage } from "./cover-image";
@@ -33,6 +37,7 @@ import { formatRelativeTime } from "./relative-time";
 import { SourceLogoStack } from "./source-favicon";
 import { trendEventDetailQueryOptions } from "./trends-query";
 import type { EventDetailData, EventFeedItem } from "./types";
+import { ViewSwitch } from "./view-switch";
 
 interface EventFeedPageProps {
 	selectedTopic?: string;
@@ -215,52 +220,47 @@ export function EventFeedPage({ selectedTopic }: EventFeedPageProps) {
 			className="min-w-0 flex-1 overflow-auto bg-[var(--surface-app)] text-[var(--text-primary)]"
 			ref={scrollRef}
 		>
-			<div className="border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-2 sm:px-4">
-				<div className="flex flex-wrap items-center justify-between gap-2">
-					<div className="flex shrink-0 items-center gap-2">
+			<div className="flex h-10 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
+				<div className="flex min-w-0 items-center gap-2">
+					<ViewSwitch
+						localeParam={localeParam}
+						topicId={selectedTopic}
+						view="events"
+					/>
+					{selectedTopic ? (
 						<Link
-							className="inline-flex h-7 items-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
+							activeOptions={{ exact: true, includeSearch: true }}
+							className={segmentClassName}
 							params={{ locale: localeParam }}
-							to="/{-$locale}/events/flow"
-						>
-							<GitBranch className="size-3.5" />
-							{flowLabel}
-						</Link>
-						{eventsQuery.isPending && events.length === 0 ? (
-							<span
-								aria-live="polite"
-								className="inline-flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]"
-							>
-								<LoaderCircle className="size-3.5 text-[var(--accent-blue)] motion-safe:animate-spin" />
-								{t("events.loading")}
-							</span>
-						) : (
-							<span className="text-[11px] text-[var(--text-muted)]">
-								{t("events.count", { count: events.length })}
-							</span>
-						)}
-					</div>
-				</div>
-				<div className="mt-2 flex gap-1 overflow-x-auto pb-0.5 text-[12px] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-					<Link
-						className={topicFilterClassName(!selectedTopic)}
-						params={{ locale: localeParam }}
-						search={{}}
-						to="/{-$locale}/events"
-					>
-						{t("events.all")}
-					</Link>
-					{TOPIC_IDS.map((topicId) => (
-						<Link
-							className={topicFilterClassName(selectedTopic === topicId)}
-							key={topicId}
-							params={{ locale: localeParam }}
-							search={{ topic: topicId }}
+							search={{}}
 							to="/{-$locale}/events"
 						>
-							{getTopicLabel(topicId, t)}
+							{t("events.allTopics")}
 						</Link>
-					))}
+					) : null}
+				</div>
+				<div className="flex shrink-0 items-center gap-2">
+					{eventsQuery.isPending && events.length === 0 ? (
+						<span
+							aria-live="polite"
+							className="inline-flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]"
+						>
+							<LoaderCircle className="size-3.5 text-[var(--accent-blue)] motion-safe:animate-spin" />
+							{t("events.loading")}
+						</span>
+					) : (
+						<span className="text-[11px] text-[var(--text-muted)]">
+							{t("events.count", { count: events.length })}
+						</span>
+					)}
+					<Link
+						className={toolButtonClassName}
+						params={{ locale: localeParam }}
+						to="/{-$locale}/events/flow"
+					>
+						<GitBranch aria-hidden className="size-3.5" />
+						<span>{flowLabel}</span>
+					</Link>
 				</div>
 			</div>
 			<div className="p-3 sm:p-4">{eventContent}</div>
@@ -318,14 +318,6 @@ function EventFeedSkeleton({ label }: { label: string }) {
 			<span className="sr-only">{label}</span>
 		</div>
 	);
-}
-
-function topicFilterClassName(active: boolean): string {
-	const base =
-		"shrink-0 rounded border px-2 py-1 transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]";
-	return active
-		? `${base} border-[var(--accent-blue)] bg-[var(--accent-blue-bg)] text-[var(--accent-blue)]`
-		: `${base} border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-secondary)]`;
 }
 
 function getTopicLabel(topicId: string, t: Translator): string {

@@ -20,6 +20,10 @@ import { LogOut, Star, UserRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import {
+	segmentActiveClassName,
+	segmentClassName,
+} from "@/components/chrome-styles";
 import { SearchCommand, SearchTrigger } from "@/components/search-command";
 import { SignInDialog } from "@/components/sign-in-dialog";
 import {
@@ -42,11 +46,6 @@ const TOPIC_IDS = [
 	"programming",
 	"cn",
 ] as const;
-
-const topicClassName =
-	"shrink-0 rounded px-2 py-1 text-[var(--text-secondary)] whitespace-nowrap transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]";
-const topicActiveClassName =
-	"bg-[var(--accent-blue-bg)] text-[var(--accent-blue)] hover:bg-[var(--accent-blue-bg)] hover:text-[var(--accent-blue)]";
 
 const GITHUB_STATS_STALE_MS = 10 * 60_000;
 const GITHUB_STATS_GC_MS = 60 * 60_000;
@@ -157,7 +156,7 @@ function TopicLink({
 	const active = onEvents ? search.topic === id : topic === id;
 	return (
 		<Link
-			className={cn(topicClassName, active && topicActiveClassName)}
+			className={cn(segmentClassName, active && segmentActiveClassName)}
 			params={{ locale: localeParam, topic: id }}
 			search={onEvents ? { topic: id } : undefined}
 			to={onEvents ? "/{-$locale}/events" : "/{-$locale}/trends/$topic"}
@@ -192,11 +191,11 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 
 	return (
 		<header className="sticky top-0 z-[80] min-w-0 overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] shadow-[0_1px_0_rgba(0,0,0,0.02)]">
-			<div className="flex min-h-10 min-w-0 flex-col gap-2 px-3 py-2 sm:px-4 lg:h-10 lg:flex-row lg:items-center lg:justify-between lg:gap-3 lg:py-0">
-				<div className="order-1 flex items-center justify-between gap-3 lg:order-2 lg:ml-auto lg:shrink-0">
+			<div className="flex min-h-10 min-w-0 flex-col gap-2 px-3 py-2 sm:px-4 md:h-10 md:flex-row md:items-center md:justify-between md:gap-3 md:py-0">
+				<div className="order-1 flex items-center justify-between gap-3 md:order-2 md:ml-auto md:shrink-0">
 					<Link
 						aria-label={t("nav.homeAria")}
-						className="inline-flex h-5 shrink-0 items-center leading-none lg:hidden"
+						className="inline-flex h-5 shrink-0 items-center leading-none md:hidden"
 						params={{ locale: localeParam }}
 						to="/{-$locale}"
 					>
@@ -204,14 +203,6 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 					</Link>
 					<div className="flex shrink-0 items-center gap-2">
 						<SearchTrigger onClick={() => setSearchOpen(true)} />
-						<Link
-							className="hidden h-7 items-center rounded px-2 text-[13px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] lg:inline-flex"
-							params={{ locale: localeParam }}
-							title={t("nav.skillsTitle")}
-							to="/{-$locale}/skills/opentrends"
-						>
-							{t("nav.skills")}
-						</Link>
 						<a
 							aria-label={githubLabel}
 							className={cn(
@@ -234,10 +225,10 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 						<AccountMenu />
 					</div>
 				</div>
-				<nav className="order-2 flex w-full min-w-0 items-center gap-1 overflow-x-auto text-[13px] [-ms-overflow-style:none] [scrollbar-width:none] lg:order-1 lg:w-auto lg:overflow-visible [&::-webkit-scrollbar]:hidden">
+				<nav className="order-2 flex w-full min-w-0 items-center gap-0.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] md:order-1 md:min-w-0 md:flex-1 [&::-webkit-scrollbar]:hidden">
 					<Link
 						aria-label={t("nav.homeAria")}
-						className="mr-3 hidden h-5 shrink-0 items-center leading-none lg:inline-flex"
+						className="mr-3 hidden h-5 shrink-0 items-center leading-none md:inline-flex"
 						params={{ locale: localeParam }}
 						to="/{-$locale}"
 					>

@@ -60,18 +60,11 @@ export function LayoutSettingsMenuContent({
 	settings,
 	storeOptions,
 	t,
-	sources = [],
-	hiddenSourceIds = [],
-	onSourceVisibilityChange,
 }: {
 	settings: DisplaySettings;
 	storeOptions?: DisplaySettingsStoreOptions;
 	t: ReturnType<typeof useT>;
-	sources?: readonly { id: string; title: string }[];
-	hiddenSourceIds?: readonly string[];
-	onSourceVisibilityChange?: (sourceId: string, visible: boolean) => void;
 }) {
-	const hiddenSourceIdSet = new Set(hiddenSourceIds);
 	return (
 		<DropdownMenu>
 			<DropdownMenuTrigger
@@ -102,26 +95,6 @@ export function LayoutSettingsMenuContent({
 						))}
 					</DropdownMenuRadioGroup>
 				</DropdownMenuGroup>
-				{sources.length > 0 && onSourceVisibilityChange ? (
-					<>
-						<DropdownMenuSeparator />
-						<DropdownMenuGroup>
-							<DropdownMenuLabel>{t("display.sources")}</DropdownMenuLabel>
-							{sources.map((source) => (
-								<DropdownMenuCheckboxItem
-									checked={!hiddenSourceIdSet.has(source.id)}
-									closeOnClick={false}
-									key={source.id}
-									onCheckedChange={(checked) =>
-										onSourceVisibilityChange(source.id, Boolean(checked))
-									}
-								>
-									<span className="max-w-64 truncate">{source.title}</span>
-								</DropdownMenuCheckboxItem>
-							))}
-						</DropdownMenuGroup>
-					</>
-				) : null}
 			</DropdownMenuContent>
 		</DropdownMenu>
 	);

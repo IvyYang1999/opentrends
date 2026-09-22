@@ -106,16 +106,16 @@ export function SearchTrigger({ onClick }: { onClick: () => void }) {
 	return (
 		<button
 			aria-label={t("search.label")}
-			className="inline-flex h-7 items-center gap-2 rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 text-[12px] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text-secondary)] lg:w-52"
+			className="inline-flex h-7 items-center gap-2 rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 text-[12px] text-[var(--text-muted)] transition-colors hover:border-[var(--text-muted)] hover:text-[var(--text-secondary)] xl:w-52"
 			onClick={onClick}
 			title={`${t("search.label")} (${t("search.shortcut")})`}
 			type="button"
 		>
 			<Search aria-hidden className="size-3.5 shrink-0" />
-			<span className="hidden min-w-0 flex-1 truncate text-left lg:inline">
+			<span className="hidden min-w-0 flex-1 truncate text-left xl:inline">
 				{t("search.placeholder")}
 			</span>
-			<kbd className="hidden rounded border border-[var(--border-default)] px-1 font-mono text-[10px] leading-4 lg:inline">
+			<kbd className="hidden rounded border border-[var(--border-default)] px-1 font-mono text-[10px] leading-4 xl:inline">
 				{t("search.shortcut")}
 			</kbd>
 		</button>

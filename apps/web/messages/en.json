@@ -187,5 +187,10 @@
   "search_shortcut": "⌘K",
   "card_unpin_source": "Unpin",
   "card_pinned": "Pinned",
-  "summary_label": "AI digest"
+  "summary_label": "AI digest",
+  "source_manager_title": "Sources",
+  "source_manager_hint": "Drag to reorder. Pinned sources stay at the top.",
+  "source_manager_count": "{shown} of {total} shown",
+  "card_show_source": "Show source",
+  "events_all_topics": "All topics"
 }

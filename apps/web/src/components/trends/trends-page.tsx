@@ -20,7 +20,6 @@ import {
 	TooltipTrigger,
 } from "@opentrends/ui/components/tooltip";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
 import {
 	ArrowUpRight,
 	CircleAlert,
@@ -33,6 +32,7 @@ import {
 	MoreHorizontal,
 	Pin,
 	PinOff,
+	Rss,
 } from "lucide-react";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
@@ -44,7 +44,7 @@ import {
 	useRef,
 	useState,
 } from "react";
-
+import { toolButtonClassName } from "@/components/chrome-styles";
 import {
 	type Locale,
 	localePathParam,
@@ -64,12 +64,14 @@ import {
 	LayoutSettingsMenuContent,
 } from "./display-settings-menu";
 import { formatRelativeTime } from "./relative-time";
+
 import { revealSourceCard, sourceCardElementId } from "./reveal-source-card";
 import {
 	isDecorativeBadgeImage,
 	sourceCardViewportClasses,
 } from "./source-card-model";
 import { SourceFavicon } from "./source-favicon";
+import { SourceManagerDialog } from "./source-manager-dialog";
 import { useSourcePreferences } from "./source-preferences";
 import { moveSource, orderWithPinned } from "./source-preferences-model";
 import {
@@ -88,6 +90,7 @@ import type {
 	SourceStatus,
 	TrendsPageData,
 } from "./types";
+import { ViewSwitch } from "./view-switch";
 
 interface TrendsPageProps {
 	displaySettingsStore?: DisplaySettingsStoreOptions;
@@ -165,6 +168,7 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	const visibleSources = userVisibleSources.filter(
 		({ source }) => source.items.length > 0 || source.status !== "error"
 	);
+	const [sourceManagerOpen, setSourceManagerOpen] = useState(false);
 	const [draggingSourceId, setDraggingSourceId] = useState<string | undefined>(
 		undefined
 	);
@@ -437,18 +441,31 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				/>
 				<ViewBar
 					displaySettingsStore={displaySettingsStore}
-					hiddenSourceIds={sourcePreferences.preference.hiddenSourceIds}
 					localeParam={localeParam}
-					onSourceVisibilityChange={sourcePreferences.setSourceVisible}
+					onOpenSources={() => setSourceManagerOpen(true)}
 					settings={settings}
-					sources={orderedSources.map(({ source }) => ({
-						id: source.sourceId,
-						title: source.title,
-					}))}
 					t={t}
 					topicId={displayPage.id}
 					updatedAt={displayPage.updatedAt}
 				/>
+				{sourceManagerOpen ? (
+					<SourceManagerDialog
+						hiddenSourceIds={sourcePreferences.preference.hiddenSourceIds}
+						onOpenChange={setSourceManagerOpen}
+						onOrderChange={sourcePreferences.setOrder}
+						onShowAll={sourcePreferences.showAllSources}
+						onTogglePinned={sourcePreferences.togglePinned}
+						onVisibilityChange={sourcePreferences.setSourceVisible}
+						open={sourceManagerOpen}
+						pinnedSourceIds={sourcePreferences.preference.pinnedSourceIds}
+						sources={orderedSources.map(({ source }) => ({
+							homeUrl: source.homeUrl,
+							id: source.sourceId,
+							title: source.title,
+						}))}
+						t={t}
+					/>
+				) : null}
 				{sourceContent}
 			</div>
 			{dragPreview ? (
@@ -492,63 +509,44 @@ interface SourceDragHandleProps {
 const SOURCE_SECTION_GRID =
 	"grid grid-cols-1 items-stretch sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 min-[1800px]:grid-cols-8";
 
-const viewTabClassName =
-	"inline-flex h-7 items-center rounded px-2.5 text-[12px] text-[var(--text-secondary)] whitespace-nowrap transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[status=active]:bg-[var(--accent-blue-bg)] data-[status=active]:text-[var(--accent-blue)]";
-
 // Sits directly above the cards: how the open topic is viewed (source cards
 // or clustered events) and how the cards are laid out.
 function ViewBar({
 	displaySettingsStore,
-	hiddenSourceIds,
 	localeParam,
-	onSourceVisibilityChange,
+	onOpenSources,
 	settings,
-	sources,
 	t,
 	topicId,
 	updatedAt,
 }: {
 	displaySettingsStore?: DisplaySettingsStoreOptions;
-	hiddenSourceIds: readonly string[];
 	localeParam: Locale | undefined;
-	onSourceVisibilityChange: (sourceId: string, visible: boolean) => void;
+	onOpenSources: () => void;
 	settings: DisplaySettings;
-	sources: { id: string; title: string }[];
 	t: Translator;
 	topicId: string;
 	updatedAt?: number;
 }) {
 	return (
 		<div className="flex h-10 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
-			<nav aria-label={t("nav.trends")} className="flex items-center gap-0.5">
-				<Link
-					activeOptions={{ exact: true }}
-					className={viewTabClassName}
-					params={{ locale: localeParam, topic: topicId }}
-					to="/{-$locale}/trends/$topic"
-				>
-					{t("nav.trends")}
-				</Link>
-				<Link
-					className={viewTabClassName}
-					params={{ locale: localeParam }}
-					search={{ topic: topicId }}
-					to="/{-$locale}/events"
-				>
-					{t("nav.events")}
-				</Link>
-			</nav>
+			<ViewSwitch localeParam={localeParam} topicId={topicId} view="trends" />
 			<div className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--text-muted)]">
 				{updatedAt ? (
 					<span className="hidden sm:inline" suppressHydrationWarning>
 						{t("card.updated", { time: formatRelativeTime(updatedAt, t) })}
 					</span>
 				) : null}
+				<button
+					className={toolButtonClassName}
+					onClick={onOpenSources}
+					type="button"
+				>
+					<Rss aria-hidden className="size-3.5" />
+					<span>{t("sourceManager.title")}</span>
+				</button>
 				<LayoutSettingsMenuContent
-					hiddenSourceIds={hiddenSourceIds}
-					onSourceVisibilityChange={onSourceVisibilityChange}
 					settings={settings}
-					sources={sources}
 					storeOptions={displaySettingsStore}
 					t={t}
 				/>
@@ -1054,11 +1052,11 @@ function SourceHeaderMeta({
 function PinnedBadge({ t }: { t: Translator }) {
 	return (
 		<span
-			className="inline-flex shrink-0 items-center gap-1 rounded bg-[var(--accent-blue-bg)] px-1.5 py-0.5 font-medium text-[10px] text-[var(--accent-blue)] leading-none"
+			className="inline-flex shrink-0 text-[var(--accent-blue)]"
 			title={t("card.pinned")}
 		>
-			<Pin aria-hidden className="size-2.5" />
-			<span className="sr-only sm:not-sr-only">{t("card.pinned")}</span>
+			<Pin aria-hidden className="size-3" />
+			<span className="sr-only">{t("card.pinned")}</span>
 		</span>
 	);
 }

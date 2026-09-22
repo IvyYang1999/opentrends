@@ -187,5 +187,10 @@
   "search_shortcut": "⌘K",
   "card_unpin_source": "Открепить",
   "card_pinned": "Закреплено",
-  "summary_label": "ИИ-сводка"
+  "summary_label": "ИИ-сводка",
+  "source_manager_title": "Источники",
+  "source_manager_hint": "Перетащите, чтобы изменить порядок. Закреплённые остаются сверху.",
+  "source_manager_count": "Показано {shown} из {total}",
+  "card_show_source": "Показать источник",
+  "events_all_topics": "Все темы"
 }

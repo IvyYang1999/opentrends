@@ -187,5 +187,10 @@
   "search_shortcut": "⌘K",
   "card_unpin_source": "Desafixar",
   "card_pinned": "Fixada",
-  "summary_label": "Resumo de IA"
+  "summary_label": "Resumo de IA",
+  "source_manager_title": "Fontes",
+  "source_manager_hint": "Arraste para reordenar. Fontes fixadas ficam no topo.",
+  "source_manager_count": "{shown} de {total} exibidas",
+  "card_show_source": "Mostrar fonte",
+  "events_all_topics": "Todos os temas"
 }

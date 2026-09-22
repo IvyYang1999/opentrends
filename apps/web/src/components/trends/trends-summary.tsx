@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, Share2 } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 
+import { segmentClassName } from "@/components/chrome-styles";
 import { type Locale, type Translator, useLocale, useT } from "@/lib/i18n";
 
 import {
@@ -514,8 +515,8 @@ export function TrendsSummary({
 						<span className="text-[12px] text-[var(--text-primary)]">
 							{t("summary.label")}
 						</span>
-						<span className="hidden sm:inline">·</span>
-						<span className="hidden flex-wrap items-center gap-1.5 tabular-nums sm:inline-flex">
+						<span>·</span>
+						<span className="inline-flex min-w-0 flex-wrap items-center gap-1.5 tabular-nums">
 							<span>{t("summary.synthesizedFrom")}</span>
 							<span className="inline-flex items-center gap-1.5">
 								<span className="font-semibold text-[var(--text-primary)]">
@@ -553,7 +554,7 @@ export function TrendsSummary({
 							{SUMMARY_WINDOWS.map((option) => (
 								<button
 									aria-pressed={option === summaryWindow}
-									className="rounded px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:text-[var(--accent-blue)]"
+									className={segmentClassName}
 									key={option}
 									onClick={() => setSummaryWindow(option)}
 									type="button"
@@ -563,7 +564,7 @@ export function TrendsSummary({
 							))}
 							{digestEntries.length > 0 ? (
 								<button
-									className="ml-1 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
+									className={`${segmentClassName} ml-1 gap-1`}
 									onClick={() => setShareOpen(true)}
 									type="button"
 								>
@@ -576,7 +577,7 @@ export function TrendsSummary({
 								aria-label={
 									collapsed ? t("summary.expand") : t("summary.collapse")
 								}
-								className="ml-1 inline-flex size-6 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
+								className="ml-1 inline-flex size-7 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
 								onClick={() => onCollapsedChange(!collapsed)}
 								title={collapsed ? t("summary.expand") : t("summary.collapse")}
 								type="button"
