@@ -58,6 +58,7 @@ const MESSAGE_IDS = {
 	"nav.skills": "nav_skills",
 	"nav.dashboard": "nav_dashboard",
 	"nav.homeAria": "nav_home_aria",
+	"topic.all": "topic_all",
 	"topic.ai": "topic_ai",
 	"topic.embodied": "topic_embodied",
 	"topic.hardware": "topic_hardware",

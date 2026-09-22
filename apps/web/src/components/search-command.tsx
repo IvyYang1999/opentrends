@@ -23,11 +23,13 @@ import {
 const MAX_SOURCE_RESULTS = 8;
 const MAX_HEADLINE_RESULTS = 30;
 const MIN_QUERY_LENGTH = 1;
-// The "home" topic is the front page, not a navigable topic tab.
-const HIDDEN_TOPIC = "home";
+const ALL_TOPIC = "all";
 
+// A source's own field is the better destination; the cross-topic tab is only
+// used when it is the source's only home.
 function navigableTopics(entry: SourceStatusEntry): string[] {
-	return entry.topics.filter((topic) => topic !== HIDDEN_TOPIC);
+	const specific = entry.topics.filter((topic) => topic !== ALL_TOPIC);
+	return specific.length > 0 ? specific : entry.topics;
 }
 
 interface SourceHit {

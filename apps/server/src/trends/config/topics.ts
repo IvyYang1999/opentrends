@@ -1,44 +1,54 @@
 import type { TopicId, TopicPreset } from "../types";
 
 export const topicPresets = {
-	home: {
-		path: "/",
-		title: "OpenTrends",
-		description: "Curated technology, AI, developer and maker sources",
+	// The landing tab: the most-read general sources plus the Chinese hot
+	// lists, so a first visit is not narrowed to one field. Its digest is
+	// drawn from every topic, see collectAllTopicsCitedItems.
+	all: {
+		path: "/trends/all",
+		title: "All",
+		description:
+			"Top stories across technology, AI, developers and Chinese communities",
 		sections: [
 			{
-				id: "sources",
-				title: "Sources",
+				id: "news",
+				title: "News",
 				sourceIds: [
 					"hackernews",
 					"the-verge",
 					"techcrunch",
+					"ars-technica",
+					"reuters",
+					"bbc-news",
 					"economist",
 					"bloomberg",
-					"the-atlantic",
-					"bbc-news",
-					"ars-technica",
-					"producthunt",
-					"nytimes",
-					"yahoo-finance",
 					"the-guardian",
-					"lobsters",
-					"financial-times",
-					"hackernews-show",
-					"wsj",
-					"reuters",
 					"axios",
-					"business-insider",
-					"sky-news",
-					"google-news",
-					"politico",
-					"science-alert",
 					"nature",
-					"phys-org",
-					"big-think",
-					"hackernews-ask",
+					"science-alert",
+				],
+			},
+			{
+				id: "makers",
+				title: "Makers",
+				sourceIds: [
+					"github-trending",
+					"producthunt",
+					"hackernews-show",
+					"lobsters",
 					"devto",
-					"new-yorker",
+				],
+			},
+			{
+				id: "cn",
+				title: "中文",
+				sourceIds: [
+					"zhihu-hot",
+					"weibo",
+					"36kr-news",
+					"ithome-ranking-24h",
+					"juejin-hot",
+					"v2ex",
 				],
 			},
 		],
@@ -412,7 +422,8 @@ export const topicPresets = {
 	},
 } as const satisfies Record<TopicId, TopicPreset>;
 
-export const DEFAULT_TOPIC_ID: TopicId = "ai";
+export const DEFAULT_TOPIC_ID: TopicId = "all";
+export const ALL_TOPIC_ID: TopicId = "all";
 
 export function getTopicPreset(id: string): TopicPreset | undefined {
 	return (topicPresets as Record<string, TopicPreset>)[id];

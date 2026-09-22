@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const TOPIC_IDS = [
+	"all",
 	"ai",
 	"embodied",
 	"hardware",

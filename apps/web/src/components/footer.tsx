@@ -10,6 +10,7 @@ const footerLinkClassName =
 	"shrink-0 rounded px-2 py-1 text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]";
 
 const TOPIC_IDS = [
+	"all",
 	"ai",
 	"embodied",
 	"hardware",

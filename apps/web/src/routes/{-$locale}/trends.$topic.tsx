@@ -20,6 +20,7 @@ import { buildSeo } from "@/lib/seo";
 const TOPIC_SLUG_SEPARATOR_RE = /[-_]+/;
 
 const TOPIC_TITLE_KEYS = {
+	all: "topic.all",
 	ai: "topic.ai",
 	embodied: "topic.embodied",
 	hardware: "topic.hardware",

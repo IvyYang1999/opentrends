@@ -6,7 +6,7 @@ import { type CacheEnvelope, hotCache } from "../cache/hot-cache";
 import { readSourceItemHistory } from "../cache/source-cache";
 import { readSummary } from "../cache/summary-cache";
 import { getSourcePreset } from "../config/sources";
-import { getTopicPreset } from "../config/topics";
+import { ALL_TOPIC_ID, getTopicPreset, topicPresets } from "../config/topics";
 import type { NewsItem, SourceId, TopicPreset, TrendsPageData } from "../types";
 import { getTrendsPage, TopicNotFoundError } from "./get-trends-page";
 import { llmProviderOptions } from "./llm";
@@ -293,26 +293,49 @@ export function selectCitedItems(
 }
 
 export function collectCitedItems(
-	page: TrendsPageData,
+	page: TrendsPageData | TrendsPageData[],
 	now: number = Date.now()
 ): CitedItem[] {
+	const pages = Array.isArray(page) ? page : [page];
 	const profile = SUMMARY_WINDOW_PROFILES.today;
-	let sources = collectPageCandidates(
-		page,
-		now - profile.windowMs,
-		profile.itemsPerSource
-	);
+	const candidates = (notBefore: number) =>
+		dedupeSources(
+			pages.flatMap((entry) =>
+				collectPageCandidates(entry, notBefore, profile.itemsPerSource)
+			)
+		);
+	let sources = candidates(now - profile.windowMs);
 	if (
 		profile.fallbackWindowMs !== undefined &&
 		countCandidates(sources) < (profile.minItems ?? 0)
 	) {
-		sources = collectPageCandidates(
-			page,
-			now - profile.fallbackWindowMs,
-			profile.itemsPerSource
-		);
+		sources = candidates(now - profile.fallbackWindowMs);
 	}
 	return selectCitedItems(sources, profile.maxCitations);
+}
+
+// A source can sit in several topics; it should feed the digest once.
+function dedupeSources(sources: SourceCandidates[]): SourceCandidates[] {
+	const seen = new Set<string>();
+	return sources.filter((source) => {
+		if (seen.has(source.source)) {
+			return false;
+		}
+		seen.add(source.source);
+		return true;
+	});
+}
+
+// The "all" tab's digest is drawn from every topic, not just its own cards,
+// so the landing page shows the day's biggest stories across the site.
+function digestTopics(
+	topicId: string,
+	topic: TopicPreset
+): [string, TopicPreset][] {
+	if (topicId !== ALL_TOPIC_ID) {
+		return [[topicId, topic]];
+	}
+	return Object.entries(topicPresets);
 }
 
 async function collectWindowCitedItems(
@@ -322,17 +345,29 @@ async function collectWindowCitedItems(
 	window: SummaryWindow
 ): Promise<CitedItem[]> {
 	const profile = SUMMARY_WINDOW_PROFILES[window];
+	const topics = digestTopics(topicId, topic);
 	if (profile.historyItemsPerSourcePerDay === undefined) {
-		return collectCitedItems(await getTrendsPage(topicId, lang));
+		const pages = await Promise.all(
+			topics.map(([id]) => getTrendsPage(id, lang))
+		);
+		return collectCitedItems(pages);
 	}
-	const sourceIds = topic.sections.flatMap((section) => section.sourceIds);
+	const merged: TopicPreset = {
+		...topic,
+		sections: topics.flatMap(([, preset]) => preset.sections),
+	};
+	const sourceIds = [
+		...new Set(merged.sections.flatMap((section) => section.sourceIds)),
+	];
 	const history = await readSourceItemHistory(
 		sourceIds,
 		Date.now() - profile.windowMs,
 		profile.historyItemsPerSourcePerDay
 	);
 	return selectCitedItems(
-		collectHistoryCandidates(topic, history, profile.itemsPerSource),
+		dedupeSources(
+			collectHistoryCandidates(merged, history, profile.itemsPerSource)
+		),
 		profile.maxCitations
 	);
 }

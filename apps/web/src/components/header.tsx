@@ -39,6 +39,7 @@ import Logo from "./logo";
 import ThemeToggle from "./theme-toggle";
 
 const TOPIC_IDS = [
+	"all",
 	"ai",
 	"embodied",
 	"hardware",
