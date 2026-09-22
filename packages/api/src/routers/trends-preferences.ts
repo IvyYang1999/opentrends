@@ -36,6 +36,7 @@ export const trendsPreferencesRouter = {
 				topicId: row.topicId,
 				orderedSourceIds: parseStoredIds(row.orderedSourceIds),
 				hiddenSourceIds: parseStoredIds(row.hiddenSourceIds),
+				pinnedSourceIds: parseStoredIds(row.pinnedSourceIds),
 			});
 			return stored.success ? stored.data : null;
 		}),
@@ -51,6 +52,7 @@ export const trendsPreferencesRouter = {
 				topicId: normalized.topicId,
 				orderedSourceIds: JSON.stringify(normalized.orderedSourceIds),
 				hiddenSourceIds: JSON.stringify(normalized.hiddenSourceIds),
+				pinnedSourceIds: JSON.stringify(normalized.pinnedSourceIds),
 			};
 			await db
 				.insert(userTrendsPreference)
@@ -60,6 +62,7 @@ export const trendsPreferencesRouter = {
 					set: {
 						orderedSourceIds: values.orderedSourceIds,
 						hiddenSourceIds: values.hiddenSourceIds,
+						pinnedSourceIds: values.pinnedSourceIds,
 						updatedAt: new Date(),
 					},
 				});

@@ -9,12 +9,14 @@ import {
 	DropdownMenuTrigger,
 } from "@opentrends/ui/components/dropdown-menu";
 import { cn } from "@opentrends/ui/lib/utils";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "@tanstack/react-router";
-import { LogIn, LogOut, Star, UserRound } from "lucide-react";
+import { useQuery } from "@tanstack/react-query";
+import { Link, useParams } from "@tanstack/react-router";
+import { Bot, LogIn, LogOut, Star, UserRound } from "lucide-react";
+import { useState } from "react";
 import { toast } from "sonner";
 
-import { trendsPageQueryOptions } from "@/components/trends/trends-query";
+import { SearchCommand, SearchTrigger } from "@/components/search-command";
+import { SignInDialog } from "@/components/sign-in-dialog";
 import {
 	GITHUB_REPOSITORY_URL,
 	type GitHubRepositoryStats,
@@ -26,15 +28,6 @@ import { localePathParam, useLocale, useT } from "@/lib/i18n";
 import LanguageToggle from "./language-toggle";
 import Logo from "./logo";
 import ThemeToggle from "./theme-toggle";
-
-const TOPIC_IDS = [
-	"ai",
-	"embodied",
-	"hardware",
-	"biotech",
-	"programming",
-	"cn",
-] as const;
 
 const linkClassName =
 	"shrink-0 rounded px-2 py-1 text-[var(--text-secondary)] whitespace-nowrap transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[status=active]:bg-[var(--accent-blue-bg)] data-[status=active]:text-[var(--accent-blue)]";
@@ -56,9 +49,8 @@ function formatStars(stars: number | null | undefined): string {
 
 function AccountMenu() {
 	const t = useT();
-	const locale = useLocale();
-	const localeParam = localePathParam(locale);
 	const session = authClient.useSession();
+	const [signInOpen, setSignInOpen] = useState(false);
 
 	if (session.isPending) {
 		return (
@@ -72,18 +64,21 @@ function AccountMenu() {
 	const user = session.data?.user;
 	if (!user) {
 		return (
-			<Link
-				aria-label={t("userMenu.signIn")}
-				className={cn(
-					buttonVariants({ size: "sm", variant: "ghost" }),
-					"h-7 gap-1.5 px-2 text-[var(--text-secondary)]"
-				)}
-				params={{ locale: localeParam }}
-				to="/{-$locale}/login"
-			>
-				<LogIn aria-hidden className="size-3.5" />
-				<span className="hidden xl:inline">{t("userMenu.signIn")}</span>
-			</Link>
+			<>
+				<button
+					aria-label={t("userMenu.signIn")}
+					className={cn(
+						buttonVariants({ size: "sm", variant: "ghost" }),
+						"h-7 gap-1.5 px-2 text-[var(--text-secondary)]"
+					)}
+					onClick={() => setSignInOpen(true)}
+					type="button"
+				>
+					<LogIn aria-hidden className="size-3.5" />
+					<span className="hidden xl:inline">{t("userMenu.signIn")}</span>
+				</button>
+				<SignInDialog onOpenChange={setSignInOpen} open={signInOpen} />
+			</>
 		);
 	}
 
@@ -139,7 +134,9 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 	const t = useT();
 	const locale = useLocale();
 	const localeParam = localePathParam(locale);
-	const queryClient = useQueryClient();
+	// The Trends/Events switch keeps the topic the reader is looking at.
+	const { topic } = useParams({ strict: false }) as { topic?: string };
+	const [searchOpen, setSearchOpen] = useState(false);
 	const githubStats = useQuery({
 		queryKey: ["github-repository-stats"],
 		queryFn: () => getGithubRepositoryStats(),
@@ -150,20 +147,6 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 	});
 	const githubStars = formatStars(githubStats.data?.stars);
 	const githubUrl = githubStats.data?.url ?? GITHUB_REPOSITORY_URL;
-
-	function prefetchTopic(topic: string) {
-		queryClient
-			.prefetchQuery(trendsPageQueryOptions(topic, locale))
-			.catch(() => {
-				/* Navigation still loads the page normally if intent prefetch fails. */
-			});
-	}
-
-	const links = [
-		{ to: "/{-$locale}/trends", label: t("nav.trends") },
-		{ to: "/{-$locale}/events", label: t("nav.events") },
-		{ to: "/{-$locale}/skills/opentrends", label: t("nav.skills") },
-	] as const;
 
 	return (
 		<header className="sticky top-0 z-[80] min-w-0 overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] shadow-[0_1px_0_rgba(0,0,0,0.02)]">
@@ -178,6 +161,19 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 						<Logo />
 					</Link>
 					<div className="flex shrink-0 items-center gap-2">
+						<SearchTrigger onClick={() => setSearchOpen(true)} />
+						<Link
+							className={cn(
+								buttonVariants({ size: "sm", variant: "ghost" }),
+								"h-7 gap-1.5 px-2 text-[var(--text-secondary)]"
+							)}
+							params={{ locale: localeParam }}
+							title={t("nav.skillsTitle")}
+							to="/{-$locale}/skills/opentrends"
+						>
+							<Bot aria-hidden className="size-3.5" />
+							<span className="hidden xl:inline">{t("nav.skills")}</span>
+						</Link>
 						<a
 							aria-label={`Open OpenTrends on GitHub, ${githubStars} stars`}
 							className={cn(
@@ -207,34 +203,26 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 					>
 						<Logo />
 					</Link>
-					{links.map(({ to, label }) => (
-						<Link
-							className={linkClassName}
-							key={to}
-							params={{ locale: localeParam }}
-							to={to}
-						>
-							{label}
-						</Link>
-					))}
-					<span
-						aria-hidden
-						className="mx-1 h-4 w-px shrink-0 bg-[var(--border-default)] lg:mx-2"
-					/>
-					{TOPIC_IDS.map((id) => (
-						<Link
-							className={linkClassName}
-							key={id}
-							onFocus={() => prefetchTopic(id)}
-							onMouseEnter={() => prefetchTopic(id)}
-							params={{ locale: localeParam, topic: id }}
-							to="/{-$locale}/trends/$topic"
-						>
-							{t(`topic.${id}`)}
-						</Link>
-					))}
+					<Link
+						activeOptions={{ exact: false }}
+						className={linkClassName}
+						params={{ locale: localeParam }}
+						to="/{-$locale}/trends"
+					>
+						{t("nav.trends")}
+					</Link>
+					<Link
+						activeOptions={{ exact: false, includeSearch: false }}
+						className={linkClassName}
+						params={{ locale: localeParam }}
+						search={topic ? { topic } : {}}
+						to="/{-$locale}/events"
+					>
+						{t("nav.events")}
+					</Link>
 				</nav>
 			</div>
+			<SearchCommand onOpenChange={setSearchOpen} open={searchOpen} />
 		</header>
 	);
 }

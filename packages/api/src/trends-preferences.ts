@@ -7,6 +7,8 @@ export const trendsSourcePreferenceInputSchema = z.object({
 	topicId: topicIdSchema,
 	orderedSourceIds: z.array(sourceIdSchema).max(200),
 	hiddenSourceIds: z.array(sourceIdSchema).max(200),
+	// Optional so preferences saved before pinning existed still parse.
+	pinnedSourceIds: z.array(sourceIdSchema).max(200).default([]),
 });
 
 export const trendsSourcePreferenceTopicSchema = z.object({
@@ -38,10 +40,17 @@ export function normalizeTrendsSourcePreferences(
 	const hiddenSourceIds = unique(saved?.hiddenSourceIds ?? []).filter(
 		(sourceId) => availableSet.has(sourceId)
 	);
+	// Pinned sources are kept in the order of `orderedSourceIds`, so pinning
+	// never loses the relative order the reader dragged into place.
+	const pinnedSet = new Set(saved?.pinnedSourceIds ?? []);
+	const pinnedSourceIds = orderedSourceIds.filter((sourceId) =>
+		pinnedSet.has(sourceId)
+	);
 
 	return {
 		topicId: saved?.topicId ?? "",
 		orderedSourceIds,
 		hiddenSourceIds,
+		pinnedSourceIds,
 	};
 }

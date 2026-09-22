@@ -16,16 +16,24 @@ export function moveSource(
 	return next;
 }
 
-export function pinSource(
+// Pinned sources form a block at the top of the order; within the block and
+// below it, the reader's drag order is kept.
+export function orderWithPinned(
 	orderedSourceIds: readonly string[],
+	pinnedSourceIds: readonly string[]
+): string[] {
+	const pinned = new Set(pinnedSourceIds);
+	return [
+		...orderedSourceIds.filter((sourceId) => pinned.has(sourceId)),
+		...orderedSourceIds.filter((sourceId) => !pinned.has(sourceId)),
+	];
+}
+
+export function togglePinnedSource(
+	pinnedSourceIds: readonly string[],
 	sourceId: string
 ): string[] {
-	const currentIndex = orderedSourceIds.indexOf(sourceId);
-	if (currentIndex <= 0) {
-		return [...orderedSourceIds];
-	}
-	return [
-		sourceId,
-		...orderedSourceIds.filter((candidate) => candidate !== sourceId),
-	];
+	return pinnedSourceIds.includes(sourceId)
+		? pinnedSourceIds.filter((candidate) => candidate !== sourceId)
+		: [...pinnedSourceIds, sourceId];
 }

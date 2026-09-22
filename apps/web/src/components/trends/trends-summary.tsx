@@ -1,5 +1,5 @@
 import { env } from "@opentrends/env/web";
-import { ChevronDown, ChevronUp, Share2 } from "lucide-react";
+import { ChevronDown, ChevronUp, Share2, Sparkles } from "lucide-react";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 
@@ -32,6 +32,12 @@ type SummaryStatus =
 
 const SUMMARY_WINDOWS = ["today", "week", "month"] as const;
 type SummaryWindow = (typeof SUMMARY_WINDOWS)[number];
+
+const COLLAPSED_LABELS = {
+	today: "share.headingToday",
+	week: "share.headingWeek",
+	month: "share.headingMonth",
+} as const;
 
 const SUMMARY_WINDOW_LABELS = {
 	today: "summary.windowToday",
@@ -503,13 +509,28 @@ export function TrendsSummary({
 
 	return (
 		<div
-			className="border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-3 sm:px-4"
+			// Collapsed, the bar is exactly as tall as the topic bar above it so
+			// the two read as one toolbar instead of a stray empty band.
+			className={`border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4 ${collapsed ? "flex h-9 items-center" : "py-3"}`}
 			ref={containerRef}
 		>
-			<div className="flex items-start gap-3">
+			<div className="flex min-w-0 flex-1 items-start gap-3">
 				<div className="min-w-0 flex-1">
-					<div className="mb-1 flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-secondary)]">
-						<span className="inline-flex flex-wrap items-center gap-1.5 tabular-nums">
+					<div
+						className={`flex flex-wrap items-center gap-2 text-[11px] text-[var(--text-secondary)] ${collapsed ? "" : "mb-1"}`}
+					>
+						{collapsed ? (
+							<span className="inline-flex items-center gap-1.5 font-medium text-[12px] text-[var(--text-primary)]">
+								<Sparkles
+									aria-hidden
+									className="size-3.5 text-[var(--accent-blue)]"
+								/>
+								{t(COLLAPSED_LABELS[summaryWindow])}
+							</span>
+						) : null}
+						<span
+							className={`inline-flex flex-wrap items-center gap-1.5 tabular-nums ${collapsed ? "hidden sm:inline-flex" : ""}`}
+						>
 							<span>{t("summary.synthesizedFrom")}</span>
 							<span className="inline-flex items-center gap-1.5">
 								<span className="font-semibold text-[var(--text-primary)]">

@@ -5,7 +5,7 @@ import {
 } from "@opentrends/api/trends-preferences";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-
+import { togglePinnedSource } from "@/components/trends/source-preferences-model";
 import { authClient } from "@/lib/auth-client";
 import { orpc } from "@/utils/orpc";
 
@@ -178,6 +178,11 @@ export function useSourcePreferences(
 				hiddenSourceIds: visible
 					? current.hiddenSourceIds.filter((id) => id !== sourceId)
 					: [...new Set([...current.hiddenSourceIds, sourceId])],
+			})),
+		togglePinned: (sourceId: string) =>
+			updatePreference((current) => ({
+				...current,
+				pinnedSourceIds: togglePinnedSource(current.pinnedSourceIds, sourceId),
 			})),
 		showAllSources: () =>
 			updatePreference((current) => ({

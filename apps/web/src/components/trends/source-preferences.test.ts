@@ -1,6 +1,10 @@
 import { describe, expect, test } from "bun:test";
 
-import { moveSource, pinSource } from "./source-preferences-model";
+import {
+	moveSource,
+	orderWithPinned,
+	togglePinnedSource,
+} from "./source-preferences-model";
 
 describe("moveSource", () => {
 	test("moves a source without dropping its neighbors", () => {
@@ -17,13 +21,18 @@ describe("moveSource", () => {
 	});
 });
 
-describe("pinSource", () => {
-	test("moves the selected source to the first position", () => {
-		expect(pinSource(["a", "b", "c", "d"], "c")).toEqual(["c", "a", "b", "d"]);
+describe("pinned sources", () => {
+	test("pinned sources come first and keep their relative drag order", () => {
+		expect(orderWithPinned(["a", "b", "c", "d"], ["d", "b"])).toEqual([
+			"b",
+			"d",
+			"a",
+			"c",
+		]);
 	});
 
-	test("preserves the order for an already-first or unknown source", () => {
-		expect(pinSource(["a", "b"], "a")).toEqual(["a", "b"]);
-		expect(pinSource(["a", "b"], "missing")).toEqual(["a", "b"]);
+	test("toggling adds and removes a pin", () => {
+		expect(togglePinnedSource([], "c")).toEqual(["c"]);
+		expect(togglePinnedSource(["c", "a"], "c")).toEqual(["a"]);
 	});
 });

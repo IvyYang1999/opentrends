@@ -32,6 +32,7 @@ import {
 	LoaderCircle,
 	MoreHorizontal,
 	Pin,
+	PinOff,
 } from "lucide-react";
 import {
 	type KeyboardEvent as ReactKeyboardEvent,
@@ -69,7 +70,7 @@ import {
 } from "./source-card-model";
 import { SourceFavicon } from "./source-favicon";
 import { useSourcePreferences } from "./source-preferences";
-import { moveSource, pinSource } from "./source-preferences-model";
+import { moveSource, orderWithPinned } from "./source-preferences-model";
 import {
 	applyCachedTranslations,
 	storePageTranslations,
@@ -120,6 +121,18 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	useEffect(() => {
 		storePageTranslations(displayPage, locale);
 	}, [displayPage, locale]);
+	// Search navigates here with #source-<id>; the card only exists once the
+	// page has rendered, so the scroll happens after mount.
+	// biome-ignore lint/correctness/useExhaustiveDependencies: re-run per topic
+	useEffect(() => {
+		const hash = window.location.hash;
+		if (!hash.startsWith("#source-")) {
+			return;
+		}
+		document
+			.getElementById(hash.slice(1))
+			?.scrollIntoView({ behavior: "smooth", block: "start" });
+	}, [displayPage.id]);
 	const sources = displayPage.sections.flatMap((section) =>
 		section.sources.map((source) => ({
 			sectionId: section.id,
@@ -133,7 +146,13 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	const sourceById = new Map(
 		sources.map((entry) => [entry.source.sourceId, entry])
 	);
-	const orderedSources = sourcePreferences.preference.orderedSourceIds
+	const pinnedSourceIdSet = new Set(
+		sourcePreferences.preference.pinnedSourceIds
+	);
+	const orderedSources = orderWithPinned(
+		sourcePreferences.preference.orderedSourceIds,
+		sourcePreferences.preference.pinnedSourceIds
+	)
 		.map((sourceId) => sourceById.get(sourceId))
 		.filter((entry): entry is SourceWithSection => Boolean(entry));
 	const hiddenSourceIdSet = new Set(
@@ -203,15 +222,6 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 			return;
 		}
 		commitSourceOrder(activeSourceId, nextOrder);
-	}
-
-	function pinAndAnnounce(sourceId: string) {
-		const currentOrder = sourceOrderRef.current;
-		const nextOrder = pinSource(currentOrder, sourceId);
-		if (nextOrder.join("\u0000") === currentOrder.join("\u0000")) {
-			return;
-		}
-		commitSourceOrder(sourceId, nextOrder);
 	}
 
 	function dragHandleProps(sourceId: string): SourceDragHandleProps {
@@ -377,8 +387,8 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				onHideSource={(sourceId) =>
 					sourcePreferences.setSourceVisible(sourceId, false)
 				}
-				onPinSource={pinAndAnnounce}
-				pinnedSourceId={orderedSources[0]?.source.sourceId}
+				onPinSource={sourcePreferences.togglePinned}
+				pinnedSourceIds={pinnedSourceIdSet}
 				settings={settings}
 				sources={visibleSources}
 				t={t}
@@ -395,8 +405,8 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				onHideSource={(sourceId) =>
 					sourcePreferences.setSourceVisible(sourceId, false)
 				}
-				onPinSource={pinAndAnnounce}
-				pinnedSourceId={orderedSources[0]?.source.sourceId}
+				onPinSource={sourcePreferences.togglePinned}
+				pinnedSourceIds={pinnedSourceIdSet}
 				settings={settings}
 				sources={visibleSources}
 				t={t}
@@ -411,6 +421,19 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				<p aria-live="polite" className="sr-only">
 					{dragAnnouncement}
 				</p>
+				<TopicBar
+					displaySettingsStore={displaySettingsStore}
+					hiddenSourceIds={sourcePreferences.preference.hiddenSourceIds}
+					localeParam={localeParam}
+					onSourceVisibilityChange={sourcePreferences.setSourceVisible}
+					settings={settings}
+					sources={orderedSources.map(({ source }) => ({
+						id: source.sourceId,
+						title: source.title,
+					}))}
+					t={t}
+					updatedAt={displayPage.updatedAt}
+				/>
 				<TrendsSummary
 					collapsed={settings.summaryCollapsed}
 					key={displayPage.id}
@@ -424,41 +447,6 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 					page={displayPage}
 					topicId={displayPage.id}
 				/>
-				<div className="flex flex-wrap items-center justify-between gap-2 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-1.5 text-[11px] text-[var(--text-muted)] sm:justify-end sm:gap-3">
-					{displayPage.updatedAt ? (
-						<span className="min-w-0 truncate" suppressHydrationWarning>
-							{t("card.updated", {
-								time: formatRelativeTime(displayPage.updatedAt, t),
-							})}
-						</span>
-					) : null}
-					<div className="flex items-center gap-2">
-						<Link
-							className="rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 py-1 text-[11px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
-							params={{ locale: localeParam }}
-							search={{ topic: displayPage.id }}
-							to="/{-$locale}/events"
-						>
-							Events
-						</Link>
-						<LayoutSettingsMenuContent
-							hiddenSourceIds={sourcePreferences.preference.hiddenSourceIds}
-							onSourceVisibilityChange={sourcePreferences.setSourceVisible}
-							settings={settings}
-							sources={orderedSources.map(({ source }) => ({
-								id: source.sourceId,
-								title: source.title,
-							}))}
-							storeOptions={displaySettingsStore}
-							t={t}
-						/>
-						<DisplaySettingsMenuContent
-							settings={settings}
-							storeOptions={displaySettingsStore}
-							t={t}
-						/>
-					</div>
-				</div>
 				{sourceContent}
 			</div>
 			{dragPreview ? (
@@ -502,6 +490,80 @@ interface SourceDragHandleProps {
 const SOURCE_SECTION_GRID =
 	"grid grid-cols-1 items-stretch sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 min-[1800px]:grid-cols-8";
 
+const TOPIC_IDS = [
+	"ai",
+	"embodied",
+	"hardware",
+	"biotech",
+	"programming",
+	"cn",
+] as const;
+
+const topicTabClassName =
+	"shrink-0 rounded px-2 py-0.5 text-[12px] text-[var(--text-secondary)] whitespace-nowrap transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[status=active]:bg-[var(--accent-blue-bg)] data-[status=active]:text-[var(--accent-blue)]";
+
+// Second row of the page: which topic is open, and how it is laid out. The
+// header above only switches between trends and events.
+function TopicBar({
+	displaySettingsStore,
+	hiddenSourceIds,
+	localeParam,
+	onSourceVisibilityChange,
+	settings,
+	sources,
+	t,
+	updatedAt,
+}: {
+	displaySettingsStore?: DisplaySettingsStoreOptions;
+	hiddenSourceIds: readonly string[];
+	localeParam: Locale | undefined;
+	onSourceVisibilityChange: (sourceId: string, visible: boolean) => void;
+	settings: DisplaySettings;
+	sources: { id: string; title: string }[];
+	t: Translator;
+	updatedAt?: number;
+}) {
+	return (
+		<div className="flex h-9 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
+			<nav
+				aria-label={t("nav.trends")}
+				className="flex min-w-0 items-center gap-0.5 overflow-x-auto [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+			>
+				{TOPIC_IDS.map((id) => (
+					<Link
+						className={topicTabClassName}
+						key={id}
+						params={{ locale: localeParam, topic: id }}
+						to="/{-$locale}/trends/$topic"
+					>
+						{t(`topic.${id}`)}
+					</Link>
+				))}
+			</nav>
+			<div className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--text-muted)]">
+				{updatedAt ? (
+					<span className="hidden sm:inline" suppressHydrationWarning>
+						{t("card.updated", { time: formatRelativeTime(updatedAt, t) })}
+					</span>
+				) : null}
+				<LayoutSettingsMenuContent
+					hiddenSourceIds={hiddenSourceIds}
+					onSourceVisibilityChange={onSourceVisibilityChange}
+					settings={settings}
+					sources={sources}
+					storeOptions={displaySettingsStore}
+					t={t}
+				/>
+				<DisplaySettingsMenuContent
+					settings={settings}
+					storeOptions={displaySettingsStore}
+					t={t}
+				/>
+			</div>
+		</div>
+	);
+}
+
 function SourceGridLayout({
 	sources,
 	settings,
@@ -513,7 +575,7 @@ function SourceGridLayout({
 	draggingSourceId,
 	onHideSource,
 	onPinSource,
-	pinnedSourceId,
+	pinnedSourceIds,
 }: {
 	sources: SourceWithSection[];
 	settings: DisplaySettings;
@@ -525,7 +587,7 @@ function SourceGridLayout({
 	draggingSourceId?: string;
 	onHideSource: (sourceId: string) => void;
 	onPinSource: (sourceId: string) => void;
-	pinnedSourceId?: string;
+	pinnedSourceIds: ReadonlySet<string>;
 }) {
 	return (
 		<div className="grid grid-cols-1 items-start sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
@@ -537,7 +599,7 @@ function SourceGridLayout({
 					locale={locale}
 					onHide={() => onHideSource(source.sourceId)}
 					onPin={() => onPinSource(source.sourceId)}
-					pinned={pinnedSourceId === source.sourceId}
+					pinned={pinnedSourceIds.has(source.sourceId)}
 					settings={settings}
 					source={source}
 					t={t}
@@ -560,7 +622,7 @@ function SourceSectionsLayout({
 	draggingSourceId,
 	onHideSource,
 	onPinSource,
-	pinnedSourceId,
+	pinnedSourceIds,
 }: {
 	sources: SourceWithSection[];
 	settings: DisplaySettings;
@@ -572,7 +634,7 @@ function SourceSectionsLayout({
 	draggingSourceId?: string;
 	onHideSource: (sourceId: string) => void;
 	onPinSource: (sourceId: string) => void;
-	pinnedSourceId?: string;
+	pinnedSourceIds: ReadonlySet<string>;
 }) {
 	return (
 		<div className="bg-[var(--surface-app)]">
@@ -584,7 +646,7 @@ function SourceSectionsLayout({
 					locale={locale}
 					onHide={() => onHideSource(source.sourceId)}
 					onPin={() => onPinSource(source.sourceId)}
-					pinned={pinnedSourceId === source.sourceId}
+					pinned={pinnedSourceIds.has(source.sourceId)}
 					settings={settings}
 					source={source}
 					t={t}
@@ -640,6 +702,7 @@ function SourceCard({
 		<article
 			className={`relative flex min-w-0 flex-col overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-opacity after:pointer-events-none after:absolute after:inset-0 after:z-40 after:content-[''] data-[drop-target=true]:after:border-2 data-[drop-target=true]:after:border-[var(--accent-blue)] sm:border-r ${sourceCardViewportClasses(hasItems)} ${isDragging ? "z-30 opacity-50 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
 			data-sortable-source-id={source.sourceId}
+			id={`source-${source.sourceId}`}
 		>
 			<SourceCardHeader
 				dragHandleProps={dragHandleProps}
@@ -731,6 +794,7 @@ function SourceSection({
 		<section
 			className={`relative border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-opacity after:pointer-events-none after:absolute after:inset-0 after:z-40 after:content-[''] data-[drop-target=true]:after:border-2 data-[drop-target=true]:after:border-[var(--accent-blue)] ${isDragging ? "z-30 opacity-80 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
 			data-sortable-source-id={source.sourceId}
+			id={`source-${source.sourceId}`}
 		>
 			<SourceSectionHeader
 				dragHandleProps={dragHandleProps}
@@ -865,6 +929,7 @@ function SourceCardHeader({
 					{source.title}
 				</h3>
 				<StatusDot status={source.status} t={t} />
+				{pinned ? <PinnedBadge t={t} /> : null}
 			</div>
 			<SourceHeaderMeta
 				onHide={onHide}
@@ -905,6 +970,7 @@ function SourceSectionHeader({
 					{source.title}
 				</h2>
 				<StatusDot status={source.status} t={t} />
+				{pinned ? <PinnedBadge t={t} /> : null}
 			</div>
 			<SourceHeaderMeta
 				itemCount={source.items.length}
@@ -967,9 +1033,13 @@ function SourceHeaderMeta({
 							}
 						/>
 					) : null}
-					<DropdownMenuItem disabled={pinned} onClick={onPin}>
-						<Pin aria-hidden className="size-3.5" />
-						{t("card.pinSource")}
+					<DropdownMenuItem onClick={onPin}>
+						{pinned ? (
+							<PinOff aria-hidden className="size-3.5" />
+						) : (
+							<Pin aria-hidden className="size-3.5" />
+						)}
+						{pinned ? t("card.unpinSource") : t("card.pinSource")}
 					</DropdownMenuItem>
 					<DropdownMenuItem onClick={onHide}>
 						<EyeOff aria-hidden className="size-3.5" />
@@ -978,6 +1048,20 @@ function SourceHeaderMeta({
 				</DropdownMenuContent>
 			</DropdownMenu>
 		</div>
+	);
+}
+
+// Pinned cards sit in a block at the top, which is invisible once they are
+// there; the badge is what tells the reader why a card stays put.
+function PinnedBadge({ t }: { t: Translator }) {
+	return (
+		<span
+			className="inline-flex shrink-0 items-center gap-1 rounded bg-[var(--accent-blue-bg)] px-1.5 py-0.5 font-medium text-[10px] text-[var(--accent-blue)] leading-none"
+			title={t("card.pinned")}
+		>
+			<Pin aria-hidden className="size-2.5" />
+			<span className="sr-only sm:not-sr-only">{t("card.pinned")}</span>
+		</span>
 	);
 }
 

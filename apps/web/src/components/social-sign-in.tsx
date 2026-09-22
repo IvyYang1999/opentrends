@@ -1,10 +1,11 @@
 import { env } from "@opentrends/env/web";
 import { Button } from "@opentrends/ui/components/button";
 import { useQuery } from "@tanstack/react-query";
-import { GitFork, LoaderCircle } from "lucide-react";
+import { LoaderCircle } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
+import { GitHubMark, GoogleMark } from "@/components/brand-marks";
 import { authClient } from "@/lib/auth-client";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
 
@@ -15,17 +16,6 @@ type SocialProvider = "google" | "github";
 interface ProviderAvailability {
 	github: boolean;
 	google: boolean;
-}
-
-function GoogleMark() {
-	return (
-		<span
-			aria-hidden
-			className="inline-flex size-4 items-center justify-center font-semibold text-[#4285f4] text-[13px]"
-		>
-			G
-		</span>
-	);
 }
 
 export function SocialSignIn() {
@@ -49,10 +39,10 @@ export function SocialSignIn() {
 
 	if (providers.isPending) {
 		return (
-			<div className="space-y-2" role="status">
+			<div className="flex flex-col gap-2" role="status">
 				<span className="sr-only">{t("sign.loadingProviders")}</span>
-				<div className="h-9 animate-pulse rounded bg-[var(--state-hover-subtle)]" />
-				<div className="h-9 animate-pulse rounded bg-[var(--state-hover-subtle)]" />
+				<div className="h-9 animate-pulse bg-[var(--state-hover-subtle)]" />
+				<div className="h-9 animate-pulse bg-[var(--state-hover-subtle)]" />
 			</div>
 		);
 	}
@@ -80,42 +70,43 @@ export function SocialSignIn() {
 		}
 	}
 
+	const buttonClassName =
+		"h-9 w-full justify-start gap-3 border-[var(--border-default)] bg-[var(--surface-card)] px-3 text-[13px] text-[var(--text-primary)] hover:bg-[var(--state-hover-subtle)]";
+
 	return (
-		<div>
-			<div className="grid gap-2 sm:grid-cols-2">
-				{available.google ? (
-					<Button
-						className="w-full gap-2"
-						disabled={Boolean(pendingProvider)}
-						onClick={() => signIn("google")}
-						type="button"
-						variant="outline"
-					>
-						{pendingProvider === "google" ? (
-							<LoaderCircle aria-hidden className="size-4 animate-spin" />
-						) : (
-							<GoogleMark />
-						)}
-						{t("sign.continueGoogle")}
-					</Button>
-				) : null}
-				{available.github ? (
-					<Button
-						className="w-full gap-2"
-						disabled={Boolean(pendingProvider)}
-						onClick={() => signIn("github")}
-						type="button"
-						variant="outline"
-					>
-						{pendingProvider === "github" ? (
-							<LoaderCircle aria-hidden className="size-4 animate-spin" />
-						) : (
-							<GitFork aria-hidden className="size-4" />
-						)}
-						{t("sign.continueGithub")}
-					</Button>
-				) : null}
-			</div>
+		<div className="flex flex-col gap-2">
+			{available.github ? (
+				<Button
+					className={buttonClassName}
+					disabled={Boolean(pendingProvider)}
+					onClick={() => signIn("github")}
+					type="button"
+					variant="outline"
+				>
+					{pendingProvider === "github" ? (
+						<LoaderCircle aria-hidden className="size-4 animate-spin" />
+					) : (
+						<GitHubMark className="size-4" />
+					)}
+					{t("sign.continueGithub")}
+				</Button>
+			) : null}
+			{available.google ? (
+				<Button
+					className={buttonClassName}
+					disabled={Boolean(pendingProvider)}
+					onClick={() => signIn("google")}
+					type="button"
+					variant="outline"
+				>
+					{pendingProvider === "google" ? (
+						<LoaderCircle aria-hidden className="size-4 animate-spin" />
+					) : (
+						<GoogleMark className="size-4" />
+					)}
+					{t("sign.continueGoogle")}
+				</Button>
+			) : null}
 		</div>
 	);
 }

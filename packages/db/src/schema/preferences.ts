@@ -19,6 +19,7 @@ export const userTrendsPreference = sqliteTable(
 		topicId: text("topic_id").notNull(),
 		orderedSourceIds: text("ordered_source_ids").notNull(),
 		hiddenSourceIds: text("hidden_source_ids").notNull(),
+		pinnedSourceIds: text("pinned_source_ids").notNull().default("[]"),
 		createdAt: integer("created_at", { mode: "timestamp" })
 			.default(now)
 			.notNull(),
