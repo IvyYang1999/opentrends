@@ -33,6 +33,13 @@ const SOURCE_WINDOW = 12;
 const SOURCE_WINDOW_LIMIT = 2;
 // A ranking card is slipped in after this many story cards.
 const LIST_EVERY = 11;
+// Text posters alternate between short and long titles so a column does not
+// become a stack of identical-looking blocks.
+const SHORT_TITLE_CHARS = 22;
+
+function titleLengthClass(entry: FeedEntry): "short" | "long" {
+	return entry.item.title.length <= SHORT_TITLE_CHARS ? "short" : "long";
+}
 // Items without a publish date only have the fetch time, which would put a
 // whole feed at the top every refresh; they are treated as a day old.
 const UNDATED_AGE_MS = 24 * HOUR_MS;
@@ -131,16 +138,25 @@ export function arrangeFeed(sorted: FeedEntry[]): FeedEntry[] {
 	const textOnly = sorted.filter((entry) => !entry.item.imageUrl);
 	const result: FeedEntry[] = [];
 	const recent: string[] = [];
+	let lastTextClass: "short" | "long" | undefined;
 
 	const take = (pool: FeedEntry[]): FeedEntry | undefined => {
 		const counts = new Map<string, number>();
 		for (const id of recent) {
 			counts.set(id, (counts.get(id) ?? 0) + 1);
 		}
-		const index = pool.findIndex(
-			(entry) => (counts.get(entry.source.sourceId) ?? 0) < SOURCE_WINDOW_LIMIT
+		const roomFor = (entry: FeedEntry) =>
+			(counts.get(entry.source.sourceId) ?? 0) < SOURCE_WINDOW_LIMIT;
+		const preferred = pool.findIndex(
+			(entry) =>
+				roomFor(entry) &&
+				(pool !== textOnly || titleLengthClass(entry) !== lastTextClass)
 		);
+		const index = preferred === -1 ? pool.findIndex(roomFor) : preferred;
 		const [entry] = pool.splice(index === -1 ? 0 : index, 1);
+		if (entry && pool === textOnly) {
+			lastTextClass = titleLengthClass(entry);
+		}
 		return entry;
 	};
 
