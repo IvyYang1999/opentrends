@@ -2,6 +2,8 @@ import { db, schema } from "@opentrends/db";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
 
+import { getSourceKind } from "../config/sources";
+
 import type {
 	NewsItem,
 	SourceId,
@@ -80,12 +82,19 @@ function isReadableSourceRow(row: SourceRow): row is SourceRow & {
 	);
 }
 
+// Feeds are newest first. Rankings keep the order the platform gave them:
+// a hot list sorted by publish time would show the newest low-scoring post
+// at the top.
 function compareSourceItems(a: SourceItemRow, b: SourceItemRow): number {
 	const aTime = a.publishedAt?.getTime() ?? a.fetchedAt.getTime();
 	const bTime = b.publishedAt?.getTime() ?? b.fetchedAt.getTime();
 	if (aTime !== bTime) {
 		return bTime - aTime;
 	}
+	return a.rank - b.rank;
+}
+
+function compareByRank(a: SourceItemRow, b: SourceItemRow): number {
 	return a.rank - b.rank;
 }
 
@@ -110,7 +119,11 @@ function toSourceSnapshot(
 	items: SourceItemRow[]
 ): SourceSnapshot {
 	const sortedItems = [...items]
-		.sort(compareSourceItems)
+		.sort(
+			getSourceKind(row.sourceId) === "ranking"
+				? compareByRank
+				: compareSourceItems
+		)
 		.slice(0, SOURCE_SNAPSHOT_ITEM_READ_LIMIT);
 	return {
 		sourceId: row.sourceId,

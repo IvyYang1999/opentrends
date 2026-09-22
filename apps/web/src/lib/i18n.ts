@@ -111,6 +111,7 @@ const MESSAGE_IDS = {
 	"card.followSource": "card_follow_source",
 	"card.unfollowSource": "card_unfollow_source",
 	"card.collapse": "card_collapse",
+	"card.hotList": "card_hot_list",
 	"followed.empty": "followed_empty",
 	"followed.browseFeatured": "followed_browse_featured",
 	"sourceManager.title": "source_manager_title",

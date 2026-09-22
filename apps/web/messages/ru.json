@@ -198,5 +198,6 @@
   "card_follow_source": "Подписаться",
   "card_unfollow_source": "Отписаться",
   "card_collapse": "Свернуть",
-  "display_original_title": "Оригинальный заголовок"
+  "display_original_title": "Оригинальный заголовок",
+  "card_hot_list": "Топ"
 }

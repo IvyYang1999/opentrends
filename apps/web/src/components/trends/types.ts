@@ -17,6 +17,8 @@ export interface NewsItem {
 	url: string;
 }
 
+export type SourceKind = "ranking" | "feed";
+
 export interface SourceCardData {
 	errorMessage?: string;
 	eventEligible?: boolean;
@@ -25,6 +27,9 @@ export interface SourceCardData {
 	itemCount?: number;
 	items: NewsItem[];
 	itemsTruncated?: boolean;
+	// A ranking keeps the platform's own order (hot lists, trending); a
+	// feed is newest first.
+	kind?: SourceKind;
 	sourceId: string;
 	staleUntil?: number;
 	status: SourceStatus;

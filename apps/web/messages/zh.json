@@ -198,5 +198,6 @@
   "card_follow_source": "关注来源",
   "card_unfollow_source": "取消关注",
   "card_collapse": "收起",
-  "display_original_title": "原文标题"
+  "display_original_title": "原文标题",
+  "card_hot_list": "热榜"
 }

@@ -892,7 +892,7 @@ function SourceCardHeader({
 					t={t}
 				/>
 				<SourceFavicon homeUrl={source.homeUrl} />
-				<SourceTitle as="h3" className="text-[13px]" title={source.title} />
+				<SourceTitle as="h3" className="text-[13px]" source={source} t={t} />
 				<StatusDot status={source.status} t={t} />
 				{pinned ? <PinnedBadge t={t} /> : null}
 			</div>
@@ -931,7 +931,7 @@ function SourceSectionHeader({
 					t={t}
 				/>
 				<SourceFavicon homeUrl={source.homeUrl} />
-				<SourceTitle as="h2" className="text-[15px]" title={source.title} />
+				<SourceTitle as="h2" className="text-[15px]" source={source} t={t} />
 				<StatusDot status={source.status} t={t} />
 				{pinned ? <PinnedBadge t={t} /> : null}
 			</div>
@@ -1040,19 +1040,24 @@ function FollowMenuItem({
 	);
 }
 
-// Source names carry their list flavour after a middle dot ("微博 · 实时热搜",
-// "GitHub Trending · Weekly"); it is shown as a badge so hot lists, daily
-// digests and topic feeds read differently at a glance.
+// A ranking says which list it is ("实时热搜", "Weekly", or just 热榜) in an
+// orange badge, the colour used for heat. A feed's name is left whole:
+// "The Verge · AI" is a section, not a kind of list.
 function SourceTitle({
 	as: Tag,
 	className,
-	title,
+	source,
+	t,
 }: {
 	as: "h2" | "h3";
 	className: string;
-	title: string;
+	source: SourceCardData;
+	t: Translator;
 }) {
-	const [name, flavour] = splitSourceTitle(title);
+	const ranking = isRankingSource(source);
+	const [name, flavour] = ranking
+		? splitSourceTitle(source.title)
+		: [source.title, undefined];
 	return (
 		<span className="flex min-w-0 items-center gap-1.5">
 			<Tag
@@ -1060,9 +1065,9 @@ function SourceTitle({
 			>
 				{name}
 			</Tag>
-			{flavour ? (
-				<span className="shrink-0 rounded border border-[var(--border-default)] px-1 py-px text-[10px] text-[var(--text-secondary)] leading-4">
-					{flavour}
+			{ranking ? (
+				<span className="shrink-0 rounded bg-[var(--accent-orange-light)] px-1.5 py-px font-medium text-[10px] text-[var(--accent-orange)] leading-4">
+					{flavour ?? t("card.hotList")}
 				</span>
 			) : null}
 		</span>
@@ -1214,6 +1219,9 @@ function buildMeta(
 // a feed: rows are one line, no cover or blurb, and the platform's own heat
 // number sits at the right where it can be read.
 function isRankingSource(source: SourceCardData): boolean {
+	if (source.kind) {
+		return source.kind === "ranking";
+	}
 	const withHeat = source.items.filter(
 		(item) => item.hotValue !== undefined && item.hotValue !== ""
 	).length;

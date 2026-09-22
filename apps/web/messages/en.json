@@ -198,5 +198,6 @@
   "card_follow_source": "Follow source",
   "card_unfollow_source": "Unfollow source",
   "card_collapse": "Collapse",
-  "display_original_title": "Original title"
+  "display_original_title": "Original title",
+  "card_hot_list": "Hot"
 }

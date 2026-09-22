@@ -1,4 +1,9 @@
-import type { RefreshPolicyId, SourceId, SourcePreset } from "../types";
+import type {
+	RefreshPolicyId,
+	SourceId,
+	SourceKind,
+	SourcePreset,
+} from "../types";
 
 const EVENT_ELIGIBLE_SOURCE_ID_LIST = [
 	"9to5mac",
@@ -1894,6 +1899,12 @@ export const sourceNotes = {
 	"zhipu-research": "Zhipu AI research and model updates.",
 	"zhihu-hot": "Trending Chinese Q&A topics from Zhihu.",
 } as const satisfies Record<SourcePresetId, string>;
+
+// Native adapters scrape ranked lists (front pages, hot lists, trending);
+// RSS and RSSHub deliver chronological feeds.
+export function getSourceKind(id: SourceId): SourceKind {
+	return getSourcePreset(id)?.provider === "native" ? "ranking" : "feed";
+}
 
 export function getSourcePreset(id: SourceId): SourcePreset | undefined {
 	const preset = (sourcePresets as Record<string, SourcePreset>)[id];

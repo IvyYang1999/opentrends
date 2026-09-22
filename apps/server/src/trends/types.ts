@@ -9,6 +9,7 @@ export type TopicId =
 export type SourceId = string;
 
 export type SourceStatus = "ok" | "stale" | "error";
+export type SourceKind = "ranking" | "feed";
 
 export interface NewsItem {
 	/**
@@ -47,6 +48,9 @@ export interface SourceCardData {
 	itemCount?: number;
 	items: NewsItem[];
 	itemsTruncated?: boolean;
+	// A ranking keeps the platform's own order (hot lists, trending); a
+	// feed is newest first.
+	kind?: SourceKind;
 	sourceId: SourceId;
 	staleUntil?: number;
 	status: SourceStatus;

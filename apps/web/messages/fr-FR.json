@@ -198,5 +198,6 @@
   "card_follow_source": "Suivre la source",
   "card_unfollow_source": "Ne plus suivre",
   "card_collapse": "Réduire",
-  "display_original_title": "Titre original"
+  "display_original_title": "Titre original",
+  "card_hot_list": "Tendances"
 }

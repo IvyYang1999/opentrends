@@ -9,7 +9,7 @@ import {
 	FOLLOWED_TOPIC_ID,
 	followedTopicPreset,
 } from "../config/followed-topic";
-import { getSourcePreset } from "../config/sources";
+import { getSourceKind, getSourcePreset } from "../config/sources";
 import { getTopicPreset, topicPresets } from "../config/topics";
 import type {
 	SourceCardData,
@@ -448,6 +448,7 @@ function snapshotToCard(
 		sourceId,
 		title,
 		eventEligible: preset?.eventEligible,
+		kind: getSourceKind(sourceId),
 		homeUrl,
 		status: snapshot.status,
 		updatedAt: snapshot.fetchedAt,

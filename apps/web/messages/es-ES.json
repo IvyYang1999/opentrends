@@ -198,5 +198,6 @@
   "card_follow_source": "Seguir fuente",
   "card_unfollow_source": "Dejar de seguir",
   "card_collapse": "Contraer",
-  "display_original_title": "Título original"
+  "display_original_title": "Título original",
+  "card_hot_list": "Populares"
 }
