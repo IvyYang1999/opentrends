@@ -292,7 +292,7 @@ function Motif({ hue, kind }: { hue: number; kind: (typeof MOTIFS)[number] }) {
 		return (
 			<svg
 				aria-hidden
-				className="pointer-events-none absolute top-0 right-0 h-full opacity-[0.14]"
+				className="pointer-events-none absolute top-0 right-0 h-full opacity-[0.13]"
 				fill="none"
 				role="presentation"
 				stroke={stroke}
@@ -351,24 +351,24 @@ export function GeneratedCover({
 				<SourceFavicon homeUrl={source.homeUrl} />
 				<span className="truncate">{source.title}</span>
 			</span>
-			<span className="relative">
-				<PosterText template={template} title={item.title} />
-			</span>
-			<span className="relative flex items-end justify-between">
+			{/* A thumbnail sits beside the text, large enough to read, so the
+			    poster stays balanced instead of carrying a stamp in a corner. */}
+			<span className="relative flex items-center gap-3">
+				<span className="min-w-0 flex-1">
+					<PosterText template={template} title={item.title} />
+				</span>
 				{thumbnail ? (
 					<img
 						alt=""
-						className="size-12 rounded-sm border border-white/60 object-cover shadow-sm"
-						height={48}
+						className="size-24 shrink-0 rounded-sm border border-white/70 object-cover shadow-sm"
+						height={96}
 						src={thumbnail}
-						width={48}
+						width={96}
 					/>
-				) : (
-					<span />
-				)}
-				<span className="text-[12px] tabular-nums opacity-70">
-					{heat ?? ""}
-				</span>
+				) : null}
+			</span>
+			<span className="relative flex justify-end text-[12px] tabular-nums opacity-70">
+				{heat ?? ""}
 			</span>
 		</span>
 	);

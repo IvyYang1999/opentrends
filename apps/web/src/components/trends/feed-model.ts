@@ -1,3 +1,9 @@
+import {
+	itemIsChinese,
+	NEUTRAL_READER,
+	type ReaderContext,
+	termOverlap,
+} from "./reader-context";
 import { coverKind } from "./source-card-model";
 import type { NewsItem, SourceCardData, TrendsPageData } from "./types";
 
@@ -25,6 +31,21 @@ const RECENCY_HALF_LIFE_MS = 18 * HOUR_MS;
 const FOLLOWED_BOOST = 1.6;
 const HEAT_WEIGHT = 0.35;
 const COVER_BOOST = 1.1;
+// Reader fit. Translation loses something, so an item written in the
+// reader's own language gets a small edge; the region hint adds a little
+// more for Chinese-language items when the reader is in that part of the
+// world. Behaviour weighs more than either: a source the reader keeps
+// opening can gain up to 40%, a subject they keep opening up to 25%.
+const OWN_LANGUAGE_BOOST = 1.12;
+const REGION_BOOST = 1.08;
+const SOURCE_AFFINITY_WEIGHT = 0.4;
+const TERM_AFFINITY_WEIGHT = 0.25;
+// In the morning the feed should catch up on the night: freshness fades more
+// slowly and heat counts for more, since what the world reacted to overnight
+// is the news.
+const MORNING_HOURS = { from: 5, to: 10 } as const;
+const MORNING_HALF_LIFE_MS = 26 * HOUR_MS;
+const MORNING_HEAT_WEIGHT = 0.5;
 // Per ten slots, how many go to illustrated items when enough exist. Text
 // posters read better than most covers, so they get the larger share.
 const COVER_QUOTA = 4;
@@ -85,9 +106,24 @@ function heatFactor(heat: number | undefined, max: number): number {
 	return Math.log1p(heat) / Math.log1p(max);
 }
 
+function isMorning(hour: number): boolean {
+	return hour >= MORNING_HOURS.from && hour < MORNING_HOURS.to;
+}
+
+function readerFit(item: NewsItem, reader: ReaderContext): number {
+	const chinese = itemIsChinese(item);
+	const ownLanguage = reader.locale === "zh" ? chinese : !chinese;
+	return (
+		(ownLanguage ? OWN_LANGUAGE_BOOST : 1) *
+		(reader.sinosphere && chinese ? REGION_BOOST : 1) *
+		(1 + TERM_AFFINITY_WEIGHT * termOverlap(item.title, reader.termAffinity))
+	);
+}
+
 function scoreSource(
 	source: SourceCardData,
 	followed: boolean,
+	reader: ReaderContext,
 	now: number
 ): FeedEntry[] {
 	const heats = source.items.map((item) => parseHeat(item.hotValue));
@@ -95,17 +131,25 @@ function scoreSource(
 		0,
 		...heats.filter((h): h is number => h !== undefined)
 	);
+	const morning = isMorning(reader.hour);
+	const halfLife = morning ? MORNING_HALF_LIFE_MS : RECENCY_HALF_LIFE_MS;
+	const heatWeight = morning ? MORNING_HEAT_WEIGHT : HEAT_WEIGHT;
+	const sourceBoost =
+		1 +
+		SOURCE_AFFINITY_WEIGHT * (reader.sourceAffinity.get(source.sourceId) ?? 0);
 	return source.items.map((item, index) => {
 		const age = item.publishedAt
 			? Math.max(0, now - item.publishedAt)
 			: UNDATED_AGE_MS;
-		const recency = 2 ** (-age / RECENCY_HALF_LIFE_MS);
+		const recency = 2 ** (-age / halfLife);
 		const heat = heats[index];
 		const score =
 			recency *
-			(1 + HEAT_WEIGHT * heatFactor(heat, maxHeat)) *
+			(1 + heatWeight * heatFactor(heat, maxHeat)) *
 			(followed ? FOLLOWED_BOOST : 1) *
-			(coverKind(item.imageUrl) === "cover" ? COVER_BOOST : 1);
+			(coverKind(item.imageUrl) === "cover" ? COVER_BOOST : 1) *
+			sourceBoost *
+			readerFit(item, reader);
 		return { heat, item, kind: "item" as const, score, source };
 	});
 }
@@ -113,7 +157,8 @@ function scoreSource(
 export function rankFeed(
 	pages: readonly TrendsPageData[],
 	followedIds: readonly string[],
-	now: number = Date.now()
+	now: number = Date.now(),
+	reader: ReaderContext = NEUTRAL_READER
 ): FeedEntry[] {
 	const followed = new Set(followedIds);
 	const seen = new Set<string>();
@@ -121,7 +166,7 @@ export function rankFeed(
 		.flatMap((page) => page.sections)
 		.flatMap((section) => section.sources)
 		.flatMap((source) =>
-			scoreSource(source, followed.has(source.sourceId), now)
+			scoreSource(source, followed.has(source.sourceId), reader, now)
 		)
 		.filter((entry) => {
 			if (seen.has(entry.item.url)) {

@@ -20,8 +20,13 @@ import {
 	rankFeed,
 	withListCards,
 } from "./feed-model";
-import { recordFeedClick } from "./feed-signals";
+import { readFeedSignals, recordFeedClick } from "./feed-signals";
 import { FOLLOWED_TOPIC_ID, useFollowedSources } from "./followed-sources";
+import {
+	buildReaderContext,
+	NEUTRAL_READER,
+	type ReaderContext,
+} from "./reader-context";
 import { formatRelativeTime } from "./relative-time";
 import { coverKind } from "./source-card-model";
 import { SourceFavicon } from "./source-favicon";
@@ -51,6 +56,29 @@ const ALL_TOPIC_IDS = [
 	"programming",
 	"cn",
 ] as const;
+
+// The reader's context is only known in the browser (clock, timezone, click
+// history), so the first render ranks neutrally and re-ranks once mounted.
+function useReaderContext(locale: string): ReaderContext {
+	const [reader, setReader] = useState<ReaderContext>(NEUTRAL_READER);
+	useEffect(() => {
+		let timeZone: string | undefined;
+		try {
+			timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		} catch {
+			timeZone = undefined;
+		}
+		setReader(
+			buildReaderContext({
+				locale,
+				now: Date.now(),
+				signals: readFeedSignals(),
+				timeZone,
+			})
+		);
+	}, [locale]);
+	return reader;
+}
 
 function managedSources(
 	page: TrendsPageData,
@@ -132,6 +160,7 @@ export function FeedPage({ topicId }: FeedPageProps) {
 	);
 	const sourcePreferences = useSourcePreferences(topicId, primarySourceIds);
 	const hiddenSourceIds = sourcePreferences.preference.hiddenSourceIds;
+	const reader = useReaderContext(locale);
 	const [sourceManagerOpen, setSourceManagerOpen] = useState(false);
 	const blocks = useMemo(() => {
 		const hidden = new Set(hiddenSourceIds);
@@ -150,8 +179,11 @@ export function FeedPage({ topicId }: FeedPageProps) {
 			.filter(
 				(source) => source.kind === "ranking" && source.items.length >= 5
 			);
-		return withListCards(rankFeed(visiblePages, followedIds), rankings);
-	}, [pages, followedIds, hiddenSourceIds]);
+		return withListCards(
+			rankFeed(visiblePages, followedIds, Date.now(), reader),
+			rankings
+		);
+	}, [pages, followedIds, hiddenSourceIds, reader]);
 	const [limit, setLimit] = useState(PAGE_SIZE);
 	const sentinelRef = useRef<HTMLDivElement>(null);
 
