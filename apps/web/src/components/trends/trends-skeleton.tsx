@@ -55,7 +55,7 @@ const SOURCE_CARDS = [0, 1, 2, 3, 4, 5, 6, 7] as const;
 
 export function SourceGridSkeleton() {
 	return (
-		<div aria-busy className="min-w-0 flex-1 bg-[var(--surface-app)]">
+		<div aria-busy className="min-w-0 bg-[var(--surface-app)]">
 			<div className="h-10 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)]" />
 			<div className="grid grid-cols-1 items-stretch sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
 				{SOURCE_CARDS.map((card) => (

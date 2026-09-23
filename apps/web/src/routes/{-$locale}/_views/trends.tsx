@@ -3,7 +3,7 @@ import { createFileRoute, Outlet } from "@tanstack/react-router";
 import { resolveLocale } from "@/lib/i18n";
 import { buildSeo } from "@/lib/seo";
 
-export const Route = createFileRoute("/{-$locale}/trends")({
+export const Route = createFileRoute("/{-$locale}/_views/trends")({
 	component: TrendsLayout,
 	head: ({ params }) => {
 		const locale = resolveLocale(params.locale);

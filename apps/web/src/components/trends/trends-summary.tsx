@@ -569,7 +569,7 @@ function SummaryBody({
 		return (
 			<div style={{ minHeight: lastDigestHeight || undefined }}>
 				<DigestSkeleton rows={DIGEST_FOLD} />
-				<div className="mt-1 h-5" />
+				<div className="mt-1 h-[17px]" />
 			</div>
 		);
 	}
@@ -592,7 +592,7 @@ function DigestSkeleton({ rows }: { rows: number }) {
 		<ol aria-busy className="space-y-1">
 			{Array.from({ length: rows }, (_, index) => (
 				<li
-					className="flex h-5 items-center gap-2"
+					className="flex h-[23px] items-center gap-2"
 					// biome-ignore lint/suspicious/noArrayIndexKey: placeholders have no identity
 					key={index}
 				>

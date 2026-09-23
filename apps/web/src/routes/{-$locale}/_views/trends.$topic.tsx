@@ -13,6 +13,7 @@ import {
 } from "@/components/trends/followed-sources";
 import { TrendsTopicNotFoundError } from "@/components/trends/load-trends";
 import { loadTrendsForSsr } from "@/components/trends/load-trends-ssr";
+import { readLocalPreference } from "@/components/trends/source-preferences";
 import { TrendsPage } from "@/components/trends/trends-page";
 import { trendsPageQueryOptions } from "@/components/trends/trends-query";
 import { SourceGridSkeleton } from "@/components/trends/trends-skeleton";
@@ -98,7 +99,7 @@ function buildTopicKeywords(
 	return [topic, topicLabel, `${topicLabel} news`, `${topicLabel} trending`];
 }
 
-export const Route = createFileRoute("/{-$locale}/trends/$topic")({
+export const Route = createFileRoute("/{-$locale}/_views/trends/$topic")({
 	component: TrendsTopicComponent,
 	loader: async ({ context, params }) => {
 		if (params.locale && !isLocale(params.locale)) {
@@ -113,8 +114,18 @@ export const Route = createFileRoute("/{-$locale}/trends/$topic")({
 
 		const locale = resolveLocale(params.locale);
 		// The followed page depends on the reader's own list, which only the
-		// browser knows.
+		// browser knows; on the client it is read from storage here so the
+		// page arrives with the navigation instead of after a placeholder.
 		if (params.topic === FOLLOWED_TOPIC_ID) {
+			if (!import.meta.env.SSR) {
+				const followedIds =
+					readLocalPreference(FOLLOWED_TOPIC_ID)?.orderedSourceIds ?? [];
+				if (followedIds.length > 0) {
+					await context.queryClient.ensureQueryData(
+						trendsPageQueryOptions(FOLLOWED_TOPIC_ID, locale, followedIds)
+					);
+				}
+			}
 			return;
 		}
 		if (import.meta.env.SSR) {

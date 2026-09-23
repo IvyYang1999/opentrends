@@ -5,7 +5,6 @@ import {
 	DropdownMenuItem,
 	DropdownMenuTrigger,
 } from "@opentrends/ui/components/dropdown-menu";
-import { ScrollArea } from "@opentrends/ui/components/scroll-area";
 import {
 	Tooltip,
 	TooltipPopup,
@@ -52,7 +51,6 @@ import { CoverImage } from "./cover-image";
 import {
 	type DisplaySettings,
 	type DisplaySettingsStoreOptions,
-	setDisplaySetting,
 	useDisplaySettings,
 } from "./display-settings";
 import { DisplaySettingsMenuContent } from "./display-settings-menu";
@@ -85,7 +83,6 @@ import {
 } from "./translation-status";
 import { SOURCE_RENDER_BATCH_SIZE } from "./trends-limits";
 import { trendSourceQueryOptions } from "./trends-query";
-import { TrendsSummary } from "./trends-summary";
 import type {
 	NewsItem,
 	SourceCardData,
@@ -479,24 +476,11 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	}
 	return (
 		<FollowedSourcesContext.Provider value={followedContext}>
-			<ScrollArea className="min-w-0 flex-1 overflow-hidden bg-[var(--surface-app)] text-[var(--text-primary)]">
+			<div className="min-w-0 bg-[var(--surface-app)] text-[var(--text-primary)]">
 				<div>
 					<p aria-live="polite" className="sr-only">
 						{dragAnnouncement}
 					</p>
-					<TrendsSummary
-						collapsed={settings.summaryCollapsed}
-						key={displayPage.id}
-						onCollapsedChange={(collapsed) =>
-							setDisplaySetting(
-								"summaryCollapsed",
-								collapsed,
-								displaySettingsStore
-							)
-						}
-						page={displayPage}
-						topicId={displayPage.id}
-					/>
 					<ViewBar
 						displaySettingsStore={displaySettingsStore}
 						localeParam={localeParam}
@@ -547,7 +531,7 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 						</div>
 					</div>
 				) : null}
-			</ScrollArea>
+			</div>
 		</FollowedSourcesContext.Provider>
 	);
 }

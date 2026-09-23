@@ -32,7 +32,7 @@ function withTopic(
 	};
 }
 
-function readLocalPreference(
+export function readLocalPreference(
 	topicId: string
 ): TrendsSourcePreference | undefined {
 	if (typeof window === "undefined") {

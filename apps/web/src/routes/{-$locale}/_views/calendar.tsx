@@ -1,5 +1,4 @@
 import { env } from "@opentrends/env/web";
-import { ScrollArea } from "@opentrends/ui/components/scroll-area";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { createFileRoute } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
@@ -12,15 +11,9 @@ import {
 	classifyTitle,
 } from "@/components/trends/content-kind";
 import {
-	setDisplaySetting,
-	useDisplaySettings,
-} from "@/components/trends/display-settings";
-import {
 	FOLLOWED_TOPIC_ID,
 	useFollowedSources,
 } from "@/components/trends/followed-sources";
-import { trendsPageQueryOptions } from "@/components/trends/trends-query";
-import { TrendsSummary } from "@/components/trends/trends-summary";
 import { ViewSwitch } from "@/components/trends/view-switch";
 import {
 	type Locale,
@@ -126,7 +119,7 @@ function calendarQueryOptions(
 	});
 }
 
-export const Route = createFileRoute("/{-$locale}/calendar")({
+export const Route = createFileRoute("/{-$locale}/_views/calendar")({
 	component: CalendarRoute,
 	validateSearch,
 	head: ({ params }) => {
@@ -207,7 +200,6 @@ function CalendarRoute() {
 	const locale = useLocale();
 	const localeParam = localePathParam(resolveLocale(params.locale));
 	const t = useT();
-	const settings = useDisplaySettings();
 	const { followedIds } = useFollowedSources();
 	const topic = search.topic ?? "ai";
 	const month = search.month ?? thisMonth();
@@ -217,10 +209,6 @@ function CalendarRoute() {
 	const enabled = !isFollowed || followedIds.length > 0;
 	const query = useQuery({
 		...calendarQueryOptions(topic, month, locale, tzOffset, sourceIds),
-		enabled,
-	});
-	const page = useQuery({
-		...trendsPageQueryOptions(topic, locale, sourceIds),
 		enabled,
 	});
 	const [kind, setKind] = useState<ContentKind | null>(null);
@@ -264,19 +252,7 @@ function CalendarRoute() {
 	}
 
 	return (
-		<ScrollArea className="min-w-0 flex-1 bg-[var(--surface-app)] text-[var(--text-primary)]">
-			{page.data ? (
-				<TrendsSummary
-					collapsed={settings.summaryCollapsed}
-					onCollapsedChange={(collapsed) =>
-						setDisplaySetting("summaryCollapsed", collapsed)
-					}
-					page={page.data}
-					topicId={topic}
-				/>
-			) : (
-				<div className="h-10 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)]" />
-			)}
+		<div className="min-w-0">
 			<div className="flex h-10 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
 				<ViewSwitch localeParam={localeParam} topicId={topic} view="calendar" />
 				<div className="flex items-center gap-1">
@@ -415,6 +391,6 @@ function CalendarRoute() {
 					</section>
 				) : null}
 			</div>
-		</ScrollArea>
+		</div>
 	);
 }

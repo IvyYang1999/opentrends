@@ -15,7 +15,7 @@ function validateFeedSearch(search: Record<string, unknown>): FeedSearch {
 	};
 }
 
-export const Route = createFileRoute("/{-$locale}/feed")({
+export const Route = createFileRoute("/{-$locale}/_views/feed")({
 	component: FeedComponent,
 	validateSearch: validateFeedSearch,
 	head: ({ params, match }) => {

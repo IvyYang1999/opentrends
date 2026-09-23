@@ -9,7 +9,6 @@ import {
 } from "@/components/chrome-styles";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
 import { CONTENT_KINDS, type ContentKind, contentKind } from "./content-kind";
-import { setDisplaySetting, useDisplaySettings } from "./display-settings";
 import {
 	coverRatio,
 	Emphasized,
@@ -42,7 +41,6 @@ import { useSourcePreferences } from "./source-preferences";
 import { orderWithPinned } from "./source-preferences-model";
 import { trendsPageQueryOptions } from "./trends-query";
 import { FeedSkeleton } from "./trends-skeleton";
-import { TrendsSummary } from "./trends-summary";
 import type { NewsItem, SourceCardData, TrendsPageData } from "./types";
 import { ViewSwitch } from "./view-switch";
 
@@ -133,7 +131,6 @@ export function FeedPage({ topicId }: FeedPageProps) {
 	const locale = useLocale();
 	const localeParam = localePathParam(locale);
 	const t = useT();
-	const settings = useDisplaySettings();
 	const { followedIds } = useFollowedSources();
 	const topicIds =
 		topicId === FEATURED_TOPIC_ID ? [...ALL_TOPIC_IDS] : [topicId];
@@ -231,19 +228,7 @@ export function FeedPage({ topicId }: FeedPageProps) {
 	}, []);
 
 	return (
-		<div className="min-w-0 flex-1 overflow-auto bg-[var(--surface-app)] text-[var(--text-primary)]">
-			{primary ? (
-				<TrendsSummary
-					collapsed={settings.summaryCollapsed}
-					onCollapsedChange={(collapsed) =>
-						setDisplaySetting("summaryCollapsed", collapsed)
-					}
-					page={primary}
-					topicId={topicId}
-				/>
-			) : (
-				<div className="h-10 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)]" />
-			)}
+		<div className="min-w-0">
 			<div className="flex h-10 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
 				<ViewSwitch localeParam={localeParam} topicId={topicId} view="feed" />
 				<div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)] tabular-nums">
