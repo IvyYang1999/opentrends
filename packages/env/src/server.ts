@@ -21,6 +21,9 @@ const serverEnvSchema = z
 		EMAIL_API_URL: z.url().default("https://api.forwardemail.net/v1/emails"),
 		EMAIL_API_KEY: z.string().min(1).optional(),
 		EMAIL_FROM: z.string().min(3).optional(),
+		EMAIL_PROVIDER: z
+			.enum(["forward-email", "resend"])
+			.default("forward-email"),
 		GOOGLE_CLIENT_ID: z.string().min(1).optional(),
 		GOOGLE_OAUTH_KEY: z.string().min(1).optional(),
 		GITHUB_CLIENT_ID: z.string().min(1).optional(),

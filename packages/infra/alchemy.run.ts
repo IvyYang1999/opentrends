@@ -19,8 +19,14 @@ const apiCustomDomain = process.env.API_CUSTOM_DOMAIN?.trim();
 const cloudflareZoneId = process.env.CLOUDFLARE_ZONE_ID?.trim();
 const webCustomDomain = process.env.WEB_CUSTOM_DOMAIN?.trim();
 const refreshCron = process.env.TRENDS_REFRESH_CRON;
+const emailApiKey = process.env.EMAIL_API_KEY?.trim();
+const emailFrom = process.env.EMAIL_FROM?.trim();
 const refreshCrons =
 	refreshCron === "disabled" ? [] : [refreshCron ?? "*/5 * * * *"];
+
+if (Boolean(emailApiKey) !== Boolean(emailFrom)) {
+	throw new Error("EMAIL_API_KEY and EMAIL_FROM must be configured together");
+}
 
 function required<T>(value: T | undefined, key: string): T {
 	if (!value) {
@@ -85,6 +91,16 @@ export const api = await Worker("api", {
 		),
 		BETTER_AUTH_URL: required(alchemy.env.BETTER_AUTH_URL, "BETTER_AUTH_URL"),
 		CORS_ORIGIN: required(alchemy.env.CORS_ORIGIN, "CORS_ORIGIN"),
+		...(emailApiKey && emailFrom
+			? {
+					EMAIL_API_KEY: alchemy.secret.env.EMAIL_API_KEY,
+					EMAIL_API_URL:
+						alchemy.env.EMAIL_API_URL ??
+						"https://api.forwardemail.net/v1/emails",
+					EMAIL_FROM: alchemy.env.EMAIL_FROM,
+					EMAIL_PROVIDER: process.env.EMAIL_PROVIDER ?? "forward-email",
+				}
+			: {}),
 		...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_OAUTH_KEY
 			? {
 					GOOGLE_CLIENT_ID: alchemy.env.GOOGLE_CLIENT_ID,

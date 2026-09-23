@@ -28,13 +28,65 @@ export interface BriefingSubscription {
 	name: string;
 	sourceIds: SourceId[];
 	tzOffsetMinutes: number;
+	userId: string;
 }
 
-const KEY_PREFIX = "trends:v1:briefing-sub:";
+const KEY_PREFIX = "trends:v2:briefing-sub:";
 const SUBSCRIPTION_TTL_SECONDS = 400 * 24 * 60 * 60;
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const MAX_SUBSCRIPTIONS_PER_TICK = 50;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL_DOMAIN_RE = /^[a-z0-9.-]+$/;
+const DELIVERY_KEY_PREFIX = "trends:v1:briefing-delivery:";
+const DELIVERY_TTL_SECONDS = 2 * 24 * 60 * 60;
+const DELIVERY_RETRY_DELAY_MS = 30 * 60_000;
+const MAX_DELIVERY_ATTEMPTS = 3;
+
+export interface DeliveryMarker {
+	attempts: number;
+	state: "failed" | "sending" | "sent";
+	updatedAt: number;
+}
+
+type DeliveryDecision = "already-sent" | "send" | "stop" | "wait";
+type DeliveryResult = Exclude<DeliveryDecision, "send"> | "sent";
+
+export function deliveryAttemptDecision(
+	marker: DeliveryMarker | undefined,
+	now: number
+): DeliveryDecision {
+	if (!marker) {
+		return "send";
+	}
+	if (marker.state === "sent") {
+		return "already-sent";
+	}
+	if (marker.attempts >= MAX_DELIVERY_ATTEMPTS) {
+		return "stop";
+	}
+	return now - marker.updatedAt < DELIVERY_RETRY_DELAY_MS ? "wait" : "send";
+}
+
+function deliveryKey(subscriptionId: string, day: string): string {
+	return `${DELIVERY_KEY_PREFIX}${subscriptionId}:${day}`;
+}
+
+function writeDeliveryMarker(
+	keyName: string,
+	marker: DeliveryMarker
+): Promise<boolean> {
+	return hotCache.put(
+		keyName,
+		{
+			createdAt: marker.updatedAt,
+			freshUntil: marker.updatedAt + DELIVERY_TTL_SECONDS * 1000,
+			schemaVersion: 1,
+			staleUntil: marker.updatedAt + DELIVERY_TTL_SECONDS * 1000,
+			value: marker,
+		},
+		DELIVERY_TTL_SECONDS
+	);
+}
 
 export function isValidEmail(value: string): boolean {
 	return EMAIL_RE.test(value) && value.length <= 254;
@@ -94,29 +146,73 @@ export function isEmailConfigured(): boolean {
 	return Boolean(env.EMAIL_API_KEY && env.EMAIL_FROM);
 }
 
-// Forward Email and Resend both take a JSON body with from/to/subject/html
-// and a token; Forward Email wants it as the basic-auth user, Resend as a
-// bearer. Both headers are sent; each provider reads the one it knows.
-export async function sendEmail(message: {
+interface OutboundEmail {
 	html: string;
+	messageId: string;
 	subject: string;
 	text: string;
 	to: string;
-}): Promise<void> {
+	unsubscribeUrl: string;
+}
+
+export function briefingMessageId(params: {
+	day: string;
+	from: string;
+	subscriptionId: string;
+}): string {
+	const domain = params.from
+		.slice(params.from.lastIndexOf("@") + 1)
+		.toLowerCase();
+	if (!EMAIL_DOMAIN_RE.test(domain)) {
+		throw new Error("Email sender must be a bare address.");
+	}
+	return `<briefing.${params.day}.${params.subscriptionId}@${domain}>`;
+}
+
+export function createEmailProviderRequest(params: {
+	apiUrl: string;
+	credential: string;
+	from: string;
+	message: OutboundEmail;
+	provider: "forward-email" | "resend";
+}): { init: RequestInit; url: string } {
+	const { unsubscribeUrl, ...message } = params.message;
+	const authorization =
+		params.provider === "resend"
+			? `Bearer ${params.credential}`
+			: `Basic ${btoa(`${params.credential}:`)}`;
+	return {
+		init: {
+			body: JSON.stringify({
+				from: params.from,
+				headers: {
+					"List-Unsubscribe": `<${unsubscribeUrl}>`,
+					"List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+				},
+				...message,
+			}),
+			headers: {
+				Authorization: authorization,
+				"Content-Type": "application/json",
+			},
+			method: "POST",
+		},
+		url: params.apiUrl,
+	};
+}
+
+export async function sendEmail(message: OutboundEmail): Promise<void> {
 	if (!(env.EMAIL_API_KEY && env.EMAIL_FROM)) {
 		throw new Error("Email delivery is not configured.");
 	}
-	const basic = btoa(`${env.EMAIL_API_KEY}:`);
-	const response = await fetch(env.EMAIL_API_URL, {
-		body: JSON.stringify({ from: env.EMAIL_FROM, ...message }),
-		headers: {
-			Authorization: env.EMAIL_API_URL.includes("resend.com")
-				? `Bearer ${env.EMAIL_API_KEY}`
-				: `Basic ${basic}`,
-			"Content-Type": "application/json",
-		},
-		method: "POST",
+	const request = createEmailProviderRequest({
+		apiUrl: env.EMAIL_API_URL,
+		credential: env.EMAIL_API_KEY,
+		from: env.EMAIL_FROM,
+		message,
+		provider: env.EMAIL_PROVIDER,
 	});
+	const response = await fetch(request.url, request.init);
 	if (!response.ok) {
 		throw new Error(`Email provider answered ${response.status}.`);
 	}
@@ -170,27 +266,76 @@ export function renderBriefingEmail(params: {
 async function deliver(
 	subscription: BriefingSubscription,
 	day: string
-): Promise<void> {
-	const prepared = await prepareTrendsSummary("mine", subscription.lang, {
-		keywords: subscription.keywords,
-		sourceIds: subscription.sourceIds,
-		window: "today",
-	});
-	let markdown = "";
-	for await (const chunk of prepared.stream(new AbortController().signal)) {
-		markdown += chunk;
+): Promise<DeliveryResult> {
+	const now = Date.now();
+	const markerKey = deliveryKey(subscription.id, day);
+	const previous = await hotCache.get<DeliveryMarker>(markerKey);
+	const decision = deliveryAttemptDecision(previous?.value, now);
+	if (decision !== "send") {
+		return decision;
 	}
-	const entries = parseDigestEntries(markdown, prepared.citations);
-	if (entries.length === 0) {
-		return;
+	const attempts = (previous?.value.attempts ?? 0) + 1;
+	if (
+		!(await writeDeliveryMarker(markerKey, {
+			attempts,
+			state: "sending",
+			updatedAt: now,
+		}))
+	) {
+		throw new Error("Could not reserve briefing delivery.");
 	}
-	const message = renderBriefingEmail({
-		day,
-		entries,
-		name: subscription.name,
-		unsubscribeUrl: `${env.BETTER_AUTH_URL}/api/briefings/unsubscribe/${subscription.id}`,
-	});
-	await sendEmail({ ...message, to: subscription.email });
+	try {
+		const prepared = await prepareTrendsSummary("mine", subscription.lang, {
+			keywords: subscription.keywords,
+			sourceIds: subscription.sourceIds,
+			window: "today",
+		});
+		let markdown = "";
+		for await (const chunk of prepared.stream(new AbortController().signal)) {
+			markdown += chunk;
+		}
+		const entries = parseDigestEntries(markdown, prepared.citations);
+		if (entries.length === 0) {
+			await writeDeliveryMarker(markerKey, {
+				attempts,
+				state: "sent",
+				updatedAt: Date.now(),
+			});
+			return "already-sent";
+		}
+		const unsubscribeUrl = `${env.BETTER_AUTH_URL}/api/briefings/unsubscribe/${subscription.id}`;
+		const message = renderBriefingEmail({
+			day,
+			entries,
+			name: subscription.name,
+			unsubscribeUrl,
+		});
+		await sendEmail({
+			...message,
+			messageId: briefingMessageId({
+				day,
+				from: env.EMAIL_FROM ?? "",
+				subscriptionId: subscription.id,
+			}),
+			to: subscription.email,
+			unsubscribeUrl,
+		});
+		// The provider has already accepted the message. A marker write failure
+		// must not turn that success into a retry and send the same digest twice.
+		await writeDeliveryMarker(markerKey, {
+			attempts,
+			state: "sent",
+			updatedAt: Date.now(),
+		});
+		return "sent";
+	} catch (error) {
+		await writeDeliveryMarker(markerKey, {
+			attempts,
+			state: "failed",
+			updatedAt: Date.now(),
+		});
+		throw error;
+	}
 }
 
 // Called from the scheduler: every subscription whose local hour is now
@@ -221,9 +366,14 @@ export async function runBriefingDeliveryTick(now: number): Promise<number> {
 			continue;
 		}
 		try {
-			await deliver(subscription, localDay);
+			const result = await deliver(subscription, localDay);
+			if (result === "wait") {
+				continue;
+			}
 			await saveSubscription({ ...subscription, lastSentDay: localDay });
-			sent += 1;
+			if (result === "sent") {
+				sent += 1;
+			}
 		} catch (error) {
 			if (
 				error instanceof TrendsSummaryNoMatchesError ||

@@ -16,6 +16,10 @@ export interface WorkerBindings {
 	BETTER_AUTH_URL: string;
 	CORS_ORIGIN: string;
 	DB: D1Database;
+	EMAIL_API_KEY?: string;
+	EMAIL_API_URL?: string;
+	EMAIL_FROM?: string;
+	EMAIL_PROVIDER?: "forward-email" | "resend";
 	EVENT_MERGE_QUEUE: Queue<WorkerQueueMessage>;
 	GITHUB_CLIENT_ID?: string;
 	GITHUB_OAUTH_KEY?: string;

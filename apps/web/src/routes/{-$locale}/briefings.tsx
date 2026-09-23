@@ -1,7 +1,7 @@
 import { env } from "@opentrends/env/web";
 import { ScrollArea } from "@opentrends/ui/components/scroll-area";
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import { createFileRoute } from "@tanstack/react-router";
+import { createFileRoute, Link } from "@tanstack/react-router";
 import { Plus, Trash2 } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
@@ -20,8 +20,10 @@ import { formatRelativeTime } from "@/components/trends/relative-time";
 import { SourceFavicon } from "@/components/trends/source-favicon";
 import { trendsPageQueryOptions } from "@/components/trends/trends-query";
 import { TrendsSummary } from "@/components/trends/trends-summary";
+import { authClient } from "@/lib/auth-client";
 import {
 	type Locale,
+	localePathParam,
 	resolveLocale,
 	type TranslationKey,
 	useLocale,
@@ -32,7 +34,7 @@ import { buildSeo } from "@/lib/seo";
 // A reader's own digests. A briefing names its sources (whole topics, or
 // the follow list) and a few keywords; the digest is the same ten lines the
 // topics get, drawn only from those. Stored in the browser like the follow
-// list. Delivery by mail or webhook comes later; the hour is kept for it.
+// list. Logged-in readers can also deliver the same briefing by email.
 
 const HOURS = [6, 7, 8, 9, 12, 18, 20, 22] as const;
 const ITEM_LIMIT = 40;
@@ -47,10 +49,10 @@ interface Strings {
 	deliverDone: string;
 	deliverFailed: string;
 	deliverNotConfigured: string;
+	deliverSignIn: string;
 	deliverStop: string;
 	deliverTitle: string;
 	deliveryNote: string;
-	emailPlaceholder: string;
 	everyDay: string;
 	hour: string;
 	keywords: string;
@@ -77,16 +79,16 @@ const EN: Strings = {
 	deliverDone: "Arrives daily at",
 	deliverFailed: "Could not subscribe; try again.",
 	deliverNotConfigured: "Mail delivery is not set up on this deployment yet.",
+	deliverSignIn: "Sign in to send this briefing to your account email.",
 	deliverStop: "Stop",
 	deliverTitle: "By mail",
-	emailPlaceholder: "you@example.com",
 	create: "New briefing",
 	custom: "Make your own",
 	customBody:
 		"Pick topics, add keywords, choose an hour. The digest reads only the sources of those topics and only items mentioning your words.",
 	delete: "Delete",
 	deliveryNote:
-		"Read it here for now; delivery by email and webhook is on the way.",
+		"Read it here or sign in to have it delivered by email every day.",
 	everyDay: "Every day at",
 	hour: "Hour",
 	keywords: "Keywords",
@@ -114,15 +116,15 @@ const ZH: Strings = {
 	deliverDone: "每天送达，",
 	deliverFailed: "订阅没成功，再试一次。",
 	deliverNotConfigured: "这个部署还没接邮件服务。",
+	deliverSignIn: "登录后可把简报发送到账号邮箱。",
 	deliverStop: "停止",
 	deliverTitle: "邮件推送",
-	emailPlaceholder: "you@example.com",
 	create: "新建简报",
 	custom: "定制我的简报",
 	customBody:
 		"选主题、写关键词、定时间。摘要只读这些主题的来源，只看提到你关键词的内容。",
 	delete: "删除",
-	deliveryNote: "目前在网页里看；邮件和 Webhook 推送随后就到。",
+	deliveryNote: "可以在网页里看，也可以登录后每天发到账号邮箱。",
 	everyDay: "每天",
 	hour: "时间",
 	keywords: "关键词",
@@ -150,6 +152,7 @@ const ZH_HANT: Strings = {
 	deliverDone: "每天送達，",
 	deliverFailed: "訂閱沒成功，再試一次。",
 	deliverNotConfigured: "這個部署還沒接郵件服務。",
+	deliverSignIn: "登入後可把簡報寄到帳號信箱。",
 	deliverStop: "停止",
 	deliverTitle: "郵件推送",
 	create: "新建簡報",
@@ -157,7 +160,7 @@ const ZH_HANT: Strings = {
 	customBody:
 		"選主題、寫關鍵字、定時間。摘要只讀這些主題的來源，只看提到你關鍵字的內容。",
 	delete: "刪除",
-	deliveryNote: "目前在網頁裡看；郵件和 Webhook 推送隨後就到。",
+	deliveryNote: "可以在網頁裡看，也可以登入後每天寄到帳號信箱。",
 	hour: "時間",
 	keywords: "關鍵字",
 	keywordsHint: "逗號分隔，最多 10 個；留空表示全部。",
@@ -238,7 +241,7 @@ function Delivery({
 	strings: Strings;
 }) {
 	const locale = useLocale();
-	const [email, setEmail] = useState("");
+	const session = authClient.useSession();
 	const [state, setState] = useState<
 		"idle" | "sending" | "failed" | "unconfigured"
 	>("idle");
@@ -250,7 +253,6 @@ function Delivery({
 				`${env.VITE_SERVER_URL}/api/briefings/subscriptions`,
 				{
 					body: JSON.stringify({
-						email,
 						hour: briefing.hour,
 						keywords: briefing.keywords,
 						lang: locale,
@@ -258,7 +260,7 @@ function Delivery({
 						sourceIds: briefing.sourceIds,
 						tzOffsetMinutes: -new Date().getTimezoneOffset(),
 					}),
-					credentials: "same-origin",
+					credentials: "include",
 					headers: { "Content-Type": "application/json" },
 					method: "POST",
 				}
@@ -283,7 +285,7 @@ function Delivery({
 		if (briefing.subscriptionId) {
 			await fetch(
 				`${env.VITE_SERVER_URL}/api/briefings/subscriptions/${briefing.subscriptionId}`,
-				{ credentials: "same-origin", method: "DELETE" }
+				{ credentials: "include", method: "DELETE" }
 			).catch(() => undefined);
 		}
 		onChange({ subscriptionId: undefined });
@@ -305,6 +307,25 @@ function Delivery({
 			</p>
 		);
 	}
+	if (session.isPending) {
+		return (
+			<span className="inline-block h-7 w-44 animate-pulse bg-[var(--state-hover-subtle)]" />
+		);
+	}
+	if (!session.data?.user) {
+		return (
+			<p className="text-[12px] text-[var(--text-secondary)]">
+				{strings.deliverSignIn}{" "}
+				<Link
+					className="text-[var(--accent-blue)] hover:underline"
+					params={{ locale: localePathParam(locale) }}
+					to="/{-$locale}/login"
+				>
+					{strings.deliverButton}
+				</Link>
+			</p>
+		);
+	}
 	return (
 		<form
 			className="flex flex-wrap items-center gap-2"
@@ -316,14 +337,9 @@ function Delivery({
 			<span className="text-[12px] text-[var(--text-muted)]">
 				{strings.deliverBody}
 			</span>
-			<input
-				className="w-56 border border-[var(--border-default)] bg-[var(--surface-app)] px-2.5 py-1 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-blue)]"
-				onChange={(event) => setEmail(event.target.value)}
-				placeholder={strings.emailPlaceholder}
-				required
-				type="email"
-				value={email}
-			/>
+			<span className="text-[12px] text-[var(--text-primary)]">
+				{session.data.user.email}
+			</span>
 			<button
 				className={BUTTON_CLASS}
 				disabled={state === "sending"}
