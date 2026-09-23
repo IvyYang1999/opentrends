@@ -432,3 +432,23 @@ export function getTopicPreset(id: string): TopicPreset | undefined {
 export function isTopicId(id: string): id is TopicId {
 	return id in topicPresets;
 }
+
+// The first topic, other than the featured one, that carries a source; used
+// to tag a cross-topic digest line with where its story came from.
+const SOURCE_TOPIC = new Map<string, string>();
+for (const [topicId, preset] of Object.entries(topicPresets)) {
+	if (topicId === FEATURED_TOPIC_ID) {
+		continue;
+	}
+	for (const section of preset.sections) {
+		for (const sourceId of section.sourceIds) {
+			if (!SOURCE_TOPIC.has(sourceId)) {
+				SOURCE_TOPIC.set(sourceId, topicId);
+			}
+		}
+	}
+}
+
+export function topicForSource(sourceId: string): string | undefined {
+	return SOURCE_TOPIC.get(sourceId);
+}

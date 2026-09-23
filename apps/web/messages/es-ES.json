@@ -203,5 +203,7 @@
   "feed_count": "{count} elementos",
   "feed_seo_description": "Un único feed con lo nuevo y lo más caliente de tus fuentes.",
   "view_sources": "Fuentes",
-  "source_manager_button": "Gestionar fuentes"
+  "source_manager_button": "Gestionar fuentes",
+  "summary_show_rest": "Mostrar {count} más",
+  "summary_show_less": "Mostrar menos"
 }

@@ -203,5 +203,7 @@
   "feed_count": "{count} Einträge",
   "feed_seo_description": "Ein Feed mit dem Neuen und Heißen aus deinen Quellen.",
   "view_sources": "Quellen",
-  "source_manager_button": "Quellen verwalten"
+  "source_manager_button": "Quellen verwalten",
+  "summary_show_rest": "{count} weitere anzeigen",
+  "summary_show_less": "Weniger anzeigen"
 }

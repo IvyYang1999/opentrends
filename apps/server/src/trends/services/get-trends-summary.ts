@@ -7,7 +7,11 @@ import { readSourceItemHistory } from "../cache/source-cache";
 import { readSummary } from "../cache/summary-cache";
 import { FOLLOWED_TOPIC_ID, resolveTopic } from "../config/followed-topic";
 import { getSourcePreset } from "../config/sources";
-import { FEATURED_TOPIC_ID, topicPresets } from "../config/topics";
+import {
+	FEATURED_TOPIC_ID,
+	topicForSource,
+	topicPresets,
+} from "../config/topics";
 import type { NewsItem, SourceId, TopicPreset, TrendsPageData } from "../types";
 import {
 	getFollowedSourcesPage,
@@ -125,7 +129,15 @@ class SummaryCacheReadTimeoutError extends Error {
 
 export interface Citation {
 	n: number;
+	/** The topic the cited source belongs to, so a digest drawn from every
+	 * topic can say which field each line comes from. */
+	topic?: string;
 	url: string;
+}
+
+function toCitation({ n, item }: CitedItem): Citation {
+	const topic = topicForSource(item.sourceId);
+	return topic ? { n, topic, url: item.url } : { n, url: item.url };
 }
 
 export interface PreparedSummary {
@@ -735,10 +747,7 @@ async function refreshSummaryCache(
 	const topic = resolved.preset;
 	const cacheTopicId = summaryCacheTopicId(resolved.cacheTopicId, window);
 	const cited = await collectWindowCitedItems(topicId, topic, lang, window);
-	const citations: Citation[] = cited.map(({ n, item }) => ({
-		n,
-		url: item.url,
-	}));
+	const citations: Citation[] = cited.map(toCitation);
 	const prompt = buildPrompt(topic, cited, lang, window);
 	const cachedEntry = await readAnyCachedSummary(
 		cacheTopicId,
@@ -1066,10 +1075,7 @@ export async function prepareTrendsSummary(
 	if (topicId === FOLLOWED_TOPIC_ID) {
 		const topic = resolved.preset;
 		const cited = await collectWindowCitedItems(topicId, topic, lang, window);
-		const citations: Citation[] = cited.map(({ n, item }) => ({
-			n,
-			url: item.url,
-		}));
+		const citations: Citation[] = cited.map(toCitation);
 		const prompt = buildPrompt(topic, cited, lang, window);
 		return {
 			citations,

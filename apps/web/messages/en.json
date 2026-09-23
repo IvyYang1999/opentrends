@@ -203,5 +203,7 @@
   "feed_count": "{count} items",
   "feed_seo_description": "A single feed of what is new and hot across your sources.",
   "view_sources": "Sources",
-  "source_manager_button": "Manage sources"
+  "source_manager_button": "Manage sources",
+  "summary_show_rest": "Show {count} more",
+  "summary_show_less": "Show less"
 }

@@ -1,11 +1,12 @@
 import { env } from "@opentrends/env/web";
 import { ChevronDown, ChevronUp, Share2 } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 
 import { segmentClassName } from "@/components/chrome-styles";
 import {
 	type Locale,
+	localePathParam,
 	type TranslationKey,
 	type Translator,
 	useLocale,
@@ -53,7 +54,11 @@ const SUMMARY_WINDOW_LABELS = {
 	month: "summary.windowMonth",
 } as const;
 
-type CitationMap = ReadonlyMap<number, string>;
+interface Citation {
+	topic?: string;
+	url: string;
+}
+type CitationMap = ReadonlyMap<number, Citation>;
 
 interface StreamHandlers {
 	isCancelled: () => boolean;
@@ -74,7 +79,7 @@ const SUMMARY_PENDING_RETRY_MS = 10_000;
 const CITATION_PREAMBLE_PREFIX = '{"citations":';
 
 function toCitationMap(parsed: unknown): CitationMap {
-	const map = new Map<number, string>();
+	const map = new Map<number, Citation>();
 	if (!Array.isArray(parsed)) {
 		return map;
 	}
@@ -85,7 +90,12 @@ function toCitationMap(parsed: unknown): CitationMap {
 			typeof (entry as { n?: unknown }).n === "number" &&
 			typeof (entry as { url?: unknown }).url === "string"
 		) {
-			map.set((entry as { n: number }).n, (entry as { url: string }).url);
+			const { n, topic, url } = entry as {
+				n: number;
+				topic?: unknown;
+				url: string;
+			};
+			map.set(n, typeof topic === "string" ? { topic, url } : { url });
 		}
 	}
 	return map;
@@ -142,9 +152,60 @@ function linkifyCitations(text: string, citations: CitationMap): string {
 	}
 	return text.replace(CITATION_RE, (match, raw) => {
 		const n = Number.parseInt(raw, 10);
-		const url = citations.get(n);
+		const url = citations.get(n)?.url;
 		return url ? `[<sup>${n}</sup>](${url})` : match;
 	});
+}
+
+const LIST_LINE_RE = /^\s*\d+[.)]\s+/;
+const FIRST_CITATION_RE = /\[(\d+)\]/;
+// Lines shown before the digest folds; the rest wait behind "show more".
+export const DIGEST_FOLD = 5;
+
+// A digest drawn from every topic tags each line with the field its first
+// citation came from, as a link to that topic's feed. The tag is styled by
+// its href (see SummaryBody), so nothing but Markdown crosses into Streamdown.
+export function tagDigestLines(
+	text: string,
+	citations: CitationMap,
+	topicLabel: (topicId: string) => string,
+	topicHref: (topicId: string) => string
+): string {
+	return text
+		.split("\n")
+		.map((line) => {
+			const head = LIST_LINE_RE.exec(line)?.[0];
+			if (!head) {
+				return line;
+			}
+			const n = Number.parseInt(FIRST_CITATION_RE.exec(line)?.[1] ?? "", 10);
+			const topic = citations.get(n)?.topic;
+			if (!topic) {
+				return line;
+			}
+			return `${head}[${topicLabel(topic)}](${topicHref(topic)}) ${line.slice(head.length)}`;
+		})
+		.join("\n");
+}
+
+// The digest folded to its first entries. Returns the text unchanged while it
+// is still streaming, so the fold never hides what is being written.
+export function foldDigest(text: string, limit: number): string {
+	const lines = text.split("\n");
+	let seen = 0;
+	for (const [index, line] of lines.entries()) {
+		if (LIST_LINE_RE.test(line)) {
+			seen += 1;
+			if (seen > limit) {
+				return lines.slice(0, index).join("\n").trimEnd();
+			}
+		}
+	}
+	return text;
+}
+
+export function countDigestLines(text: string): number {
+	return text.split("\n").filter((line) => LIST_LINE_RE.test(line)).length;
 }
 
 function isAbort(err: unknown): boolean {
@@ -294,24 +355,40 @@ function computeSummaryStats(page: TrendsPageData): SummaryStats {
 interface SummaryBodyProps {
 	citations: CitationMap;
 	error: string | null;
+	expanded: boolean;
 	metadata: CitationMetaMap;
+	onExpandedChange: (expanded: boolean) => void;
 	status: SummaryStatus;
 	t: Translator;
 	text: string;
+	topicHref: (topicId: string) => string;
 }
 
 function SummaryBody({
 	citations,
 	error,
+	expanded,
 	metadata,
+	onExpandedChange,
 	status,
 	t,
 	text,
+	topicHref,
 }: SummaryBodyProps) {
-	const linkified = useMemo(
-		() => linkifyCitations(text, citations),
-		[text, citations]
-	);
+	const total = countDigestLines(text);
+	const foldable = status === "done" && total > DIGEST_FOLD;
+	const linkified = useMemo(() => {
+		const shown = foldable && !expanded ? foldDigest(text, DIGEST_FOLD) : text;
+		return linkifyCitations(
+			tagDigestLines(
+				shown,
+				citations,
+				(topicId) => t(`topic.${topicId}` as TranslationKey),
+				topicHref
+			),
+			citations
+		);
+	}, [text, citations, foldable, expanded, t, topicHref]);
 	// Hover-driven citation popover. Streamdown's `linkSafety` only fires on
 	// click, so we drive the preview ourselves: pointer enters a chip → open;
 	// pointer leaves the chip and the popup → close (with a small grace period
@@ -350,7 +427,7 @@ function SummaryBody({
 			if (!Number.isFinite(n)) {
 				return;
 			}
-			const url = citations.get(n);
+			const url = citations.get(n)?.url;
 			if (!url) {
 				return;
 			}
@@ -390,7 +467,7 @@ function SummaryBody({
 		return (
 			<>
 				<div
-					className="text-[13px] text-[var(--text-primary)] leading-[1.55] [&_[data-streamdown=link]:hover_sup]:bg-[var(--accent-blue)] [&_[data-streamdown=link]:hover_sup]:text-white [&_[data-streamdown=link]]:cursor-pointer [&_[data-streamdown=link]]:font-normal [&_[data-streamdown=link]]:no-underline [&_sup]:mx-[2px] [&_sup]:inline-flex [&_sup]:h-[1.125rem] [&_sup]:min-w-[1.125rem] [&_sup]:items-center [&_sup]:justify-center [&_sup]:rounded-[4px] [&_sup]:bg-[var(--accent-blue-bg)] [&_sup]:px-[5px] [&_sup]:font-medium [&_sup]:text-[10px] [&_sup]:text-[var(--accent-blue)] [&_sup]:leading-none [&_sup]:transition-colors"
+					className="text-[13px] text-[var(--text-primary)] leading-[1.55] [&_[data-streamdown=link]:hover_sup]:bg-[var(--accent-blue)] [&_[data-streamdown=link]:hover_sup]:text-white [&_[data-streamdown=link]]:cursor-pointer [&_[data-streamdown=link]]:font-normal [&_[data-streamdown=link]]:no-underline [&_a[href$='topic=ai']]:[--tag-bg:#e3ecff] [&_a[href$='topic=ai']]:[--tag-fg:#2a5bd7] [&_a[href$='topic=biotech']]:[--tag-bg:#f3e8fb] [&_a[href$='topic=biotech']]:[--tag-fg:#7a3cb4] [&_a[href$='topic=cn']]:[--tag-bg:#fde8e8] [&_a[href$='topic=cn']]:[--tag-fg:#c02a2a] [&_a[href$='topic=embodied']]:[--tag-bg:#e6f4ea] [&_a[href$='topic=embodied']]:[--tag-fg:#1e7a3c] [&_a[href$='topic=hardware']]:[--tag-bg:#fdecdc] [&_a[href$='topic=hardware']]:[--tag-fg:#b4530a] [&_a[href$='topic=programming']]:[--tag-bg:#e0f4f4] [&_a[href$='topic=programming']]:[--tag-fg:#0f7a7a] [&_a[href*='topic=']]:mr-1 [&_a[href*='topic=']]:inline-block [&_a[href*='topic=']]:rounded-[4px] [&_a[href*='topic=']]:bg-[var(--tag-bg,var(--accent-blue-bg))] [&_a[href*='topic=']]:px-1.5 [&_a[href*='topic=']]:align-[1px] [&_a[href*='topic=']]:font-medium [&_a[href*='topic=']]:text-[10px] [&_a[href*='topic=']]:text-[var(--tag-fg,var(--accent-blue))] [&_a[href*='topic=']]:leading-[1.6] [&_a[href*='topic=']]:no-underline [&_sup]:mx-[2px] [&_sup]:inline-flex [&_sup]:h-[1.125rem] [&_sup]:min-w-[1.125rem] [&_sup]:items-center [&_sup]:justify-center [&_sup]:rounded-[4px] [&_sup]:bg-[var(--accent-blue-bg)] [&_sup]:px-[5px] [&_sup]:font-medium [&_sup]:text-[10px] [&_sup]:text-[var(--accent-blue)] [&_sup]:leading-none [&_sup]:transition-colors"
 					data-testid="trends-summary-body"
 					onPointerOut={handlePointerOut}
 					onPointerOver={handlePointerOver}
@@ -407,6 +484,17 @@ function SummaryBody({
 						{linkified}
 					</Streamdown>
 				</div>
+				{foldable ? (
+					<button
+						className="mt-1 text-[12px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)]"
+						onClick={() => onExpandedChange(!expanded)}
+						type="button"
+					>
+						{expanded
+							? t("summary.showLess")
+							: t("summary.showRest", { count: total - DIGEST_FOLD })}
+					</button>
+				) : null}
 				{hoverState ? (
 					<CitationLinkPopover
 						anchor={hoverState.anchor}
@@ -484,6 +572,17 @@ export function TrendsSummary({
 	const translatedTopic = t(topicKey);
 	const digestTitle = `${translatedTopic === topicKey ? page.title : translatedTopic} · ${t(WINDOW_HEADING_KEYS[summaryWindow])}`;
 	const [shareOpen, setShareOpen] = useState(false);
+	// Five lines are a glance; the rest are a click away, and the choice
+	// resets with the topic so a new digest starts folded.
+	const [expanded, setExpanded] = useState(false);
+	useEffect(() => {
+		setExpanded(false);
+	}, [memoKey]);
+	const localeParam = localePathParam(locale);
+	const topicHref = useCallback(
+		(id: string) => `${localeParam ? `/${localeParam}` : ""}/feed?topic=${id}`,
+		[localeParam]
+	);
 	// Sharing is offered once the whole digest has arrived, so the image never
 	// shows a half-written entry.
 	const digestEntries = useMemo(
@@ -683,10 +782,13 @@ export function TrendsSummary({
 						<SummaryBody
 							citations={citations}
 							error={error}
+							expanded={expanded}
 							metadata={metadata}
+							onExpandedChange={setExpanded}
 							status={status}
 							t={t}
 							text={text}
+							topicHref={topicHref}
 						/>
 					)}
 				</div>

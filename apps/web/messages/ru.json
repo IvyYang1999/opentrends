@@ -203,5 +203,7 @@
   "feed_count": "{count} материалов",
   "feed_seo_description": "Одна лента нового и популярного из ваших источников.",
   "view_sources": "Источники",
-  "source_manager_button": "Управление источниками"
+  "source_manager_button": "Управление источниками",
+  "summary_show_rest": "Показать ещё {count}",
+  "summary_show_less": "Свернуть"
 }

@@ -203,5 +203,7 @@
   "feed_count": "{count} éléments",
   "feed_seo_description": "Un seul flux du neuf et du chaud parmi vos sources.",
   "view_sources": "Sources",
-  "source_manager_button": "Gérer les sources"
+  "source_manager_button": "Gérer les sources",
+  "summary_show_rest": "Afficher {count} de plus",
+  "summary_show_less": "Réduire"
 }

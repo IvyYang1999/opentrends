@@ -203,5 +203,7 @@
   "feed_count": "{count} 条",
   "feed_seo_description": "把你关注的和正在热的内容汇成一条瀑布流。",
   "view_sources": "来源",
-  "source_manager_button": "管理来源"
+  "source_manager_button": "管理来源",
+  "summary_show_rest": "展开其余 {count} 条",
+  "summary_show_less": "收起"
 }
