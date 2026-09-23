@@ -1,17 +1,21 @@
 export const SOURCE_CARD_GRID_CLASSES =
 	"grid grid-cols-1 items-stretch sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
 
+export function shouldLoadFullSource(
+	hasItems: boolean,
+	itemsTruncated: boolean | undefined
+): boolean {
+	return hasItems && Boolean(itemsTruncated);
+}
+
 export function sourceCardViewportClasses(
 	hasItems: boolean,
-	expanded = false
+	_expanded = false
 ): string {
-	// Source batches are already mounted progressively near the viewport. A
-	// second fixed-height/content-visibility layer only leaves a large blank
-	// tail when the preview intentionally renders fewer rows than the source's
-	// total item count.
-	return hasItems && expanded
-		? "h-[480px] max-sm:h-auto max-sm:max-h-none"
-		: "h-auto";
+	// Every desktop card exposes the same viewport. Its full queue is loaded in
+	// the background: collapsed cards clip the overflow, expanded cards scroll
+	// it without changing the surrounding grid.
+	return hasItems ? "h-[480px] max-sm:h-auto max-sm:max-h-none" : "h-auto";
 }
 
 const DECORATIVE_BADGE_IMAGE_PATTERNS = [

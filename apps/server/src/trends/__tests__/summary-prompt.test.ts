@@ -49,7 +49,7 @@ describe("trends summary prompt", () => {
 			},
 		]);
 
-		expect(prompt).toContain("Prompt version: top10-v3");
+		expect(prompt).toContain("Prompt version: top10-v4");
 		expect(prompt).toContain(
 			"[1] [OpenAI News] (published 2026-05-07) OpenAI ships a model update"
 		);
@@ -94,10 +94,10 @@ describe("trends summary prompt", () => {
 		];
 
 		const prompt = buildPrompt(topic, cited, "zh", "today", "cross-topic");
-		expect(prompt).toContain("Selection mode: cross-topic-editorial-v2");
+		expect(prompt).toContain("Selection mode: cross-topic-editorial-v3");
 		expect(prompt).toContain("[Topic: ai]");
 		expect(buildSystemPrompt("zh", "today", "cross-topic")).toContain(
-			"Prefer cross-topic variety"
+			"This is an editorial target, not a quota"
 		);
 		expect(buildSystemPrompt("zh", "today", "cross-topic")).toContain(
 			"Quality wins over quotas"

@@ -68,6 +68,7 @@ import { revealSourceCard, sourceCardElementId } from "./reveal-source-card";
 import {
 	coverKind,
 	SOURCE_CARD_GRID_CLASSES,
+	shouldLoadFullSource,
 	sourceCardViewportClasses,
 } from "./source-card-model";
 import { SourceFavicon } from "./source-favicon";
@@ -738,9 +739,9 @@ function SourceCard({
 	// place; nothing opens over the page.
 	const fullSource = useQuery({
 		...trendSourceQueryOptions(topicId, source.sourceId, locale),
-		enabled: expanded && Boolean(source.itemsTruncated),
+		enabled: shouldLoadFullSource(hasItems, source.itemsTruncated),
 	});
-	const shownSource = expanded ? (fullSource.data ?? source) : source;
+	const shownSource = fullSource.data ?? source;
 
 	const bodyRef = useCallback((el: HTMLDivElement | null) => {
 		if (!el) {
@@ -777,7 +778,7 @@ function SourceCard({
 						settings={settings}
 						source={shownSource}
 						t={t}
-						translationPending={translationPending || fullSource.isFetching}
+						translationPending={translationPending}
 					/>
 					{!expanded && (overflowing || source.itemsTruncated) ? (
 						<>

@@ -101,8 +101,8 @@ function summaryCacheTopicId(topicId: string, window: SummaryWindow): string {
 
 const SUMMARY_CACHE_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SUMMARY_HOT_CACHE_SCHEMA_VERSION = 2;
-const SUMMARY_PROMPT_VERSION = "top10-v3";
-const CROSS_TOPIC_SELECTION_MODE = "cross-topic-editorial-v2";
+const SUMMARY_PROMPT_VERSION = "top10-v4";
+const CROSS_TOPIC_SELECTION_MODE = "cross-topic-editorial-v3";
 const SUMMARY_HOT_CACHE_TTL_SECONDS = Math.ceil(
 	SUMMARY_CACHE_RETENTION_MS / 1000
 );
@@ -566,8 +566,10 @@ export function buildSystemPrompt(
 	const scopeRules =
 		scope === "cross-topic"
 			? [
-					"- This is the cross-topic Featured digest. Prefer cross-topic variety when stories have comparable editorial value; do not let AI dominate merely because it has more candidates.",
+					"- This is the cross-topic Featured digest. Aim to make at least 3 visibly different topics appear in the first 5 entries and at least 4 across the full list when stories of comparable value exist. This is an editorial target, not a quota.",
+					"- Do not let AI dominate merely because it has more candidates. After the strongest one or two stories from a single theme, prefer a comparably consequential story from another topic.",
 					"- Quality wins over quotas: never include a weak story just to represent another `[Topic: …]`. Rank first by consequence, novelty, evidence, and likely reader impact.",
+					"- Penalize promotions, routine model announcements, curiosity-only discoveries, local oddities, and opinion without new facts.",
 				]
 			: [];
 	return [
