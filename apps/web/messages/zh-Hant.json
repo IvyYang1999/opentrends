@@ -215,5 +215,9 @@
   "kind_policy": "政策",
   "kind_benchmark": "評測",
   "nav_briefings": "簡報",
-  "summary_no_matches": "這些來源裡還沒有提到你的關鍵字的內容。"
+  "summary_no_matches": "這些來源裡還沒有提到你的關鍵字的內容。",
+  "nav_calendar": "日曆",
+  "calendar_seo_description": "一個主題一個月裡，每天各來源的頭條。",
+  "calendar_previous_month": "上一月",
+  "calendar_next_month": "下一月"
 }

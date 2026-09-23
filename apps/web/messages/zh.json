@@ -215,5 +215,9 @@
   "kind_policy": "政策",
   "kind_benchmark": "评测",
   "nav_briefings": "简报",
-  "summary_no_matches": "这些来源里还没有提到你的关键词的内容。"
+  "summary_no_matches": "这些来源里还没有提到你的关键词的内容。",
+  "nav_calendar": "日历",
+  "calendar_seo_description": "一个主题一个月里，每天各来源的头条。",
+  "calendar_previous_month": "上一月",
+  "calendar_next_month": "下一月"
 }

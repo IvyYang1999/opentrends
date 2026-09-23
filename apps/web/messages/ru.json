@@ -215,5 +215,9 @@
   "kind_policy": "Политика",
   "kind_benchmark": "Бенчмарки",
   "nav_briefings": "Сводки",
-  "summary_no_matches": "В этих источниках пока нет материалов по вашим ключевым словам."
+  "summary_no_matches": "В этих источниках пока нет материалов по вашим ключевым словам.",
+  "nav_calendar": "Календарь",
+  "calendar_seo_description": "Главное из каждого источника, день за днём, по теме и месяцу.",
+  "calendar_previous_month": "Предыдущий месяц",
+  "calendar_next_month": "Следующий месяц"
 }

@@ -215,5 +215,9 @@
   "kind_policy": "Regulierung",
   "kind_benchmark": "Benchmarks",
   "nav_briefings": "Briefings",
-  "summary_no_matches": "Noch nichts in diesen Quellen erwähnt deine Stichwörter."
+  "summary_no_matches": "Noch nichts in diesen Quellen erwähnt deine Stichwörter.",
+  "nav_calendar": "Kalender",
+  "calendar_seo_description": "Was jede Quelle Tag für Tag anführte, je Thema und Monat.",
+  "calendar_previous_month": "Vormonat",
+  "calendar_next_month": "Nächster Monat"
 }

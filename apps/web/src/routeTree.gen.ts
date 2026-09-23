@@ -16,6 +16,7 @@ import { Route as Char123LocaleChar125LoginRouteImport } from './routes/{-$local
 import { Route as Char123LocaleChar125FeedRouteImport } from './routes/{-$locale}/feed'
 import { Route as Char123LocaleChar125EventsRouteImport } from './routes/{-$locale}/events'
 import { Route as Char123LocaleChar125DashboardRouteImport } from './routes/{-$locale}/dashboard'
+import { Route as Char123LocaleChar125CalendarRouteImport } from './routes/{-$locale}/calendar'
 import { Route as Char123LocaleChar125BriefingsRouteImport } from './routes/{-$locale}/briefings'
 import { Route as Char123LocaleChar125AgentsRouteImport } from './routes/{-$locale}/agents'
 import { Route as DotwellKnownApiCatalogRouteImport } from './routes/[.]well-known.api-catalog'
@@ -66,6 +67,12 @@ const Char123LocaleChar125DashboardRoute =
     path: '/{-$locale}/dashboard',
     getParentRoute: () => rootRouteImport,
   } as any)
+const Char123LocaleChar125CalendarRoute =
+  Char123LocaleChar125CalendarRouteImport.update({
+    id: '/{-$locale}/calendar',
+    path: '/{-$locale}/calendar',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const Char123LocaleChar125BriefingsRoute =
   Char123LocaleChar125BriefingsRouteImport.update({
     id: '/{-$locale}/briefings',
@@ -112,6 +119,7 @@ export interface FileRoutesByFullPath {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/{-$locale}/agents': typeof Char123LocaleChar125AgentsRoute
   '/{-$locale}/briefings': typeof Char123LocaleChar125BriefingsRoute
+  '/{-$locale}/calendar': typeof Char123LocaleChar125CalendarRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
   '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
   '/{-$locale}/feed': typeof Char123LocaleChar125FeedRoute
@@ -128,6 +136,7 @@ export interface FileRoutesByTo {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/{-$locale}/agents': typeof Char123LocaleChar125AgentsRoute
   '/{-$locale}/briefings': typeof Char123LocaleChar125BriefingsRoute
+  '/{-$locale}/calendar': typeof Char123LocaleChar125CalendarRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
   '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
   '/{-$locale}/feed': typeof Char123LocaleChar125FeedRoute
@@ -144,6 +153,7 @@ export interface FileRoutesById {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
   '/{-$locale}/agents': typeof Char123LocaleChar125AgentsRoute
   '/{-$locale}/briefings': typeof Char123LocaleChar125BriefingsRoute
+  '/{-$locale}/calendar': typeof Char123LocaleChar125CalendarRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
   '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
   '/{-$locale}/feed': typeof Char123LocaleChar125FeedRoute
@@ -162,6 +172,7 @@ export interface FileRouteTypes {
     | '/.well-known/api-catalog'
     | '/{-$locale}/agents'
     | '/{-$locale}/briefings'
+    | '/{-$locale}/calendar'
     | '/{-$locale}/dashboard'
     | '/{-$locale}/events'
     | '/{-$locale}/feed'
@@ -178,6 +189,7 @@ export interface FileRouteTypes {
     | '/.well-known/api-catalog'
     | '/{-$locale}/agents'
     | '/{-$locale}/briefings'
+    | '/{-$locale}/calendar'
     | '/{-$locale}/dashboard'
     | '/{-$locale}/events'
     | '/{-$locale}/feed'
@@ -193,6 +205,7 @@ export interface FileRouteTypes {
     | '/.well-known/api-catalog'
     | '/{-$locale}/agents'
     | '/{-$locale}/briefings'
+    | '/{-$locale}/calendar'
     | '/{-$locale}/dashboard'
     | '/{-$locale}/events'
     | '/{-$locale}/feed'
@@ -210,6 +223,7 @@ export interface RootRouteChildren {
   DotwellKnownApiCatalogRoute: typeof DotwellKnownApiCatalogRoute
   Char123LocaleChar125AgentsRoute: typeof Char123LocaleChar125AgentsRoute
   Char123LocaleChar125BriefingsRoute: typeof Char123LocaleChar125BriefingsRoute
+  Char123LocaleChar125CalendarRoute: typeof Char123LocaleChar125CalendarRoute
   Char123LocaleChar125DashboardRoute: typeof Char123LocaleChar125DashboardRoute
   Char123LocaleChar125EventsRoute: typeof Char123LocaleChar125EventsRoute
   Char123LocaleChar125FeedRoute: typeof Char123LocaleChar125FeedRoute
@@ -270,6 +284,13 @@ declare module '@tanstack/react-router' {
       path: '/{-$locale}/dashboard'
       fullPath: '/{-$locale}/dashboard'
       preLoaderRoute: typeof Char123LocaleChar125DashboardRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/{-$locale}/calendar': {
+      id: '/{-$locale}/calendar'
+      path: '/{-$locale}/calendar'
+      fullPath: '/{-$locale}/calendar'
+      preLoaderRoute: typeof Char123LocaleChar125CalendarRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/{-$locale}/briefings': {
@@ -344,6 +365,7 @@ const rootRouteChildren: RootRouteChildren = {
   DotwellKnownApiCatalogRoute: DotwellKnownApiCatalogRoute,
   Char123LocaleChar125AgentsRoute: Char123LocaleChar125AgentsRoute,
   Char123LocaleChar125BriefingsRoute: Char123LocaleChar125BriefingsRoute,
+  Char123LocaleChar125CalendarRoute: Char123LocaleChar125CalendarRoute,
   Char123LocaleChar125DashboardRoute: Char123LocaleChar125DashboardRoute,
   Char123LocaleChar125EventsRoute: Char123LocaleChar125EventsRoute,
   Char123LocaleChar125FeedRoute: Char123LocaleChar125FeedRoute,

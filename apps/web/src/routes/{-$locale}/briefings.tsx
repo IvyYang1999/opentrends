@@ -553,9 +553,11 @@ function BriefingsRoute() {
 									<span className="font-semibold text-[14px] text-[var(--text-heading)]">
 										{topicLabel(topic, t)}
 									</span>
-									<span className="text-[12px] text-[var(--text-secondary)]">
-										{topic.description ?? ""}
-									</span>
+									{locale === "en" && topic.description ? (
+										<span className="text-[12px] text-[var(--text-secondary)]">
+											{topic.description}
+										</span>
+									) : null}
 									<span className="text-[11px] text-[var(--text-muted)]">
 										{topic.sourceIds.length} {strings.sources} ·{" "}
 										{strings.everyDay} 08:00

@@ -8,6 +8,7 @@ import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { calendarRoutes } from "./routes/calendar";
 import { eventsRoutes } from "./routes/events";
 import { feedRoutes } from "./routes/feeds";
 import { imageRoutes } from "./routes/images";
@@ -134,6 +135,7 @@ app.route("/api/trends", trendsRoutes);
 app.route("/api/sources", sourcesRoutes);
 app.route("/api/topics", topicsRoutes);
 app.route("/api/trends", feedRoutes);
+app.route("/api/trends", calendarRoutes);
 app.route("/mcp", mcpRoutes);
 
 export const apiHandler = new OpenAPIHandler(appRouter, {

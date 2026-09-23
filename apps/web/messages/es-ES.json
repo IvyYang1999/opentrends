@@ -215,5 +215,9 @@
   "kind_policy": "Regulación",
   "kind_benchmark": "Comparativas",
   "nav_briefings": "Resúmenes",
-  "summary_no_matches": "Nada en estas fuentes menciona aún tus palabras clave."
+  "summary_no_matches": "Nada en estas fuentes menciona aún tus palabras clave.",
+  "nav_calendar": "Calendario",
+  "calendar_seo_description": "Lo que encabezó cada fuente, día a día, por tema y mes.",
+  "calendar_previous_month": "Mes anterior",
+  "calendar_next_month": "Mes siguiente"
 }

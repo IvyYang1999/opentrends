@@ -215,5 +215,9 @@
   "kind_policy": "Policy",
   "kind_benchmark": "Benchmarks",
   "nav_briefings": "Briefings",
-  "summary_no_matches": "Nothing in these sources mentions your keywords yet."
+  "summary_no_matches": "Nothing in these sources mentions your keywords yet.",
+  "nav_calendar": "Calendar",
+  "calendar_seo_description": "What led each source, day by day, for a topic and a month.",
+  "calendar_previous_month": "Previous month",
+  "calendar_next_month": "Next month"
 }
