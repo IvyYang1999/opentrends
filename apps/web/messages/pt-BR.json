@@ -213,5 +213,7 @@
   "kind_tutorial": "Tutoriais",
   "kind_industry": "Indústria",
   "kind_policy": "Regulação",
-  "kind_benchmark": "Comparativos"
+  "kind_benchmark": "Comparativos",
+  "nav_briefings": "Resumos",
+  "summary_no_matches": "Nada nessas fontes menciona suas palavras-chave ainda."
 }

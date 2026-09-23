@@ -14,6 +14,7 @@ import { imageRoutes } from "./routes/images";
 import { mcpRoutes } from "./routes/mcp";
 import { skillsRoutes } from "./routes/skills";
 import { sourcesRoutes } from "./routes/sources";
+import { topicsRoutes } from "./routes/topics";
 import { trendsRoutes } from "./routes/trends";
 import {
 	runWithWorkerBindings,
@@ -131,6 +132,7 @@ app.route("/api/events", eventsRoutes);
 app.route("/api/skills", skillsRoutes);
 app.route("/api/trends", trendsRoutes);
 app.route("/api/sources", sourcesRoutes);
+app.route("/api/topics", topicsRoutes);
 app.route("/api/trends", feedRoutes);
 app.route("/mcp", mcpRoutes);
 

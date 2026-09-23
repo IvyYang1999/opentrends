@@ -213,5 +213,7 @@
   "kind_tutorial": "教學",
   "kind_industry": "產業",
   "kind_policy": "政策",
-  "kind_benchmark": "評測"
+  "kind_benchmark": "評測",
+  "nav_briefings": "簡報",
+  "summary_no_matches": "這些來源裡還沒有提到你的關鍵字的內容。"
 }

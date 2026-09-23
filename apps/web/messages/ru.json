@@ -213,5 +213,7 @@
   "kind_tutorial": "Руководства",
   "kind_industry": "Индустрия",
   "kind_policy": "Политика",
-  "kind_benchmark": "Бенчмарки"
+  "kind_benchmark": "Бенчмарки",
+  "nav_briefings": "Сводки",
+  "summary_no_matches": "В этих источниках пока нет материалов по вашим ключевым словам."
 }

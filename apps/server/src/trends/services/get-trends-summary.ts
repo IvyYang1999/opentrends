@@ -154,9 +154,37 @@ export interface PreparedSummary {
 }
 
 interface TrendsSummaryCacheOptions {
+	// Words a briefing narrows the followed sources' items to.
+	keywords?: readonly string[];
 	// Followed sources for the "mine" pseudo-topic.
 	sourceIds?: readonly SourceId[];
 	window?: SummaryWindow;
+}
+
+export class TrendsSummaryNoMatchesError extends Error {
+	constructor() {
+		super("No items match the briefing's keywords.");
+		this.name = "TrendsSummaryNoMatchesError";
+	}
+}
+
+// Keeps the cited items that mention any of the keywords in their title,
+// original title or description, renumbered so the prompt and citations
+// stay dense.
+export function filterCitedItems(
+	cited: readonly CitedItem[],
+	keywords: readonly string[]
+): CitedItem[] {
+	if (keywords.length === 0) {
+		return [...cited];
+	}
+	return cited
+		.filter(({ item }) => {
+			const haystack =
+				`${item.title}\n${item.original?.title ?? ""}\n${item.description ?? ""}`.toLowerCase();
+			return keywords.some((keyword) => haystack.includes(keyword));
+		})
+		.map((entry, index) => ({ ...entry, n: index + 1 }));
 }
 
 export interface CitedItem {
@@ -1317,7 +1345,7 @@ export async function prepareTrendsSummary(
 	if (!env.LLM_API_KEY) {
 		throw new TrendsSummaryNotConfiguredError();
 	}
-	const resolved = resolveTopic(topicId, options.sourceIds);
+	const resolved = resolveTopic(topicId, options.sourceIds, options.keywords);
 	if (!resolved) {
 		throw new TopicNotFoundError(topicId);
 	}
@@ -1346,7 +1374,13 @@ export async function prepareTrendsSummary(
 	// response instead of waiting behind the shared queue.
 	if (topicId === FOLLOWED_TOPIC_ID) {
 		const topic = resolved.preset;
-		const cited = await collectWindowCitedItems(topicId, topic, lang, window);
+		const cited = filterCitedItems(
+			await collectWindowCitedItems(topicId, topic, lang, window),
+			options.keywords ?? []
+		);
+		if (cited.length === 0) {
+			throw new TrendsSummaryNoMatchesError();
+		}
 		const citations: Citation[] = cited.map(toCitation);
 		const prompt = buildPrompt(topic, cited, lang, window, "topic");
 		return {

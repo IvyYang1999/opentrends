@@ -213,5 +213,7 @@
   "kind_tutorial": "教程",
   "kind_industry": "行业",
   "kind_policy": "政策",
-  "kind_benchmark": "评测"
+  "kind_benchmark": "评测",
+  "nav_briefings": "简报",
+  "summary_no_matches": "这些来源里还没有提到你的关键词的内容。"
 }

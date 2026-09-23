@@ -213,5 +213,7 @@
   "kind_tutorial": "Tutorials",
   "kind_industry": "Industry",
   "kind_policy": "Policy",
-  "kind_benchmark": "Benchmarks"
+  "kind_benchmark": "Benchmarks",
+  "nav_briefings": "Briefings",
+  "summary_no_matches": "Nothing in these sources mentions your keywords yet."
 }

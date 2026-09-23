@@ -8,7 +8,10 @@ import { getTopicPreset } from "./topics";
 // is fixed; the source list travels with each request and is hashed into the
 // cache keys, so two readers with the same list share one digest.
 export const FOLLOWED_TOPIC_ID = "mine";
-export const MAX_FOLLOWED_SOURCES = 60;
+// Room for a whole topic's sources, so a briefing can follow "all of AI".
+export const MAX_FOLLOWED_SOURCES = 120;
+export const MAX_KEYWORDS = 10;
+const MAX_KEYWORD_CHARS = 40;
 
 export function parseFollowedSourceIds(value: string | undefined): SourceId[] {
 	if (!value) {
@@ -21,6 +24,24 @@ export function parseFollowedSourceIds(value: string | undefined): SourceId[] {
 			seen.add(sourceId);
 		}
 		if (seen.size >= MAX_FOLLOWED_SOURCES) {
+			break;
+		}
+	}
+	return [...seen];
+}
+
+// A briefing narrows its sources to items mentioning any of a few words.
+export function parseKeywords(value: string | undefined): string[] {
+	if (!value) {
+		return [];
+	}
+	const seen = new Set<string>();
+	for (const raw of value.split(",")) {
+		const keyword = raw.trim().slice(0, MAX_KEYWORD_CHARS).toLowerCase();
+		if (keyword) {
+			seen.add(keyword);
+		}
+		if (seen.size >= MAX_KEYWORDS) {
 			break;
 		}
 	}
@@ -51,14 +72,19 @@ export function followedTopicPreset(
 // given. `cacheTopicId` is what caches are keyed by.
 export function resolveTopic(
 	topicId: string,
-	sourceIds?: readonly SourceId[]
+	sourceIds?: readonly SourceId[],
+	keywords: readonly string[] = []
 ): { cacheTopicId: string; preset: TopicPreset } | undefined {
 	if (topicId === FOLLOWED_TOPIC_ID) {
 		if (!sourceIds || sourceIds.length === 0) {
 			return;
 		}
+		const keywordKey =
+			keywords.length > 0
+				? `:kw:${followedSourcesKey([...keywords].sort())}`
+				: "";
 		return {
-			cacheTopicId: `${FOLLOWED_TOPIC_ID}:${followedSourcesKey(sourceIds)}`,
+			cacheTopicId: `${FOLLOWED_TOPIC_ID}:${followedSourcesKey(sourceIds)}${keywordKey}`,
 			preset: followedTopicPreset(sourceIds),
 		};
 	}

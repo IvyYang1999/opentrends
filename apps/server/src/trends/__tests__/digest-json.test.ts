@@ -31,3 +31,34 @@ describe("parseDigestEntries", () => {
 		]);
 	});
 });
+
+describe("filterCitedItems", () => {
+	test("keeps items mentioning a keyword and renumbers them", async () => {
+		const { filterCitedItems } = await import("../services/get-trends-summary");
+		const item = (title: string, description?: string) =>
+			({
+				description,
+				fetchedAt: 0,
+				id: title,
+				sourceId: "s",
+				title,
+				url: title,
+			}) as never;
+		const cited = [
+			{ item: item("GPT-6 launches"), n: 1, source: "a" },
+			{ item: item("Weather today"), n: 2, source: "a" },
+			{
+				item: item("Nothing here", "except gpt-6 in the summary"),
+				n: 3,
+				source: "b",
+			},
+		];
+		expect(
+			filterCitedItems(cited, ["gpt-6"]).map((e) => [e.n, e.item.title])
+		).toEqual([
+			[1, "GPT-6 launches"],
+			[2, "Nothing here"],
+		]);
+		expect(filterCitedItems(cited, [])).toHaveLength(3);
+	});
+});

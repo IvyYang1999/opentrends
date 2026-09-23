@@ -3,6 +3,7 @@ import { captureWorkerContext } from "../runtime";
 import {
 	FOLLOWED_TOPIC_ID,
 	parseFollowedSourceIds,
+	parseKeywords,
 } from "../trends/config/followed-topic";
 import { parseDigestEntries } from "../trends/services/digest-json";
 import { EventEmbeddingNotConfiguredError } from "../trends/services/event-embedding";
@@ -21,6 +22,7 @@ import {
 	HEADER_CITATION_LIMIT,
 	normalizeSummaryWindow,
 	prepareTrendsSummary,
+	TrendsSummaryNoMatchesError,
 	TrendsSummaryNotConfiguredError,
 	TrendsSummaryPendingError,
 	withCitationPreamble,
@@ -204,14 +206,22 @@ export const trendsRoutes = new Hono()
 			topic === FOLLOWED_TOPIC_ID
 				? parseFollowedSourceIds(c.req.query("sources"))
 				: undefined;
+		const keywords =
+			topic === FOLLOWED_TOPIC_ID
+				? parseKeywords(c.req.query("keywords"))
+				: undefined;
 
 		let prepared: Awaited<ReturnType<typeof prepareTrendsSummary>>;
 		try {
 			prepared = await prepareTrendsSummary(topic, lang, {
+				keywords,
 				sourceIds,
 				window,
 			});
 		} catch (error) {
+			if (error instanceof TrendsSummaryNoMatchesError) {
+				return c.body(null, 204, { "Cache-Control": "no-store" });
+			}
 			if (error instanceof TopicNotFoundError) {
 				return c.json({ error: "topic_not_found", topic }, 404);
 			}

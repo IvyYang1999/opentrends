@@ -213,5 +213,7 @@
   "kind_tutorial": "Anleitungen",
   "kind_industry": "Branche",
   "kind_policy": "Regulierung",
-  "kind_benchmark": "Benchmarks"
+  "kind_benchmark": "Benchmarks",
+  "nav_briefings": "Briefings",
+  "summary_no_matches": "Noch nichts in diesen Quellen erwähnt deine Stichwörter."
 }

@@ -1,6 +1,13 @@
 import { env } from "@opentrends/env/web";
 import { ChevronDown, ChevronUp, Share2 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+	type ReactNode,
+	useCallback,
+	useEffect,
+	useMemo,
+	useRef,
+	useState,
+} from "react";
 import { Streamdown } from "streamdown";
 
 import { segmentClassName } from "@/components/chrome-styles";
@@ -34,8 +41,12 @@ import type { TrendsPageData } from "./types";
 
 interface TrendsSummaryProps {
 	collapsed: boolean;
+	/** A briefing narrows the followed sources to items mentioning these. */
+	keywords?: readonly string[];
 	onCollapsedChange: (collapsed: boolean) => void;
 	page: TrendsPageData;
+	/** Shown instead of the topic name, e.g. a briefing's own name. */
+	title?: string;
 	topicId: string;
 }
 
@@ -44,6 +55,7 @@ type SummaryStatus =
 	| "pending"
 	| "streaming"
 	| "done"
+	| "empty"
 	| "unavailable"
 	| "error";
 
@@ -69,6 +81,7 @@ interface StreamHandlers {
 	onChunk: (full: string) => void;
 	onCitations: (citations: CitationMap) => void;
 	onDone: () => void;
+	onEmpty: () => void;
 	onError: (message: string) => void;
 	onPending: () => void;
 	onStreamingStart: (origin: string | null) => void;
@@ -217,12 +230,29 @@ async function readStream(
 	}
 }
 
+// 503, 202 and 204 carry no digest; each maps to one handler.
+function settleWithoutBody(status: number, handlers: StreamHandlers): boolean {
+	const settle = {
+		202: handlers.onPending,
+		204: handlers.onEmpty,
+		503: handlers.onUnavailable,
+	}[status];
+	if (!settle) {
+		return false;
+	}
+	if (!handlers.isCancelled()) {
+		settle();
+	}
+	return true;
+}
+
 async function streamSummary(
 	topicId: string,
 	locale: Locale,
 	summaryWindow: SummaryWindow,
 	requestVersion: number,
 	sourceIds: readonly string[] | undefined,
+	keywords: readonly string[] | undefined,
 	handlers: StreamHandlers
 ): Promise<void> {
 	const search = new URLSearchParams({
@@ -236,6 +266,9 @@ async function streamSummary(
 	if (sourceIds) {
 		search.set("sources", sourceIds.join(","));
 	}
+	if (keywords && keywords.length > 0) {
+		search.set("keywords", keywords.join(","));
+	}
 	const url = `${env.VITE_SERVER_URL}/api/trends/${encodeURIComponent(topicId)}/summary?${search}`;
 	try {
 		const response = await fetch(url, {
@@ -244,16 +277,7 @@ async function streamSummary(
 			signal: handlers.signal,
 		});
 
-		if (response.status === 503) {
-			if (!handlers.isCancelled()) {
-				handlers.onUnavailable();
-			}
-			return;
-		}
-		if (response.status === 202) {
-			if (!handlers.isCancelled()) {
-				handlers.onPending();
-			}
+		if (settleWithoutBody(response.status, handlers)) {
 			return;
 		}
 
@@ -338,6 +362,30 @@ interface SummaryBodyProps {
 	t: Translator;
 	text: string;
 	topicHref: (topicId: string) => string;
+}
+
+// The states that show one line instead of a digest.
+function summaryNotice(
+	status: SummaryStatus,
+	error: string | null,
+	t: Translator
+): ReactNode {
+	if (status === "empty") {
+		return (
+			<p className="text-[13px] text-[var(--text-secondary)]">
+				{t("summary.noMatches")}
+			</p>
+		);
+	}
+	if (status === "error") {
+		return (
+			<p className="text-[12px] text-[var(--accent-red)]">
+				{t("summary.error")}
+				{error ? `: ${error}` : "."}
+			</p>
+		);
+	}
+	return null;
 }
 
 function SummaryBody({
@@ -432,13 +480,9 @@ function SummaryBody({
 		[scheduleClose]
 	);
 
-	if (status === "error") {
-		return (
-			<p className="text-[12px] text-[var(--accent-red)]">
-				{t("summary.error")}
-				{error ? `: ${error}` : "."}
-			</p>
-		);
+	const notice = summaryNotice(status, error, t);
+	if (notice) {
+		return notice;
 	}
 	if (text) {
 		return (
@@ -535,14 +579,17 @@ function digestMemoKey(
 	topicId: string,
 	locale: string,
 	summaryWindow: SummaryWindow,
-	followedIds: readonly string[] | undefined
+	followedIds: readonly string[] | undefined,
+	keywords: readonly string[] | undefined
 ): string {
-	return `${topicId}:${locale}:${summaryWindow}:${followedIds?.join(",") ?? ""}`;
+	return `${topicId}:${locale}:${summaryWindow}:${followedIds?.join(",") ?? ""}:${keywords?.join(",") ?? ""}`;
 }
 
 export function TrendsSummary({
 	collapsed,
+	keywords,
 	onCollapsedChange,
+	title,
 	page,
 	topicId,
 }: TrendsSummaryProps) {
@@ -566,12 +613,18 @@ export function TrendsSummary({
 				: undefined,
 		[page, topicId]
 	);
-	const memoKey = digestMemoKey(topicId, locale, summaryWindow, followedIds);
+	const memoKey = digestMemoKey(
+		topicId,
+		locale,
+		summaryWindow,
+		followedIds,
+		keywords
+	);
 	// "AI · 今日 10 条": the digest names its topic and period, since it is the
 	// first thing on the page and the share image carries the same heading.
 	const topicKey = `topic.${topicId}` as TranslationKey;
 	const translatedTopic = t(topicKey);
-	const digestTitle = `${translatedTopic === topicKey ? page.title : translatedTopic} · ${t(WINDOW_HEADING_KEYS[summaryWindow])}`;
+	const digestTitle = `${title ?? (translatedTopic === topicKey ? page.title : translatedTopic)} · ${t(WINDOW_HEADING_KEYS[summaryWindow])}`;
 	const showTopicTags = shouldShowDigestTopicTags(topicId);
 	const [shareOpen, setShareOpen] = useState(false);
 	// Five lines are a glance; the rest are a click away, and the choice
@@ -621,48 +674,57 @@ export function TrendsSummary({
 
 			let latestText = "";
 			let latestCitations: CitationMap = EMPTY_CITATIONS;
-			streamSummary(topicId, locale, summaryWindow, retryNonce, followedIds, {
-				signal: controller.signal,
-				isCancelled: () => cancelled,
-				onStreamingStart: (origin) => {
-					setStatus("streaming");
-					if (shouldExpandGeneratedSummary(origin)) {
-						setExpanded(true);
-					}
-				},
-				onChunk: (full) => {
-					if (full.trim()) {
-						latestText = full;
-						setText(full);
-					}
-				},
-				onCitations: (next) => {
-					latestCitations = next;
-					setCitations(next);
-				},
-				onUnavailable: () => setStatus("unavailable"),
-				onPending: () => {
-					setStatus("pending");
-					retryTimer = window.setTimeout(
-						() => setRetryNonce((value) => value + 1),
-						SUMMARY_PENDING_RETRY_MS
-					);
-				},
-				onDone: () => {
-					setStatus("done");
-					if (latestText.trim()) {
-						DIGEST_MEMO.set(memoKey, {
-							at: Date.now(),
-							citations: latestCitations,
-							text: latestText,
-						});
-					}
-				},
-				onError: (message) => {
-					setStatus("error");
-					setError(message);
-				},
-			}).catch(() => {
+			streamSummary(
+				topicId,
+				locale,
+				summaryWindow,
+				retryNonce,
+				followedIds,
+				keywords,
+				{
+					signal: controller.signal,
+					isCancelled: () => cancelled,
+					onStreamingStart: (origin) => {
+						setStatus("streaming");
+						if (shouldExpandGeneratedSummary(origin)) {
+							setExpanded(true);
+						}
+					},
+					onChunk: (full) => {
+						if (full.trim()) {
+							latestText = full;
+							setText(full);
+						}
+					},
+					onCitations: (next) => {
+						latestCitations = next;
+						setCitations(next);
+					},
+					onUnavailable: () => setStatus("unavailable"),
+					onEmpty: () => setStatus("empty"),
+					onPending: () => {
+						setStatus("pending");
+						retryTimer = window.setTimeout(
+							() => setRetryNonce((value) => value + 1),
+							SUMMARY_PENDING_RETRY_MS
+						);
+					},
+					onDone: () => {
+						setStatus("done");
+						if (latestText.trim()) {
+							DIGEST_MEMO.set(memoKey, {
+								at: Date.now(),
+								citations: latestCitations,
+								text: latestText,
+							});
+						}
+					},
+					onError: (message) => {
+						setStatus("error");
+						setError(message);
+					},
+				}
+			).catch(() => {
 				// streamSummary already converts errors into onError calls;
 				// this catch only keeps the floating promise from being unhandled.
 			});
@@ -675,7 +737,7 @@ export function TrendsSummary({
 				controller.abort();
 			};
 		},
-		[topicId, locale, summaryWindow, retryNonce, followedIds, memoKey]
+		[topicId, locale, summaryWindow, retryNonce, followedIds, keywords, memoKey]
 	);
 
 	if (status === "unavailable") {
