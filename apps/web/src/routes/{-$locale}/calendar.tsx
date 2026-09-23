@@ -38,8 +38,16 @@ interface CalendarItem {
 	url: string;
 }
 
+interface DigestEntry {
+	citations: { n: number; url: string }[];
+	n: number;
+	reason?: string;
+	takeaway: string;
+}
+
 interface CalendarMonth {
 	days: Record<string, CalendarItem[]>;
+	digests?: Record<string, DigestEntry[]>;
 	month: string;
 	topic: string;
 }
@@ -168,6 +176,7 @@ function CalendarRoute() {
 		[locale, month]
 	);
 	const open = openDay ? days[openDay] : undefined;
+	const openDigest = openDay ? query.data?.digests?.[openDay] : undefined;
 
 	function go(next: Partial<CalendarSearch>) {
 		navigate({ search: (current) => ({ ...current, ...next }) });
@@ -246,8 +255,13 @@ function CalendarRoute() {
 								onClick={() => setOpenDay(openDay === day ? null : day)}
 								type="button"
 							>
-								<span className="text-[11px] text-[var(--text-muted)] tabular-nums">
+								<span className="flex items-center justify-between text-[11px] text-[var(--text-muted)] tabular-nums">
 									{Number(day.slice(-2))}
+									{query.data?.digests?.[day] ? (
+										<span className="rounded-sm bg-[var(--accent-blue-bg)] px-1 text-[10px] text-[var(--accent-blue)]">
+											{query.data.digests[day]?.length}
+										</span>
+									) : null}
 								</span>
 								{items.slice(0, CELL_ITEMS).map((item) => (
 									<span
@@ -271,6 +285,42 @@ function CalendarRoute() {
 					<p className="mt-3 text-[12px] text-[var(--text-muted)]">
 						{t("summary.reading")}
 					</p>
+				) : null}
+				{openDay && openDigest && openDigest.length > 0 ? (
+					<section className="mt-4 overflow-hidden rounded-md border border-[var(--accent-blue)] bg-[var(--surface-card)]">
+						<h2 className="border-[var(--border-default)] border-b px-4 py-2 font-semibold text-[13px] text-[var(--text-heading)]">
+							{openDay} · {t("summary.windowToday")} {openDigest.length}
+						</h2>
+						<ol className="space-y-1.5 px-4 py-3 text-[13px]">
+							{openDigest.map((entry) => (
+								<li className="flex gap-2" key={entry.n}>
+									<span className="w-4 shrink-0 text-right text-[var(--text-muted)] tabular-nums">
+										{entry.n}.
+									</span>
+									<span>
+										<strong className="font-semibold">{entry.takeaway}</strong>
+										{entry.reason ? (
+											<span className="text-[var(--text-secondary)]">
+												{" — "}
+												{entry.reason}
+											</span>
+										) : null}{" "}
+										{entry.citations.map((citation, index) => (
+											<a
+												className="mx-0.5 inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-[4px] bg-[var(--accent-blue-bg)] px-[5px] text-[10px] text-[var(--accent-blue)]"
+												href={citation.url}
+												key={citation.url}
+												rel="noopener noreferrer"
+												target="_blank"
+											>
+												{index + 1}
+											</a>
+										))}
+									</span>
+								</li>
+							))}
+						</ol>
+					</section>
 				) : null}
 				{open && openDay ? (
 					<section className="mt-4 overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-card)]">

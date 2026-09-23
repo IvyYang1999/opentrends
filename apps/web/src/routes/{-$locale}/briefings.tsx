@@ -42,7 +42,15 @@ interface Strings {
 	custom: string;
 	customBody: string;
 	delete: string;
+	deliverBody: string;
+	deliverButton: string;
+	deliverDone: string;
+	deliverFailed: string;
+	deliverNotConfigured: string;
+	deliverStop: string;
+	deliverTitle: string;
 	deliveryNote: string;
+	emailPlaceholder: string;
 	everyDay: string;
 	hour: string;
 	keywords: string;
@@ -64,6 +72,14 @@ interface Strings {
 }
 
 const EN: Strings = {
+	deliverBody: "Get this briefing by mail at its hour, every day.",
+	deliverButton: "Send it to me",
+	deliverDone: "Arrives daily at",
+	deliverFailed: "Could not subscribe; try again.",
+	deliverNotConfigured: "Mail delivery is not set up on this deployment yet.",
+	deliverStop: "Stop",
+	deliverTitle: "By mail",
+	emailPlaceholder: "you@example.com",
 	create: "New briefing",
 	custom: "Make your own",
 	customBody:
@@ -93,6 +109,14 @@ const EN: Strings = {
 };
 
 const ZH: Strings = {
+	deliverBody: "每天到点，把这份简报发到邮箱。",
+	deliverButton: "发给我",
+	deliverDone: "每天送达，",
+	deliverFailed: "订阅没成功，再试一次。",
+	deliverNotConfigured: "这个部署还没接邮件服务。",
+	deliverStop: "停止",
+	deliverTitle: "邮件推送",
+	emailPlaceholder: "you@example.com",
 	create: "新建简报",
 	custom: "定制我的简报",
 	customBody:
@@ -121,6 +145,13 @@ const ZH: Strings = {
 
 const ZH_HANT: Strings = {
 	...ZH,
+	deliverBody: "每天到點，把這份簡報寄到信箱。",
+	deliverButton: "寄給我",
+	deliverDone: "每天送達，",
+	deliverFailed: "訂閱沒成功，再試一次。",
+	deliverNotConfigured: "這個部署還沒接郵件服務。",
+	deliverStop: "停止",
+	deliverTitle: "郵件推送",
 	create: "新建簡報",
 	custom: "定製我的簡報",
 	customBody:
@@ -190,7 +221,128 @@ function useBriefings() {
 		add: (briefing: Briefing) => persist([...briefings, briefing]),
 		briefings,
 		remove: (id: string) => persist(briefings.filter((b) => b.id !== id)),
+		update: (id: string, patch: Partial<Briefing>) =>
+			persist(briefings.map((b) => (b.id === id ? { ...b, ...patch } : b))),
 	};
+}
+
+// Asks the API to mail the briefing daily; the returned id is kept on the
+// briefing so the reader can stop it from here too.
+function Delivery({
+	briefing,
+	onChange,
+	strings,
+}: {
+	briefing: Briefing;
+	onChange: (patch: Partial<Briefing>) => void;
+	strings: Strings;
+}) {
+	const locale = useLocale();
+	const [email, setEmail] = useState("");
+	const [state, setState] = useState<
+		"idle" | "sending" | "failed" | "unconfigured"
+	>("idle");
+
+	async function subscribe() {
+		setState("sending");
+		try {
+			const response = await fetch(
+				`${env.VITE_SERVER_URL}/api/briefings/subscriptions`,
+				{
+					body: JSON.stringify({
+						email,
+						hour: briefing.hour,
+						keywords: briefing.keywords,
+						lang: locale,
+						name: briefing.name,
+						sourceIds: briefing.sourceIds,
+						tzOffsetMinutes: -new Date().getTimezoneOffset(),
+					}),
+					credentials: "same-origin",
+					headers: { "Content-Type": "application/json" },
+					method: "POST",
+				}
+			);
+			if (response.status === 503) {
+				setState("unconfigured");
+				return;
+			}
+			if (!response.ok) {
+				setState("failed");
+				return;
+			}
+			const { id } = (await response.json()) as { id: string };
+			onChange({ subscriptionId: id });
+			setState("idle");
+		} catch {
+			setState("failed");
+		}
+	}
+
+	async function stop() {
+		if (briefing.subscriptionId) {
+			await fetch(
+				`${env.VITE_SERVER_URL}/api/briefings/subscriptions/${briefing.subscriptionId}`,
+				{ credentials: "same-origin", method: "DELETE" }
+			).catch(() => undefined);
+		}
+		onChange({ subscriptionId: undefined });
+	}
+
+	if (briefing.subscriptionId) {
+		return (
+			<p className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--text-secondary)]">
+				<span>
+					{strings.deliverDone} {String(briefing.hour).padStart(2, "0")}:00
+				</span>
+				<button
+					className="text-[var(--accent-blue)] hover:underline"
+					onClick={stop}
+					type="button"
+				>
+					{strings.deliverStop}
+				</button>
+			</p>
+		);
+	}
+	return (
+		<form
+			className="flex flex-wrap items-center gap-2"
+			onSubmit={(event) => {
+				event.preventDefault();
+				subscribe();
+			}}
+		>
+			<span className="text-[12px] text-[var(--text-muted)]">
+				{strings.deliverBody}
+			</span>
+			<input
+				className="w-56 rounded-md border border-[var(--border-default)] bg-[var(--surface-app)] px-2.5 py-1 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-blue)]"
+				onChange={(event) => setEmail(event.target.value)}
+				placeholder={strings.emailPlaceholder}
+				required
+				type="email"
+				value={email}
+			/>
+			<button
+				className={BUTTON_CLASS}
+				disabled={state === "sending"}
+				type="submit"
+			>
+				{strings.deliverButton}
+			</button>
+			{state === "failed" ? (
+				<span className="text-[12px] text-[var(--accent-red)]">
+					{strings.deliverFailed}
+				</span>
+			) : null}
+			{state === "unconfigured" ? (
+				<span className="text-[12px] text-[var(--text-muted)]">
+					{strings.deliverNotConfigured}
+				</span>
+			) : null}
+		</form>
+	);
 }
 
 export const Route = createFileRoute("/{-$locale}/briefings")({
@@ -430,7 +582,7 @@ function BriefingsRoute() {
 	const strings = getStrings(locale);
 	const t = useT();
 	const topics = useQuery(topicsQueryOptions);
-	const { add, briefings, remove } = useBriefings();
+	const { add, briefings, remove, update } = useBriefings();
 	const [openId, setOpenId] = useState<string | null>(null);
 	const [creating, setCreating] = useState(false);
 	const open = briefings.find((b) => b.id === openId) ?? briefings[0];
@@ -529,6 +681,11 @@ function BriefingsRoute() {
 										? ` · ${open.keywords.join(", ")}`
 										: ""}
 								</p>
+								<Delivery
+									briefing={open}
+									onChange={(patch) => update(open.id, patch)}
+									strings={strings}
+								/>
 								<BriefingView briefing={open} strings={strings} />
 							</>
 						) : null}

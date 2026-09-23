@@ -8,6 +8,8 @@ export interface Briefing {
 	keywords: string[];
 	name: string;
 	sourceIds: string[];
+	/** Set once the reader asked for it by mail; doubles as the unsubscribe token. */
+	subscriptionId?: string;
 	topicIds: string[];
 }
 

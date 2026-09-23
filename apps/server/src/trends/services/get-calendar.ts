@@ -3,6 +3,8 @@ import { readSourceItemHistory } from "../cache/source-cache";
 import { getSourcePreset } from "../config/sources";
 import { getTopicPreset } from "../config/topics";
 import type { NewsItem, SourceId, TopicPreset } from "../types";
+import { archiveDayFor, readArchivedDigest } from "./digest-archive";
+import { type DigestJsonEntry, parseDigestEntries } from "./digest-json";
 import { TopicNotFoundError } from "./get-trends-page";
 import {
 	type TranslationLanguage,
@@ -25,6 +27,8 @@ export interface CalendarItem {
 
 export interface CalendarMonth {
 	days: Record<string, CalendarItem[]>;
+	/** The day's final ten-line digest, where one was kept. */
+	digests: Record<string, DigestJsonEntry[]>;
 	lang: TranslationLanguage;
 	month: string;
 	topic: string;
@@ -35,7 +39,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 const ITEMS_PER_SOURCE_PER_DAY = 3;
 const ITEMS_PER_DAY = 12;
 const CALENDAR_TTL_SECONDS = 60 * 60;
-const CALENDAR_SCHEMA_VERSION = 1;
+const CALENDAR_SCHEMA_VERSION = 2;
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
 
 export function parseMonth(value: string | undefined): {
@@ -197,8 +201,16 @@ export async function getCalendarMonth(
 			url: item.url,
 		}));
 	}
+	const digests = await readMonthDigests(
+		topicId,
+		lang,
+		parsed.year,
+		parsed.monthIndex,
+		tzOffsetMinutes
+	);
 	const value: CalendarMonth = {
 		days,
+		digests,
 		lang,
 		month: parsed.month,
 		topic: topicId,
@@ -214,6 +226,41 @@ export async function getCalendarMonth(
 	};
 	await hotCache.put(key, envelope, CALENDAR_TTL_SECONDS).catch(() => false);
 	return value;
+}
+
+// One read per day of the month, in parallel; most come back empty until
+// the archive has been running for a while.
+async function readMonthDigests(
+	topicId: string,
+	lang: TranslationLanguage,
+	year: number,
+	monthIndex: number,
+	tzOffsetMinutes: number
+): Promise<Record<string, DigestJsonEntry[]>> {
+	const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+	const month = `${year}-${String(monthIndex + 1).padStart(2, "0")}`;
+	const today = dayKey(Date.now(), tzOffsetMinutes);
+	const localDays = Array.from(
+		{ length: daysInMonth },
+		(_, index) => `${month}-${String(index + 1).padStart(2, "0")}`
+	).filter((day) => day <= today);
+	const results = await Promise.all(
+		localDays.map(async (day) => {
+			const archived = await readArchivedDigest(
+				topicId,
+				lang,
+				archiveDayFor(day, tzOffsetMinutes)
+			);
+			return [day, archived] as const;
+		})
+	);
+	const digests: Record<string, DigestJsonEntry[]> = {};
+	for (const [day, archived] of results) {
+		if (archived) {
+			digests[day] = parseDigestEntries(archived.text, archived.citations);
+		}
+	}
+	return digests;
 }
 
 export const CALENDAR_DAY_MS = DAY_MS;

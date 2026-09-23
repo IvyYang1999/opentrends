@@ -13,6 +13,7 @@ import {
 	topicPresets,
 } from "../config/topics";
 import type { NewsItem, SourceId, TopicPreset, TrendsPageData } from "../types";
+import { archiveDigest } from "./digest-archive";
 import {
 	getFollowedSourcesPage,
 	getTrendsPage,
@@ -1085,6 +1086,18 @@ async function writeCachedSummary(params: {
 		throw new SummaryCacheWriteError();
 	}
 	hydrateMemorySummary(params.topicId, params.lang, entry);
+	// Real topics' "today" digests are kept per day for the calendar; a
+	// followed list's digest (cache id "mine:…") is one reader's and is not.
+	if (params.window === "today" && !params.topicId.includes(":")) {
+		await archiveDigest({
+			citations: params.citations,
+			lang: params.lang,
+			text: params.text,
+			topicId: params.topicId,
+		}).catch((error) => {
+			console.warn("[trends-summary] failed to archive digest", error);
+		});
+	}
 }
 
 // Body format for clients that ask for it: one JSON line carrying every

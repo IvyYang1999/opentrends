@@ -16,6 +16,11 @@ const serverEnvSchema = z
 		BETTER_AUTH_SECRET: z.string().min(32),
 		BETTER_AUTH_URL: z.url(),
 		CORS_ORIGIN: z.url(),
+		// Outbound mail for briefing delivery: any provider with a JSON
+		// "send" endpoint and a bearer/basic token (Forward Email, Resend).
+		EMAIL_API_URL: z.url().default("https://api.forwardemail.net/v1/emails"),
+		EMAIL_API_KEY: z.string().min(1).optional(),
+		EMAIL_FROM: z.string().min(3).optional(),
 		GOOGLE_CLIENT_ID: z.string().min(1).optional(),
 		GOOGLE_OAUTH_KEY: z.string().min(1).optional(),
 		GITHUB_CLIENT_ID: z.string().min(1).optional(),

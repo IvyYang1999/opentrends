@@ -27,6 +27,7 @@ import {
 	TrendsSummaryPendingError,
 	withCitationPreamble,
 } from "../trends/services/get-trends-summary";
+import { slimTrendsPage } from "../trends/services/page-slim";
 import { requestSummaryPrewarmJob } from "../trends/services/summary-prewarm-jobs";
 import {
 	normalizeTranslationLanguage,
@@ -159,7 +160,7 @@ export const trendsRoutes = new Hono()
 			);
 			scheduleTranslationPrewarms(page, lang, waitUntil);
 			const response = withTrendsCacheHeaders(
-				c.json(page),
+				c.json(slimTrendsPage(page)),
 				translationMode,
 				cacheStatus
 			);
@@ -188,7 +189,11 @@ export const trendsRoutes = new Hono()
 				itemsPerSource
 			);
 			scheduleTranslationPrewarms(page, lang, getWaitUntil(c));
-			return withTrendsCacheHeaders(c.json(page), "sync", "bypass");
+			return withTrendsCacheHeaders(
+				c.json(slimTrendsPage(page)),
+				"sync",
+				"bypass"
+			);
 		} catch (error) {
 			if (error instanceof TrendsSnapshotsUnavailableError) {
 				return c.json({ error: "snapshots_unavailable" }, 503, {
@@ -411,7 +416,7 @@ export const trendsRoutes = new Hono()
 			);
 			scheduleTranslationPrewarms(page, lang, waitUntil);
 			const response = withTrendsCacheHeaders(
-				c.json(page),
+				c.json(slimTrendsPage(page)),
 				translationMode,
 				cacheStatus
 			);

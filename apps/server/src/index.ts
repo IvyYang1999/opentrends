@@ -8,6 +8,7 @@ import { ZodToJsonSchemaConverter } from "@orpc/zod/zod4";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
+import { briefingRoutes } from "./routes/briefings";
 import { calendarRoutes } from "./routes/calendar";
 import { eventsRoutes } from "./routes/events";
 import { feedRoutes } from "./routes/feeds";
@@ -22,6 +23,7 @@ import {
 	type WorkerBindings,
 	type WorkerQueueMessage,
 } from "./runtime";
+import { runBriefingDeliveryTick } from "./trends/services/briefing-subscriptions";
 import { runEventMergeJob } from "./trends/services/event-merge-jobs";
 import { runTrendsRefreshTick } from "./trends/services/refresh-scheduler";
 import { runSummaryPrewarmJob } from "./trends/services/summary-prewarm-jobs";
@@ -134,6 +136,7 @@ app.route("/api/skills", skillsRoutes);
 app.route("/api/trends", trendsRoutes);
 app.route("/api/sources", sourcesRoutes);
 app.route("/api/topics", topicsRoutes);
+app.route("/api/briefings", briefingRoutes);
 app.route("/api/trends", feedRoutes);
 app.route("/api/trends", calendarRoutes);
 app.route("/mcp", mcpRoutes);
@@ -223,6 +226,13 @@ export default {
 		executionContext.waitUntil(
 			runWithWorkerBindings(bindings, () =>
 				runTrendsRefreshTick(controller.scheduledTime)
+			)
+		);
+		executionContext.waitUntil(
+			runWithWorkerBindings(bindings, () =>
+				runBriefingDeliveryTick(controller.scheduledTime).catch((error) => {
+					console.warn("[briefings] delivery tick failed", error);
+				})
 			)
 		);
 	},
