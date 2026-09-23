@@ -3,8 +3,8 @@ import { describe, expect, test } from "bun:test";
 import {
 	countDigestLines,
 	DIGEST_FOLD,
+	digestLines,
 	foldDigest,
-	tagDigestLines,
 } from "./digest-fold";
 
 const TEN = Array.from(
@@ -22,22 +22,21 @@ describe("foldDigest", () => {
 	});
 });
 
-describe("tagDigestLines", () => {
-	test("prefixes each line with its first citation's topic", () => {
+describe("digestLines", () => {
+	test("splits entries and finds each line's topic from its first citation", () => {
 		const citations = new Map([
 			[1, { topic: "ai", url: "https://a" }],
 			[2, { url: "https://b" }],
 		]);
-		const tagged = tagDigestLines(
-			"1. **A** — why [1]\n2. **B** — why [2]\nnot a list line",
-			citations,
-			(id) => id.toUpperCase(),
-			(id) => `/feed?topic=${id}`
-		);
-		expect(tagged.split("\n")).toEqual([
-			"1. [AI](/feed?topic=ai) **A** — why [1]",
-			"2. **B** — why [2]",
-			"not a list line",
+		expect(
+			digestLines(
+				"1. **A** — why [1]\n2. **B** — why [2]\n\nnot a list line",
+				citations
+			)
+		).toEqual([
+			{ body: "**A** — why [1]", kind: "entry", n: 1, topic: "ai" },
+			{ body: "**B** — why [2]", kind: "entry", n: 2, topic: undefined },
+			{ kind: "text", text: "not a list line" },
 		]);
 	});
 });

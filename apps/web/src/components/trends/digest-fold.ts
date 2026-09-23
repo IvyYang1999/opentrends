@@ -5,34 +5,43 @@ export interface Citation {
 export type CitationMap = ReadonlyMap<number, Citation>;
 
 const LIST_LINE_RE = /^\s*\d+[.)]\s+/;
-const FIRST_CITATION_RE = /\[(\d+)\]/;
 // Lines shown before the digest folds; the rest wait behind "show more".
 export const DIGEST_FOLD = 5;
 
-// A digest drawn from every topic tags each line with the field its first
-// citation came from, as a link to that topic's feed. The tag is styled by
-// its href (see SummaryBody), so nothing but Markdown crosses into Streamdown.
-export function tagDigestLines(
+export type DigestLine =
+	| { body: string; kind: "entry"; n: number; topic?: string }
+	| { kind: "text"; text: string };
+
+const ENTRY_LINE_RE = /^\s*(\d+)[.)]\s+(.*)$/;
+const FIRST_CITATION_RE = /\[(\d+)\]/;
+
+// The digest as lines the client lays out itself: numbered entries, each
+// knowing the topic of its first citation, and any other text in between.
+export function digestLines(
 	text: string,
-	citations: CitationMap,
-	topicLabel: (topicId: string) => string,
-	topicHref: (topicId: string) => string
-): string {
-	return text
-		.split("\n")
-		.map((line) => {
-			const head = LIST_LINE_RE.exec(line)?.[0];
-			if (!head) {
-				return line;
+	citations: CitationMap
+): DigestLine[] {
+	const lines: DigestLine[] = [];
+	for (const raw of text.split("\n")) {
+		const match = ENTRY_LINE_RE.exec(raw);
+		if (!match?.[2]) {
+			if (raw.trim()) {
+				lines.push({ kind: "text", text: raw });
 			}
-			const n = Number.parseInt(FIRST_CITATION_RE.exec(line)?.[1] ?? "", 10);
-			const topic = citations.get(n)?.topic;
-			if (!topic) {
-				return line;
-			}
-			return `${head}[${topicLabel(topic)}](${topicHref(topic)}) ${line.slice(head.length)}`;
-		})
-		.join("\n");
+			continue;
+		}
+		const first = Number.parseInt(
+			FIRST_CITATION_RE.exec(match[2])?.[1] ?? "",
+			10
+		);
+		lines.push({
+			body: match[2],
+			kind: "entry",
+			n: Number.parseInt(match[1] ?? "", 10),
+			topic: citations.get(first)?.topic,
+		});
+	}
+	return lines;
 }
 
 // The digest folded to its first entries. Returns the text unchanged while it

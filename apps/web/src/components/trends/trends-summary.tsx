@@ -21,8 +21,8 @@ import {
 import {
 	countDigestLines,
 	DIGEST_FOLD,
+	digestLines,
 	foldDigest,
-	tagDigestLines,
 } from "./digest-fold";
 import { FOLLOWED_TOPIC_ID } from "./followed-sources";
 import { parseDigest } from "./share-image";
@@ -79,6 +79,27 @@ const CITATION_RE = /\[(\d+)\]/g;
 const SUMMARY_PENDING_RETRY_MS = 10_000;
 
 const CITATION_PREAMBLE_PREFIX = '{"citations":';
+
+const LINK_SAFETY = {
+	enabled: true,
+	// Click goes straight to the source; the popover is hover-driven.
+	onLinkCheck: () => true,
+	// Stops Streamdown's default safety modal from rendering.
+	renderModal: () => null,
+};
+
+// One colour per topic for the tag in front of a featured digest line.
+const TOPIC_TAG_CLASS: Record<string, string> = {
+	ai: "bg-[#e3ecff] text-[#2a5bd7] dark:bg-[#1f2a4d] dark:text-[#9fb6ff]",
+	biotech: "bg-[#f3e8fb] text-[#7a3cb4] dark:bg-[#33234a] dark:text-[#d2b3f5]",
+	cn: "bg-[#fde8e8] text-[#c02a2a] dark:bg-[#4a2222] dark:text-[#f5a6a6]",
+	embodied: "bg-[#e6f4ea] text-[#1e7a3c] dark:bg-[#1f3a28] dark:text-[#9fe0b5]",
+	hardware: "bg-[#fdecdc] text-[#b4530a] dark:bg-[#4a2f1c] dark:text-[#f5c093]",
+	programming:
+		"bg-[#e0f4f4] text-[#0f7a7a] dark:bg-[#1c3a3a] dark:text-[#93e0e0]",
+};
+const DEFAULT_TAG_CLASS =
+	"bg-[var(--accent-blue-bg)] text-[var(--accent-blue)]";
 
 function toCitationMap(parsed: unknown): CitationMap {
 	const map = new Map<number, Citation>();
@@ -328,18 +349,18 @@ function SummaryBody({
 }: SummaryBodyProps) {
 	const total = countDigestLines(text);
 	const foldable = status === "done" && total > DIGEST_FOLD;
-	const linkified = useMemo(() => {
-		const shown = foldable && !expanded ? foldDigest(text, DIGEST_FOLD) : text;
-		return linkifyCitations(
-			tagDigestLines(
-				shown,
-				citations,
-				(topicId) => t(`topic.${topicId}` as TranslationKey),
-				topicHref
-			),
-			citations
-		);
-	}, [text, citations, foldable, expanded, t, topicHref]);
+	const shown = foldable && !expanded ? foldDigest(text, DIGEST_FOLD) : text;
+	const linkified = useMemo(
+		() => linkifyCitations(shown, citations),
+		[shown, citations]
+	);
+	// Once the digest is complete it is laid out line by line, so each entry
+	// can carry a topic tag in front of its text; while streaming, the whole
+	// Markdown goes through one renderer.
+	const lines = useMemo(
+		() => (status === "done" ? digestLines(shown, citations) : null),
+		[status, shown, citations]
+	);
 	// Hover-driven citation popover. Streamdown's `linkSafety` only fires on
 	// click, so we drive the preview ourselves: pointer enters a chip → open;
 	// pointer leaves the chip and the popup → close (with a small grace period
@@ -418,22 +439,46 @@ function SummaryBody({
 		return (
 			<>
 				<div
-					className="text-[13px] text-[var(--text-primary)] leading-[1.55] [&_[data-streamdown=link]:hover_sup]:bg-[var(--accent-blue)] [&_[data-streamdown=link]:hover_sup]:text-white [&_[data-streamdown=link]]:cursor-pointer [&_[data-streamdown=link]]:font-normal [&_[data-streamdown=link]]:no-underline [&_a[href$='topic=ai']]:[--tag-bg:#e3ecff] [&_a[href$='topic=ai']]:[--tag-fg:#2a5bd7] [&_a[href$='topic=biotech']]:[--tag-bg:#f3e8fb] [&_a[href$='topic=biotech']]:[--tag-fg:#7a3cb4] [&_a[href$='topic=cn']]:[--tag-bg:#fde8e8] [&_a[href$='topic=cn']]:[--tag-fg:#c02a2a] [&_a[href$='topic=embodied']]:[--tag-bg:#e6f4ea] [&_a[href$='topic=embodied']]:[--tag-fg:#1e7a3c] [&_a[href$='topic=hardware']]:[--tag-bg:#fdecdc] [&_a[href$='topic=hardware']]:[--tag-fg:#b4530a] [&_a[href$='topic=programming']]:[--tag-bg:#e0f4f4] [&_a[href$='topic=programming']]:[--tag-fg:#0f7a7a] [&_a[href*='topic=']]:mr-1 [&_a[href*='topic=']]:inline-block [&_a[href*='topic=']]:rounded-[4px] [&_a[href*='topic=']]:bg-[var(--tag-bg,var(--accent-blue-bg))] [&_a[href*='topic=']]:px-1.5 [&_a[href*='topic=']]:align-[1px] [&_a[href*='topic=']]:font-medium [&_a[href*='topic=']]:text-[10px] [&_a[href*='topic=']]:text-[var(--tag-fg,var(--accent-blue))] [&_a[href*='topic=']]:leading-[1.6] [&_a[href*='topic=']]:no-underline [&_sup]:mx-[2px] [&_sup]:inline-flex [&_sup]:h-[1.125rem] [&_sup]:min-w-[1.125rem] [&_sup]:items-center [&_sup]:justify-center [&_sup]:rounded-[4px] [&_sup]:bg-[var(--accent-blue-bg)] [&_sup]:px-[5px] [&_sup]:font-medium [&_sup]:text-[10px] [&_sup]:text-[var(--accent-blue)] [&_sup]:leading-none [&_sup]:transition-colors"
+					className="text-[13px] text-[var(--text-primary)] leading-[1.55] [&_[data-streamdown=link]:hover_sup]:bg-[var(--accent-blue)] [&_[data-streamdown=link]:hover_sup]:text-white [&_[data-streamdown=link]]:cursor-pointer [&_[data-streamdown=link]]:font-normal [&_[data-streamdown=link]]:no-underline [&_sup]:mx-[2px] [&_sup]:inline-flex [&_sup]:h-[1.125rem] [&_sup]:min-w-[1.125rem] [&_sup]:items-center [&_sup]:justify-center [&_sup]:rounded-[4px] [&_sup]:bg-[var(--accent-blue-bg)] [&_sup]:px-[5px] [&_sup]:font-medium [&_sup]:text-[10px] [&_sup]:text-[var(--accent-blue)] [&_sup]:leading-none [&_sup]:transition-colors"
 					data-testid="trends-summary-body"
 					onPointerOut={handlePointerOut}
 					onPointerOver={handlePointerOver}
 				>
-					<Streamdown
-						linkSafety={{
-							enabled: true,
-							// Click goes straight to the source; the popover is hover-driven.
-							onLinkCheck: () => true,
-							// Stops Streamdown's default safety modal from rendering.
-							renderModal: () => null,
-						}}
-					>
-						{linkified}
-					</Streamdown>
+					{lines ? (
+						<ol className="space-y-1">
+							{lines.map((line, index) =>
+								line.kind === "entry" ? (
+									<li className="flex gap-2" key={line.n}>
+										<span className="w-4 shrink-0 text-right text-[var(--text-muted)] tabular-nums">
+											{line.n}.
+										</span>
+										<span className="min-w-0 flex-1 [&_p]:inline">
+											{line.topic ? (
+												<a
+													className={`mr-1.5 inline-block rounded-[4px] px-1.5 align-[1px] font-medium text-[10px] leading-[1.6] no-underline ${TOPIC_TAG_CLASS[line.topic] ?? DEFAULT_TAG_CLASS}`}
+													href={topicHref(line.topic)}
+												>
+													{t(`topic.${line.topic}` as TranslationKey)}
+												</a>
+											) : null}
+											<Streamdown linkSafety={LINK_SAFETY}>
+												{linkifyCitations(line.body, citations)}
+											</Streamdown>
+										</span>
+									</li>
+								) : (
+									// biome-ignore lint/suspicious/noArrayIndexKey: prose lines have no id
+									<li className="list-none" key={index}>
+										<Streamdown linkSafety={LINK_SAFETY}>
+											{line.text}
+										</Streamdown>
+									</li>
+								)
+							)}
+						</ol>
+					) : (
+						<Streamdown linkSafety={LINK_SAFETY}>{linkified}</Streamdown>
+					)}
 				</div>
 				{foldable ? (
 					<button

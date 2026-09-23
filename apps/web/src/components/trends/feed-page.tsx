@@ -39,7 +39,7 @@ import { useSourcePreferences } from "./source-preferences";
 import { orderWithPinned } from "./source-preferences-model";
 import { trendsPageQueryOptions } from "./trends-query";
 import { TrendsSummary } from "./trends-summary";
-import type { SourceCardData, TrendsPageData } from "./types";
+import type { NewsItem, SourceCardData, TrendsPageData } from "./types";
 import { ViewSwitch } from "./view-switch";
 
 const PAGE_SIZE = 40;
@@ -354,45 +354,48 @@ function FeedCard({
 			target="_blank"
 			title={original}
 		>
-			{hasCover ? (
-				// The title sits on the picture over a scrim, where the eye already
-				// is; a caption under the picture goes unread.
-				<span className="relative block overflow-hidden">
-					{/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: the load and error listeners only classify the cover */}
-					<img
-						alt=""
-						className={`w-full bg-[var(--surface-sidebar)] object-cover transition-transform duration-300 group-hover:scale-[1.03] ${coverRatio(item)}`}
-						height={240}
-						loading="lazy"
-						onError={() => setCover("failed")}
-						onLoad={(event) =>
-							setCover(
-								event.currentTarget.naturalWidth < SMALL_COVER_WIDTH
-									? "small"
-									: "ok"
-							)
-						}
-						src={proxiedImageUrl(item.imageUrl as string)}
-						width={320}
-					/>
-					<span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-sm bg-black/35 px-1.5 py-0.5 text-[11px] text-white backdrop-blur-sm">
-						<SourceFavicon homeUrl={source.homeUrl} />
-						<span className="max-w-[9rem] truncate">{source.title}</span>
-					</span>
-					<span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/40 to-transparent px-3 pt-10 pb-3">
-						<span className="line-clamp-3 font-semibold text-[14px] text-white leading-snug tracking-tight [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]">
-							<Emphasized text={item.title} />
+			<span className="relative block">
+				{hasCover ? (
+					// The title sits on the picture over a scrim, where the eye already
+					// is; a caption under the picture goes unread.
+					<span className="relative block overflow-hidden">
+						{/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: the load and error listeners only classify the cover */}
+						<img
+							alt=""
+							className={`w-full bg-[var(--surface-sidebar)] object-cover transition-transform duration-300 group-hover:scale-[1.03] ${coverRatio(item)}`}
+							height={240}
+							loading="lazy"
+							onError={() => setCover("failed")}
+							onLoad={(event) =>
+								setCover(
+									event.currentTarget.naturalWidth < SMALL_COVER_WIDTH
+										? "small"
+										: "ok"
+								)
+							}
+							src={proxiedImageUrl(item.imageUrl as string)}
+							width={320}
+						/>
+						<span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-sm bg-black/35 px-1.5 py-0.5 text-[11px] text-white backdrop-blur-sm">
+							<SourceFavicon homeUrl={source.homeUrl} />
+							<span className="max-w-[9rem] truncate">{source.title}</span>
+						</span>
+						<span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/40 to-transparent px-3 pt-10 pb-3">
+							<span className="line-clamp-3 font-semibold text-[14px] text-white leading-snug tracking-tight [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]">
+								<Emphasized text={item.title} />
+							</span>
 						</span>
 					</span>
-				</span>
-			) : (
-				<GeneratedCover
-					heat={heatLabel}
-					item={item}
-					source={source}
-					thumbnail={thumbnail}
-				/>
-			)}
+				) : (
+					<GeneratedCover
+						heat={heatLabel}
+						item={item}
+						source={source}
+						thumbnail={thumbnail}
+					/>
+				)}
+				<HoverDetail item={item} />
+			</span>
 			<span className="flex flex-col gap-1.5 px-3 py-2">
 				<span className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
 					<SourceFavicon homeUrl={source.homeUrl} />
@@ -411,6 +414,35 @@ function FeedCard({
 				</span>
 			</span>
 		</a>
+	);
+}
+
+// Resting the pointer on a card shows the whole title and the summary over
+// the picture or poster, in the card's own footprint, so nothing around it
+// moves. Skipped when there is nothing more to show than the card already
+// does.
+const SHORT_TITLE = 28;
+
+function HoverDetail({ item }: { item: NewsItem }) {
+	const description = item.description?.trim();
+	if (!description && item.title.length <= SHORT_TITLE) {
+		return null;
+	}
+	return (
+		<span
+			aria-hidden
+			className="pointer-events-none absolute inset-0 flex flex-col gap-1.5 overflow-hidden bg-[var(--surface-card)]/95 p-3 opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100 group-hover:delay-300"
+		>
+			<span className="font-semibold text-[13px] text-[var(--text-heading)] leading-snug tracking-tight">
+				{item.title}
+			</span>
+			{description ? (
+				<span className="text-[12px] text-[var(--text-secondary)] leading-relaxed">
+					{description}
+				</span>
+			) : null}
+			<span className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-[var(--surface-card)] to-transparent" />
+		</span>
 	);
 }
 
