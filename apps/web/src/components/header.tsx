@@ -16,7 +16,7 @@ import {
 	useParams,
 	useSearch,
 } from "@tanstack/react-router";
-import { LogOut, Star, UserRound } from "lucide-react";
+import { History, LogOut, Star, UserRound } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -66,6 +66,7 @@ function formatStars(stars: number | null | undefined): string | null {
 
 function AccountMenu() {
 	const t = useT();
+	const localeParam = localePathParam(useLocale());
 	const session = authClient.useSession();
 	const [signInOpen, setSignInOpen] = useState(false);
 
@@ -125,6 +126,14 @@ function AccountMenu() {
 					</DropdownMenuLabel>
 				</DropdownMenuGroup>
 				<DropdownMenuSeparator />
+				<DropdownMenuItem
+					render={
+						<Link params={{ locale: localeParam }} to="/{-$locale}/history" />
+					}
+				>
+					<History aria-hidden className="size-3.5" />
+					{t("nav.history")}
+				</DropdownMenuItem>
 				<DropdownMenuItem
 					onClick={async () => {
 						const result = await authClient.signOut();
@@ -265,6 +274,15 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 								<span className="tabular-nums">{githubStars}</span>
 							) : null}
 						</a>
+						<Link
+							aria-label={t("nav.history")}
+							className="inline-flex size-7 items-center justify-center rounded text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[status=active]:bg-[var(--state-hover-subtle)] data-[status=active]:text-[var(--text-primary)]"
+							params={{ locale: localeParam }}
+							title={t("nav.history")}
+							to="/{-$locale}/history"
+						>
+							<History aria-hidden className="size-4" />
+						</Link>
 						<LanguageToggle />
 						<ThemeToggle />
 						<AccountMenu />
@@ -293,14 +311,6 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 						to="/{-$locale}/briefings"
 					>
 						{t("nav.briefings")}
-					</Link>
-					<Link
-						activeOptions={{ exact: false }}
-						className={segmentClassName}
-						params={{ locale: localeParam }}
-						to="/{-$locale}/history"
-					>
-						{t("nav.history")}
 					</Link>
 					<Link
 						activeOptions={{ exact: false }}
