@@ -65,10 +65,7 @@ import {
 import { formatRelativeTime } from "./relative-time";
 
 import { revealSourceCard, sourceCardElementId } from "./reveal-source-card";
-import {
-	isDecorativeBadgeImage,
-	sourceCardViewportClasses,
-} from "./source-card-model";
+import { coverKind, sourceCardViewportClasses } from "./source-card-model";
 import { SourceFavicon } from "./source-favicon";
 import { SourceManagerDialog } from "./source-manager-dialog";
 import { useSourcePreferences } from "./source-preferences";
@@ -321,7 +318,7 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				draggingSourceIdRef.current = sourceId;
 				setDraggingSourceId(sourceId);
 				setDragPreview({
-					height: Math.min(rect.height, 44),
+					height: rect.height,
 					homeUrl: source?.homeUrl,
 					left: rect.left,
 					title: source?.title ?? "",
@@ -354,20 +351,22 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 					.elementFromPoint(event.clientX, event.clientY)
 					?.closest<HTMLElement>("[data-sortable-source-id]");
 				const overSourceId = target?.dataset.sortableSourceId;
-				if (overSourceId) {
-					const baseOrder = pointerDragBaseOrderRef.current;
-					if (!baseOrder) {
-						return;
-					}
-					pointerDragOrderRef.current = moveSource(
-						baseOrder,
+				// Reorder live: the card moves into place under the pointer and its
+				// neighbours shift, like icons on a home screen; the ghost only
+				// shows what is being carried.
+				if (overSourceId && overSourceId !== activeSourceId) {
+					const next = moveSource(
+						pointerDragOrderRef.current ?? sourceOrderRef.current,
 						activeSourceId,
 						overSourceId
 					);
-					if (dropTargetElementRef.current !== target) {
-						dropTargetElementRef.current?.removeAttribute("data-drop-target");
-						target?.setAttribute("data-drop-target", "true");
-						dropTargetElementRef.current = target ?? null;
+					if (
+						next.join("\u0000") !==
+						(pointerDragOrderRef.current ?? []).join("\u0000")
+					) {
+						pointerDragOrderRef.current = next;
+						sourceOrderRef.current = next;
+						sourcePreferences.setOrder(next);
 					}
 				}
 			},
@@ -479,6 +478,7 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 								title: source.title,
 							}))}
 							t={t}
+							topicTitle={displayPage.title}
 						/>
 					) : null}
 					{sourceContent}
@@ -545,7 +545,14 @@ function ViewBar({
 	return (
 		<div className="flex h-10 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
 			<ViewSwitch localeParam={localeParam} topicId={topicId} view="trends" />
+			{/* "Manage sources" sits at the right end on every view so it reads as
+			    the one place a topic's sources are kept. */}
 			<div className="flex shrink-0 items-center gap-2 text-[11px] text-[var(--text-muted)]">
+				<DisplaySettingsMenuContent
+					settings={settings}
+					storeOptions={displaySettingsStore}
+					t={t}
+				/>
 				<button
 					className={toolButtonClassName}
 					onClick={onOpenSources}
@@ -554,11 +561,6 @@ function ViewBar({
 					<Rss aria-hidden className="size-3.5" />
 					<span>{t("sourceManager.button")}</span>
 				</button>
-				<DisplaySettingsMenuContent
-					settings={settings}
-					storeOptions={displaySettingsStore}
-					t={t}
-				/>
 			</div>
 		</div>
 	);
@@ -1246,10 +1248,7 @@ function NewsRow({
 	const t = useT();
 	const meta = ranking ? null : buildMeta(item, settings, t);
 	const showCover =
-		!ranking &&
-		settings.showCover &&
-		Boolean(item.imageUrl) &&
-		!isDecorativeBadgeImage(item.imageUrl);
+		!ranking && settings.showCover && coverKind(item.imageUrl) === "cover";
 	const showDescription =
 		!ranking && settings.showDescription && Boolean(item.description);
 	const heat =
@@ -1338,10 +1337,7 @@ function NewsCard({
 }) {
 	const t = useT();
 	const meta = buildMeta(item, settings, t);
-	const showCover =
-		settings.showCover &&
-		Boolean(item.imageUrl) &&
-		!isDecorativeBadgeImage(item.imageUrl);
+	const showCover = settings.showCover && coverKind(item.imageUrl) === "cover";
 	const showDescription = settings.showDescription && Boolean(item.description);
 
 	return (

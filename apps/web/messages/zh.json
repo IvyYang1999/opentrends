@@ -66,7 +66,7 @@
   "card_updated": "更新于 {time}",
   "card_item_count": "{count} 条",
   "display_label": "显示",
-  "display_settings": "显示设置",
+  "display_settings": "显示偏好",
   "display_layout": "排版",
   "display_layout_source_grid": "来源网格",
   "display_layout_source_sections": "来源分区",

@@ -1,3 +1,4 @@
+import { coverKind } from "./source-card-model";
 import type { NewsItem, SourceCardData, TrendsPageData } from "./types";
 
 export interface FeedEntry {
@@ -104,7 +105,7 @@ function scoreSource(
 			recency *
 			(1 + HEAT_WEIGHT * heatFactor(heat, maxHeat)) *
 			(followed ? FOLLOWED_BOOST : 1) *
-			(item.imageUrl ? COVER_BOOST : 1);
+			(coverKind(item.imageUrl) === "cover" ? COVER_BOOST : 1);
 		return { heat, item, kind: "item" as const, score, source };
 	});
 }
@@ -137,8 +138,12 @@ export function rankFeed(
 // illustrated items, and no source may crowd a window of recent slots.
 // Falls back gracefully when a pool runs dry.
 export function arrangeFeed(sorted: FeedEntry[]): FeedEntry[] {
-	const withCover = sorted.filter((entry) => Boolean(entry.item.imageUrl));
-	const textOnly = sorted.filter((entry) => !entry.item.imageUrl);
+	const withCover = sorted.filter(
+		(entry) => coverKind(entry.item.imageUrl) === "cover"
+	);
+	const textOnly = sorted.filter(
+		(entry) => coverKind(entry.item.imageUrl) !== "cover"
+	);
 	const result: FeedEntry[] = [];
 	const recent: string[] = [];
 	let lastTextClass: "short" | "long" | undefined;

@@ -23,6 +23,7 @@ import {
 import { recordFeedClick } from "./feed-signals";
 import { FOLLOWED_TOPIC_ID, useFollowedSources } from "./followed-sources";
 import { formatRelativeTime } from "./relative-time";
+import { coverKind } from "./source-card-model";
 import { SourceFavicon } from "./source-favicon";
 import {
 	type ManagedSource,
@@ -38,7 +39,7 @@ import { ViewSwitch } from "./view-switch";
 const PAGE_SIZE = 40;
 // The proxy scales covers down, never up, so a natural width this small
 // means the source only offered a thumbnail.
-const SMALL_COVER_WIDTH = 240;
+const SMALL_COVER_WIDTH = 400;
 const FEATURED_TOPIC_ID = "featured";
 // The featured feed draws on every topic, like its digest does.
 const ALL_TOPIC_IDS = [
@@ -210,6 +211,7 @@ export function FeedPage({ topicId }: FeedPageProps) {
 					pinnedSourceIds={sourcePreferences.preference.pinnedSourceIds}
 					sources={managedSources(primary, sourcePreferences.preference)}
 					t={t}
+					topicTitle={primary.title}
 				/>
 			) : null}
 			{pending && blocks.length === 0 ? (
@@ -299,8 +301,13 @@ function FeedCard({
 	const [cover, setCover] = useState<"pending" | "ok" | "failed" | "small">(
 		"pending"
 	);
-	const hasCover =
-		Boolean(item.imageUrl) && cover !== "failed" && cover !== "small";
+	const kind = coverKind(item.imageUrl);
+	const hasCover = kind === "cover" && cover !== "failed" && cover !== "small";
+	// GitHub avatars and covers too small for the card go inside the poster.
+	const thumbnail =
+		item.imageUrl && (kind === "thumb" || cover === "small")
+			? proxiedImageUrl(item.imageUrl)
+			: undefined;
 	const original =
 		item.original && item.original.title !== item.title
 			? item.original.title
@@ -350,11 +357,7 @@ function FeedCard({
 					heat={heatLabel}
 					item={item}
 					source={source}
-					thumbnail={
-						cover === "small" && item.imageUrl
-							? proxiedImageUrl(item.imageUrl)
-							: undefined
-					}
+					thumbnail={thumbnail}
 				/>
 			)}
 			<span className="flex flex-col gap-1.5 px-3 py-2">

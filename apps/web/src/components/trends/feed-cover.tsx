@@ -292,12 +292,12 @@ function Motif({ hue, kind }: { hue: number; kind: (typeof MOTIFS)[number] }) {
 		return (
 			<svg
 				aria-hidden
-				className="pointer-events-none absolute -top-6 -right-10 h-[110%] opacity-[0.16]"
+				className="pointer-events-none absolute top-0 right-0 h-full opacity-[0.14]"
 				fill="none"
 				role="presentation"
 				stroke={stroke}
 				strokeLinecap="round"
-				strokeWidth="6"
+				strokeWidth="5"
 				viewBox="0 0 1024 1024"
 			>
 				{RAY_LINES.map((line) => (
