@@ -43,6 +43,10 @@ import type { NewsItem, SourceCardData, TrendsPageData } from "./types";
 import { ViewSwitch } from "./view-switch";
 
 const PAGE_SIZE = 40;
+// The featured feed draws on every topic. The other topics only feed the
+// ranking pool, where a source never gets more than two of twelve slots, so
+// a dozen items each is plenty and the download is a third of the size.
+const SIDE_TOPIC_ITEMS_PER_SOURCE = 12;
 // The proxy scales covers down, never up, so a natural width this small
 // means the source only offered a thumbnail.
 const SMALL_COVER_WIDTH = 400;
@@ -132,14 +136,22 @@ export function FeedPage({ topicId }: FeedPageProps) {
 	// useQueries' `combine` memoises on the query results, so `pages` only
 	// changes when a page actually loads or refreshes.
 	const { pages, pending } = useQueries({
-		queries: topicIds.map((id) =>
-			id === FOLLOWED_TOPIC_ID
-				? {
-						...trendsPageQueryOptions(id, locale, followedIds),
-						enabled: followedIds.length > 0,
-					}
-				: trendsPageQueryOptions(id, locale)
-		),
+		queries: topicIds.map((id) => {
+			if (id === FOLLOWED_TOPIC_ID) {
+				return {
+					...trendsPageQueryOptions(id, locale, followedIds),
+					enabled: followedIds.length > 0,
+				};
+			}
+			return id === topicId
+				? trendsPageQueryOptions(id, locale)
+				: trendsPageQueryOptions(
+						id,
+						locale,
+						undefined,
+						SIDE_TOPIC_ITEMS_PER_SOURCE
+					);
+		}),
 		combine: (results) => ({
 			pages: results
 				.map((result) => result.data)

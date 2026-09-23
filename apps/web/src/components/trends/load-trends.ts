@@ -25,12 +25,14 @@ export class TrendEventsEmbeddingNotConfiguredError extends Error {
 	}
 }
 
-export async function loadTrends(
-	topic?: string,
-	locale: Locale = "en",
+// The exact address the page data comes from; the feed route preloads it
+// from the HTML head so the request starts before the scripts arrive.
+export function trendsPageUrl(
+	topic: string | undefined,
+	locale: Locale,
 	itemsPerSource = TRENDS_FULL_ITEMS_PER_SOURCE,
 	sourceIds?: readonly string[]
-): Promise<TrendsPageData> {
+): string {
 	const path = topic
 		? `/api/trends/${encodeURIComponent(topic)}`
 		: "/api/trends";
@@ -42,14 +44,29 @@ export async function loadTrends(
 	if (sourceIds) {
 		search.set("sources", sourceIds.join(","));
 	}
+	return `${env.VITE_SERVER_URL}${path}?${search}`;
+}
+
+export async function loadTrends(
+	topic?: string,
+	locale: Locale = "en",
+	itemsPerSource = TRENDS_FULL_ITEMS_PER_SOURCE,
+	sourceIds?: readonly string[]
+): Promise<TrendsPageData> {
 	const controller = new AbortController();
 	const timeout = setTimeout(() => controller.abort(), TRENDS_FETCH_TIMEOUT_MS);
 	let response: Response;
 	try {
-		response = await fetch(`${env.VITE_SERVER_URL}${path}?${search}`, {
-			credentials: "omit",
-			signal: controller.signal,
-		});
+		// "same-origin" sends nothing cross-site, like "omit", but matches a
+		// <link rel="preload" crossorigin> the page may have issued for the
+		// same URL, so the preloaded bytes are reused.
+		response = await fetch(
+			trendsPageUrl(topic, locale, itemsPerSource, sourceIds),
+			{
+				credentials: "same-origin",
+				signal: controller.signal,
+			}
+		);
 	} finally {
 		clearTimeout(timeout);
 	}

@@ -23,18 +23,18 @@ export const TRENDS_PAGE_STALE_MS = 10 * 60_000;
 export function trendsPageQueryOptions(
 	topic: string,
 	locale: Locale,
-	sourceIds?: readonly string[]
+	sourceIds?: readonly string[],
+	itemsPerSource: number = TRENDS_FULL_ITEMS_PER_SOURCE
 ) {
 	return queryOptions<TrendsPageData, Error>({
 		queryKey: [
 			"trends-page",
 			topic,
 			locale,
-			TRENDS_FULL_ITEMS_PER_SOURCE,
+			itemsPerSource,
 			...(sourceIds ? [sourceIds.join(",")] : []),
 		],
-		queryFn: () =>
-			loadTrends(topic, locale, TRENDS_FULL_ITEMS_PER_SOURCE, sourceIds),
+		queryFn: () => loadTrends(topic, locale, itemsPerSource, sourceIds),
 		gcTime: TRENDS_PAGE_GC_MS,
 		refetchInterval: (query) =>
 			query.state.data && pageNeedsTranslationWarmup(query.state.data, locale)

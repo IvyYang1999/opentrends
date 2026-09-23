@@ -92,6 +92,40 @@ app.on(["POST", "GET"], "/api/auth/*", async (context) => {
 	return getAuth().handler(context.req.raw);
 });
 
+// Public trend pages are the same bytes for everyone for a minute or five
+// (their Cache-Control says how long), so the edge keeps a copy per URL and
+// answers repeat requests without touching KV or building the JSON again.
+// The Cache API is a no-op on workers.dev and works on custom domains.
+app.use("/api/trends/*", async (c, next) => {
+	const cache = (globalThis as { caches?: { default?: Cache } }).caches
+		?.default;
+	if (c.req.method !== "GET" || !cache) {
+		await next();
+		return;
+	}
+	const key = new Request(c.req.url, { method: "GET" });
+	const cached = await cache.match(key);
+	if (cached) {
+		const response = new Response(cached.body, cached);
+		response.headers.set("X-Edge-Cache", "hit");
+		return response;
+	}
+	await next();
+	const control = c.res.headers.get("Cache-Control") ?? "";
+	if (
+		c.res.status === 200 &&
+		control.includes("public") &&
+		!control.includes("no-store")
+	) {
+		const copy = c.res.clone();
+		try {
+			c.executionCtx.waitUntil(cache.put(key, copy));
+		} catch {
+			await cache.put(key, copy);
+		}
+	}
+});
+
 app.route("/api/image", imageRoutes);
 app.route("/api/events", eventsRoutes);
 app.route("/api/skills", skillsRoutes);
