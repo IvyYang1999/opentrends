@@ -353,6 +353,10 @@ function computeSummaryStats(page: TrendsPageData): SummaryStats {
 
 interface SummaryBodyProps {
 	citations: CitationMap;
+	/** Changes with the topic, window and list: every Markdown renderer
+	 * below is keyed by it, so a renderer never carries one digest's
+	 * parsed blocks into another's text. */
+	contentKey: string;
 	error: string | null;
 	expanded: boolean;
 	metadata: CitationMetaMap;
@@ -390,6 +394,7 @@ function summaryNotice(
 
 function SummaryBody({
 	citations,
+	contentKey,
 	error,
 	expanded,
 	metadata,
@@ -505,7 +510,7 @@ function SummaryBody({
 						<ol className="space-y-1">
 							{lines.map((line, index) =>
 								line.kind === "entry" ? (
-									<li className="flex gap-2" key={line.n}>
+									<li className="flex gap-2" key={`${contentKey}:${line.n}`}>
 										<span className="w-4 shrink-0 text-right text-[var(--text-muted)] tabular-nums">
 											{line.n}.
 										</span>
@@ -525,7 +530,7 @@ function SummaryBody({
 									</li>
 								) : (
 									// biome-ignore lint/suspicious/noArrayIndexKey: prose lines have no id
-									<li className="list-none" key={index}>
+									<li className="list-none" key={`${contentKey}:text:${index}`}>
 										<Streamdown linkSafety={LINK_SAFETY}>
 											{line.text}
 										</Streamdown>
@@ -534,7 +539,9 @@ function SummaryBody({
 							)}
 						</ol>
 					) : (
-						<Streamdown linkSafety={LINK_SAFETY}>{linkified}</Streamdown>
+						<Streamdown key={contentKey} linkSafety={LINK_SAFETY}>
+							{linkified}
+						</Streamdown>
 					)}
 				</div>
 				{foldable ? (
@@ -918,6 +925,7 @@ export function TrendsSummary({
 					{collapsed ? null : (
 						<SummaryBody
 							citations={citations}
+							contentKey={memoKey}
 							error={error}
 							expanded={expanded}
 							metadata={metadata}
