@@ -128,16 +128,46 @@ export function translationPageCacheKeysForSource(
 	return keys;
 }
 
-export async function invalidateTranslatedTrendsPageCache(
-	sourceId: SourceId,
-	lang: TranslationLanguage
+// Called when a batch of translations lands. Only the in-memory copies are
+// dropped: deleting the KV pages too meant every page whose sources were
+// being translated (which is most of them, most of the time) vanished from
+// the shared cache and the next reader rebuilt it from D1, three to five
+// seconds at a time. A page with untranslated items is already cached for
+// only a minute, so the new titles show up on the next refresh anyway.
+export function invalidateTranslatedTrendsPageCache(
+	_sourceId: SourceId,
+	_lang: TranslationLanguage
 ): Promise<void> {
 	clearTrendsPageCache();
-	await Promise.all(
-		translationPageCacheKeysForSource(sourceId, lang).map((key) =>
-			hotCache.delete(key)
-		)
+	return Promise.resolve();
+}
+
+// Rebuilds a page unless the shared cache already has a fresh one; the
+// scheduler calls this after refreshing sources so readers find pages
+// ready instead of paying for the build.
+export async function warmTrendsPage(
+	topicId: string,
+	lang: TranslationLanguage,
+	itemsPerSource = DEFAULT_TRENDS_ITEMS_PER_SOURCE
+): Promise<"fresh" | "rebuilt"> {
+	const cacheKey = makeTrendsPageCacheKey(
+		topicId,
+		lang,
+		"background",
+		itemsPerSource
 	);
+	const cached = await readHotTrendsPageCache(cacheKey).catch(() => null);
+	if (cached && cached.freshUntil > Date.now()) {
+		return "fresh";
+	}
+	await startTrendsPageRefresh(
+		cacheKey,
+		topicId,
+		lang,
+		"background",
+		itemsPerSource
+	);
+	return "rebuilt";
 }
 
 function writeMemoryTrendsPageCache(
