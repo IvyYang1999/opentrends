@@ -84,7 +84,31 @@ function pickDescription(item: RssItem): string | undefined {
 	);
 }
 
+// Google News titles end in " - Publisher". The publisher is already the
+// source's name, so it goes; what is left may be empty when Google indexed
+// a site page rather than an article.
+const GOOGLE_NEWS_HOST = "news.google.com";
+const PUBLISHER_SUFFIX_RE = /(?:^|\s+)-\s+[^-]{1,60}$/;
+
+export function cleanGoogleNewsTitle(title: string): string {
+	return normalizeText(title.replace(PUBLISHER_SUFFIX_RE, ""));
+}
+
+function isGoogleNewsFeed(feedUrl: string): boolean {
+	try {
+		return new URL(feedUrl).hostname === GOOGLE_NEWS_HOST;
+	} catch {
+		return false;
+	}
+}
+
+function itemTitle(raw: RssItem, googleNews: boolean): string {
+	const title = normalizeText(raw.title);
+	return googleNews && title ? cleanGoogleNewsTitle(title) : title;
+}
+
 export function createRssAdapter(preset: RssSourcePreset): SourceAdapter {
+	const googleNews = isGoogleNewsFeed(preset.feedUrl);
 	return {
 		async fetch(ctx: FetchContext): Promise<NewsItem[]> {
 			const xml = await fetchText(preset.feedUrl, { signal: ctx.signal });
@@ -92,14 +116,18 @@ export function createRssAdapter(preset: RssSourcePreset): SourceAdapter {
 			const fetchedAt = Date.now();
 			const items: NewsItem[] = [];
 
+			// A search feed can return the same page under several links; one
+			// title per feed is enough.
+			const seenTitles = new Set<string>();
 			let rank = 0;
 			for (const raw of feed.items) {
 				rank += 1;
-				const title = normalizeText(raw.title);
+				const title = itemTitle(raw, googleNews);
 				const link = raw.link;
-				if (!(title && isValidUrl(link))) {
+				if (!(title && isValidUrl(link)) || seenTitles.has(title)) {
 					continue;
 				}
+				seenTitles.add(title);
 				const dateStr = raw.isoDate ?? raw.pubDate;
 				const published = dateStr ? Date.parse(dateStr) : Number.NaN;
 				const guid = normalizeText(raw.guid) || normalizeText(raw.id);

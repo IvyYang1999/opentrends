@@ -176,7 +176,7 @@ describe("trends summary prompt", () => {
 		}));
 		async function* markdown() {
 			yield "1. **First** — why [1]\n";
-			yield "2. **Second** — why [150]";
+			yield await Promise.resolve("2. **Second** — why [150]");
 		}
 
 		let body = "";

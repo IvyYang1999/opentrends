@@ -683,7 +683,9 @@ export const sourcePresets = {
 	"kimi-updates": googleNewsSource(
 		"Moonshot AI Kimi",
 		"https://kimi.moonshot.cn/",
-		"site:kimi.moonshot.cn OR site:kimi.com Kimi"
+		// kimi.com itself only yields product pages with one shared title, so
+		// this follows the coverage instead.
+		'"Moonshot AI" OR "Kimi K"'
 	),
 	"minimax-news": googleNewsSource(
 		"MiniMax",

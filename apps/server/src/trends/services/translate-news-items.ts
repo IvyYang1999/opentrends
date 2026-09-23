@@ -629,7 +629,8 @@ const MAX_PREWARM_TRANSLATION_CANDIDATES = 60;
 // were translated.
 export async function prewarmItemTranslations(
 	items: NewsItem[],
-	lang: TranslationLanguage
+	lang: TranslationLanguage,
+	options: { timeoutMs?: number } = {}
 ): Promise<number> {
 	if (!env.LLM_API_KEY) {
 		return 0;
@@ -657,7 +658,7 @@ export async function prewarmItemTranslations(
 	const translated = await translateMissingWithinTimeout(
 		lang,
 		missing.slice(0, MAX_PREWARM_TRANSLATION_CANDIDATES),
-		PREWARM_TRANSLATION_TIMEOUT_MS,
+		options.timeoutMs ?? PREWARM_TRANSLATION_TIMEOUT_MS,
 		{ throwOnTotalFailure: true }
 	);
 	return translated.length;

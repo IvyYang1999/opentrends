@@ -19,12 +19,26 @@ export const TRANSLATION_PREWARM_LANGUAGES: readonly TranslationLanguage[] = [
 ];
 
 export interface TranslationPrewarmMessage {
+	/** When set, only these items of the source are translated: a page view
+	 * in a language nobody prewarms pays for what it shows, not the whole
+	 * snapshot. */
+	itemIds?: string[];
 	lang: TranslationLanguage;
 	sourceId: SourceId;
 }
 
 const REQUEST_PREWARM_COOLDOWN_MS = 15 * 60_000;
 const REQUEST_PREWARM_LIMIT = 24;
+// Page views in other languages share the queue with everything else, so
+// they take fewer slots per view.
+const REQUEST_PREWARM_LIMIT_OTHER_LANGUAGES = 8;
+// A Worker keeps running about 30s past its response; the inline pass has
+// to fit inside that, batches still in flight at the deadline may finish.
+const REQUEST_TRANSLATION_TIMEOUT_MS = 20_000;
+
+function isPrewarmLanguage(lang: TranslationLanguage): boolean {
+	return TRANSLATION_PREWARM_LANGUAGES.includes(lang);
+}
 
 function requestMarkerKey(message: TranslationPrewarmMessage): string {
 	return `trends:v1:translation-prewarm-request:${message.sourceId}:${message.lang}`;
@@ -67,15 +81,23 @@ export function translationPrewarmMessagesForPage(
 	page: TrendsPageData,
 	lang: TranslationLanguage
 ): TranslationPrewarmMessage[] {
-	const sourceIds = new Set<SourceId>();
+	const messages = new Map<SourceId, TranslationPrewarmMessage>();
 	for (const section of page.sections) {
 		for (const source of section.sources) {
-			if (source.items.some((item) => needsTranslation(item, lang))) {
-				sourceIds.add(source.sourceId);
+			const itemIds = source.items
+				.filter((item) => needsTranslation(item, lang))
+				.map((item) => item.id);
+			if (itemIds.length > 0 && !messages.has(source.sourceId)) {
+				messages.set(
+					source.sourceId,
+					isPrewarmLanguage(lang)
+						? { lang, sourceId: source.sourceId }
+						: { itemIds, lang, sourceId: source.sourceId }
+				);
 			}
 		}
 	}
-	return [...sourceIds].map((sourceId) => ({ lang, sourceId }));
+	return [...messages.values()];
 }
 
 export async function runTranslationPrewarmJob(
@@ -86,10 +108,11 @@ export async function runTranslationPrewarmJob(
 		await clearRequestMarker(message);
 		return;
 	}
-	const translated = await prewarmItemTranslations(
-		snapshot.items,
-		message.lang
-	);
+	const wanted = message.itemIds ? new Set(message.itemIds) : undefined;
+	const items = wanted
+		? snapshot.items.filter((item) => wanted.has(item.id))
+		: snapshot.items;
+	const translated = await prewarmItemTranslations(items, message.lang);
 	if (translated > 0) {
 		await invalidateTranslatedTrendsPageCache(message.sourceId, message.lang);
 		console.info(
@@ -141,13 +164,65 @@ export async function dispatchTranslationPrewarmJobs(
 	}
 }
 
+// Chinese and English readers are waiting on the page they just opened, so
+// their missing titles are translated right here, in the request's
+// background time, instead of queueing behind other languages' work. The
+// page's own items are enough: the scheduled prewarm covers the rest.
+async function translatePageInline(
+	page: TrendsPageData,
+	lang: TranslationLanguage,
+	messages: TranslationPrewarmMessage[]
+): Promise<number> {
+	const reserved: TranslationPrewarmMessage[] = [];
+	for (const message of messages) {
+		if (reserved.length >= REQUEST_PREWARM_LIMIT) {
+			break;
+		}
+		if (await reserveRequestMarker(message)) {
+			reserved.push(message);
+		}
+	}
+	if (reserved.length === 0) {
+		return 0;
+	}
+	const sourceIds = new Set(reserved.map((message) => message.sourceId));
+	const items: NewsItem[] = page.sections
+		.flatMap((section) => section.sources)
+		.filter((source) => sourceIds.has(source.sourceId))
+		.flatMap((source) => source.items);
+	try {
+		const translated = await prewarmItemTranslations(items, lang, {
+			timeoutMs: REQUEST_TRANSLATION_TIMEOUT_MS,
+		});
+		if (translated > 0) {
+			await Promise.all(
+				[...sourceIds].map((sourceId) =>
+					invalidateTranslatedTrendsPageCache(sourceId, lang)
+				)
+			);
+			console.info(
+				`[trends-translation] translated ${translated} ${lang} items for ${page.id} on request`
+			);
+		}
+	} catch (error) {
+		console.warn("[trends-translation] request translation failed", error);
+	} finally {
+		await Promise.all(reserved.map((message) => clearRequestMarker(message)));
+	}
+	return reserved.length;
+}
+
 export async function requestTranslationPrewarmsForPage(
 	page: TrendsPageData,
 	lang: TranslationLanguage
 ): Promise<number> {
+	const messages = translationPrewarmMessagesForPage(page, lang);
+	if (isPrewarmLanguage(lang)) {
+		return translatePageInline(page, lang, messages);
+	}
 	let dispatched = 0;
-	for (const message of translationPrewarmMessagesForPage(page, lang)) {
-		if (dispatched >= REQUEST_PREWARM_LIMIT) {
+	for (const message of messages) {
+		if (dispatched >= REQUEST_PREWARM_LIMIT_OTHER_LANGUAGES) {
 			break;
 		}
 		if (!(await reserveRequestMarker(message))) {
