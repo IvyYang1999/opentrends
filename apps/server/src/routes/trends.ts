@@ -4,6 +4,7 @@ import {
 	FOLLOWED_TOPIC_ID,
 	parseFollowedSourceIds,
 } from "../trends/config/followed-topic";
+import { parseDigestEntries } from "../trends/services/digest-json";
 import { EventEmbeddingNotConfiguredError } from "../trends/services/event-embedding";
 import { getEventDetail, getEventFeed } from "../trends/services/event-feed";
 import {
@@ -239,6 +240,24 @@ export const trendsRoutes = new Hono()
 		}
 
 		const stream = prepared.stream(c.req.raw.signal);
+		// Agents and scripts want the digest as data, not a Markdown stream.
+		if (c.req.query("format") === "json") {
+			let markdown = "";
+			for await (const chunk of stream) {
+				markdown += chunk;
+			}
+			return c.json(
+				{
+					entries: parseDigestEntries(markdown, prepared.citations),
+					lang,
+					markdown,
+					topic,
+					window,
+				},
+				200,
+				{ "Cache-Control": "public, max-age=300" }
+			);
+		}
 		if (c.req.query("citations") === "body") {
 			return new Response(
 				textStreamFromGenerator(

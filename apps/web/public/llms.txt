@@ -1,0 +1,28 @@
+# OpenTrends
+
+> Tech trends from 240+ sources (AI, programming, hardware, biotech, embodied AI, China tech), refreshed continuously, translated, and distilled into a ten-line daily digest with citations. Open source, self-hostable.
+
+Agents should use the JSON API, not the HTML pages. Every endpoint is public and needs no key.
+
+## Read this first
+
+- [Skill](https://opentrends.io/skills/opentrends/SKILL.md): how to use the API, with the workflow and response rules
+- [Skill manifest](https://api.opentrends.io/api/skills/opentrends): current base URL, topics and endpoints (source of truth)
+- [OpenAPI spec](https://api.opentrends.io/api-reference/spec.json)
+
+## Endpoints
+
+- `GET https://api.opentrends.io/api/trends/{topic}/summary?format=json&lang=zh&window=today` — the digest as data: `entries[]` with `takeaway`, `reason`, `citations[]` (`url`, `topic`); `window` is `today`, `week` or `month`; `202` means it is being generated, retry after 30s
+- `GET https://api.opentrends.io/api/trends/{topic}?lang=zh&items=preview` — every source in a topic with its latest items (`title`, `url`, `publishedAt`, `hotValue`, `original.title`)
+- `GET https://api.opentrends.io/api/trends/{topic}/sources/{sourceId}?lang=zh` — one source, full item list
+- `GET https://api.opentrends.io/api/trends/{topic}/events?lang=zh` — clustered stories across sources
+- `GET https://api.opentrends.io/api/sources` — all source ids and metadata
+
+Topics: `featured` (the cross-topic landing digest), `ai`, `programming`, `hardware`, `biotech`, `embodied`, `cn`.
+Languages: `zh`, `en`, `zh-Hant`, `ru`, `fr-FR`, `es-ES`, `de-DE`, `pt-BR`.
+
+## Rules
+
+- Keep item `url` links when quoting; say which source an item came from.
+- Do not scrape `https://opentrends.io/...` pages; the API carries the same data.
+- Do not invent items, dates or links; an empty response means nothing was found.
