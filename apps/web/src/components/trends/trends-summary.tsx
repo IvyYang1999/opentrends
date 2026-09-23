@@ -96,6 +96,50 @@ const SUMMARY_PENDING_RETRY_MS = 10_000;
 
 const CITATION_PREAMBLE_PREFIX = '{"citations":';
 
+// "**takeaway** — reason [n][m]": the shape every digest line has. Rendered
+// by hand for finished digests; the streaming Markdown renderer keeps
+// parsed blocks in a cache keyed by tree position, so reusing it line by
+// line let one topic's headline appear in the next topic's line.
+const LINE_LEAD_RE = /^\*\*(.+?)\*\*\s*(?:[—–-]+\s*)?(.*)$/;
+const BOLD_MARKS_RE = /\*\*/g;
+
+function DigestLineBody({
+	body,
+	citations,
+}: {
+	body: string;
+	citations: CitationMap;
+}) {
+	const numbers = [...body.matchAll(CITATION_RE)].map((match) =>
+		Number.parseInt(match[1] ?? "", 10)
+	);
+	const plain = body.replace(CITATION_RE, "").trim();
+	const lead = LINE_LEAD_RE.exec(plain);
+	const takeaway = lead?.[1] ?? plain.replace(BOLD_MARKS_RE, "");
+	const reason = lead ? lead[2]?.trim() : "";
+	return (
+		<>
+			<span className="font-semibold">{takeaway}</span>
+			{reason ? ` — ${reason}` : null}{" "}
+			{numbers.map((n) => {
+				const url = citations.get(n)?.url;
+				return url ? (
+					<button
+						data-streamdown="link"
+						key={n}
+						onClick={() => window.open(url, "_blank", "noopener")}
+						type="button"
+					>
+						<sup>{n}</sup>
+					</button>
+				) : (
+					<span key={n}>[{n}]</span>
+				);
+			})}
+		</>
+	);
+}
+
 const LINK_SAFETY = {
 	enabled: true,
 	// Click goes straight to the source; the popover is hover-driven.
@@ -523,9 +567,7 @@ function SummaryBody({
 													{t(`topic.${line.topic}` as TranslationKey)}
 												</a>
 											) : null}
-											<Streamdown linkSafety={LINK_SAFETY}>
-												{linkifyCitations(line.body, citations)}
-											</Streamdown>
+											<DigestLineBody body={line.body} citations={citations} />
 										</span>
 									</li>
 								) : (
