@@ -89,6 +89,30 @@ describe("translation prewarm", () => {
 				"zh"
 			)
 		).toEqual([{ lang: "zh", sourceId: "openai-news" }]);
+		expect(
+			translationPrewarmMessagesForPage(
+				{
+					description: "AI",
+					id: "ai",
+					sections: [
+						{
+							id: "news",
+							sources: [
+								{
+									items: [item("OpenAI ships a model update")],
+									sourceId: "openai-news",
+									status: "ok",
+									title: "OpenAI News",
+								},
+							],
+						},
+					],
+					title: "AI",
+					updatedAt: 0,
+				},
+				"de-DE"
+			)
+		).toEqual([]);
 	});
 
 	test("prewarms every public summary window once per supported language", async () => {

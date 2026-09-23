@@ -19,9 +19,8 @@ export const TRANSLATION_PREWARM_LANGUAGES: readonly TranslationLanguage[] = [
 ];
 
 export interface TranslationPrewarmMessage {
-	/** When set, only these items of the source are translated: a page view
-	 * in a language nobody prewarms pays for what it shows, not the whole
-	 * snapshot. */
+	/** Optional so jobs written by deployments that supported per-page
+	 * translations can still drain safely. New jobs only use zh/en. */
 	itemIds?: string[];
 	lang: TranslationLanguage;
 	sourceId: SourceId;
@@ -29,9 +28,6 @@ export interface TranslationPrewarmMessage {
 
 const REQUEST_PREWARM_COOLDOWN_MS = 15 * 60_000;
 const REQUEST_PREWARM_LIMIT = 24;
-// Page views in other languages share the queue with everything else, so
-// they take fewer slots per view.
-const REQUEST_PREWARM_LIMIT_OTHER_LANGUAGES = 8;
 // A Worker keeps running about 30s past its response; the inline pass has
 // to fit inside that, batches still in flight at the deadline may finish.
 const REQUEST_TRANSLATION_TIMEOUT_MS = 20_000;
@@ -73,14 +69,15 @@ async function reserveRequestMarker(
 	return true;
 }
 
-// Scheduled prewarm covers TRANSLATION_PREWARM_LANGUAGES; a page view in
-// any other locale still requests its own translations, so a German reader
-// is not left with Chinese headlines. The cost only arises when someone
-// actually reads in that language.
+// Only the explicitly supported languages may create model work. Other locale
+// pages keep the source title instead of letting crawlers multiply cost.
 export function translationPrewarmMessagesForPage(
 	page: TrendsPageData,
 	lang: TranslationLanguage
 ): TranslationPrewarmMessage[] {
+	if (!isPrewarmLanguage(lang)) {
+		return [];
+	}
 	const messages = new Map<SourceId, TranslationPrewarmMessage>();
 	for (const section of page.sections) {
 		for (const source of section.sources) {
@@ -88,12 +85,7 @@ export function translationPrewarmMessagesForPage(
 				.filter((item) => needsTranslation(item, lang))
 				.map((item) => item.id);
 			if (itemIds.length > 0 && !messages.has(source.sourceId)) {
-				messages.set(
-					source.sourceId,
-					isPrewarmLanguage(lang)
-						? { lang, sourceId: source.sourceId }
-						: { itemIds, lang, sourceId: source.sourceId }
-				);
+				messages.set(source.sourceId, { lang, sourceId: source.sourceId });
 			}
 		}
 	}
@@ -212,31 +204,13 @@ async function translatePageInline(
 	return reserved.length;
 }
 
-export async function requestTranslationPrewarmsForPage(
+export function requestTranslationPrewarmsForPage(
 	page: TrendsPageData,
 	lang: TranslationLanguage
 ): Promise<number> {
+	if (!isPrewarmLanguage(lang)) {
+		return Promise.resolve(0);
+	}
 	const messages = translationPrewarmMessagesForPage(page, lang);
-	if (isPrewarmLanguage(lang)) {
-		return translatePageInline(page, lang, messages);
-	}
-	let dispatched = 0;
-	for (const message of messages) {
-		if (dispatched >= REQUEST_PREWARM_LIMIT_OTHER_LANGUAGES) {
-			break;
-		}
-		if (!(await reserveRequestMarker(message))) {
-			continue;
-		}
-		try {
-			if (!(await sendToCloudflareQueue(message))) {
-				await runTranslationPrewarmJob(message);
-			}
-			dispatched += 1;
-		} catch (error) {
-			await clearRequestMarker(message);
-			console.warn("[trends-translation] request prewarm failed", error);
-		}
-	}
-	return dispatched;
+	return translatePageInline(page, lang, messages);
 }
