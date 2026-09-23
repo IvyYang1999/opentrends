@@ -198,14 +198,14 @@ export function FeedPage({ topicId }: FeedPageProps) {
 			rankings
 		);
 	}, [pages, followedIds, hiddenSourceIds, reader]);
-	// One kind of content at a time, or all of them. Ranking cards stay
-	// whatever the filter, they are not one kind of thing.
+	// One kind of content at a time, or all of them. Ranking cards are not
+	// one kind of thing, so they only appear in the unfiltered feed.
 	const [kind, setKind] = useState<ContentKind | null>(null);
 	const shown = useMemo(
 		() =>
 			kind
 				? blocks.filter(
-						(block) => block.kind === "list" || contentKind(block.item) === kind
+						(block) => block.kind === "item" && contentKind(block.item) === kind
 					)
 				: blocks,
 		[blocks, kind]
