@@ -1,3 +1,4 @@
+import { type ContentKind, contentKind } from "./content-kind";
 import { isChineseText } from "./reader-context";
 import { coverKind } from "./source-card-model";
 import type { NewsItem, SourceCardData } from "./types";
@@ -20,7 +21,8 @@ export type ItemAttribute =
 	| "genre:research"
 	| "genre:official"
 	| "genre:news"
-	| "genre:ranking";
+	| "genre:ranking"
+	| `kind:${ContentKind}`;
 
 const HOUR_MS = 60 * 60 * 1000;
 const FRESH_MS = 6 * HOUR_MS;
@@ -73,6 +75,10 @@ export function itemAttributes(
 	}
 	if (options.hot) {
 		attributes.push("hot");
+	}
+	const kind = contentKind(item);
+	if (kind) {
+		attributes.push(`kind:${kind}`);
 	}
 	return attributes;
 }

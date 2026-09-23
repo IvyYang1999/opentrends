@@ -205,5 +205,13 @@
   "view_sources": "Sources",
   "source_manager_button": "Gérer les sources",
   "summary_show_rest": "Afficher {count} de plus",
-  "summary_show_less": "Réduire"
+  "summary_show_less": "Réduire",
+  "kind_all": "Tout",
+  "kind_release": "Sorties",
+  "kind_paper": "Articles",
+  "kind_opinion": "Opinions",
+  "kind_tutorial": "Tutoriels",
+  "kind_industry": "Industrie",
+  "kind_policy": "Réglementation",
+  "kind_benchmark": "Comparatifs"
 }

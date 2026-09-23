@@ -7,6 +7,7 @@ import { toolButtonClassName } from "@/components/chrome-styles";
 import Loader from "@/components/loader";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
 
+import { CONTENT_KINDS, type ContentKind, contentKind } from "./content-kind";
 import { setDisplaySetting, useDisplaySettings } from "./display-settings";
 import {
 	coverRatio,
@@ -197,6 +198,18 @@ export function FeedPage({ topicId }: FeedPageProps) {
 			rankings
 		);
 	}, [pages, followedIds, hiddenSourceIds, reader]);
+	// One kind of content at a time, or all of them. Ranking cards stay
+	// whatever the filter, they are not one kind of thing.
+	const [kind, setKind] = useState<ContentKind | null>(null);
+	const shown = useMemo(
+		() =>
+			kind
+				? blocks.filter(
+						(block) => block.kind === "list" || contentKind(block.item) === kind
+					)
+				: blocks,
+		[blocks, kind]
+	);
 	const [limit, setLimit] = useState(PAGE_SIZE);
 	const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -231,7 +244,7 @@ export function FeedPage({ topicId }: FeedPageProps) {
 			<div className="flex h-10 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
 				<ViewSwitch localeParam={localeParam} topicId={topicId} view="feed" />
 				<div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)] tabular-nums">
-					<span>{t("feed.count", { count: blocks.length })}</span>
+					<span>{t("feed.count", { count: shown.length })}</span>
 					{primary ? (
 						<button
 							className={toolButtonClassName}
@@ -243,6 +256,20 @@ export function FeedPage({ topicId }: FeedPageProps) {
 						</button>
 					) : null}
 				</div>
+			</div>
+			<div className="flex flex-wrap gap-1 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-1.5 sm:px-4">
+				<KindChip active={kind === null} onClick={() => setKind(null)}>
+					{t("kind.all")}
+				</KindChip>
+				{CONTENT_KINDS.map((value) => (
+					<KindChip
+						active={kind === value}
+						key={value}
+						onClick={() => setKind(kind === value ? null : value)}
+					>
+						{t(`kind.${value}`)}
+					</KindChip>
+				))}
 			</div>
 			{sourceManagerOpen && primary ? (
 				<SourceManagerDialog
@@ -262,7 +289,7 @@ export function FeedPage({ topicId }: FeedPageProps) {
 			{pending && blocks.length === 0 ? (
 				<Loader />
 			) : (
-				<Masonry blocks={blocks.slice(0, limit)} t={t} />
+				<Masonry blocks={shown.slice(0, limit)} t={t} />
 			)}
 			<div className="h-10" ref={sentinelRef} />
 		</div>
@@ -340,6 +367,8 @@ function FeedCard({
 }) {
 	const { item, source, heat } = entry;
 	const heatLabel = heat === undefined ? undefined : formatHeat(heat);
+	const itemKind = contentKind(item);
+	const kindLabel = itemKind ? t(`kind.${itemKind}`) : undefined;
 	// A cover that fails to load falls back to the poster; one that turns out
 	// to be a tiny thumbnail (it would only blur at card width) is set inside
 	// the poster instead.
@@ -412,6 +441,11 @@ function FeedCard({
 				<span className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
 					<SourceFavicon homeUrl={source.homeUrl} />
 					<span className="min-w-0 flex-1 truncate">{source.title}</span>
+					{kindLabel ? (
+						<span className="shrink-0 rounded-sm border border-[var(--border-subtle)] px-1 text-[10px] leading-4">
+							{kindLabel}
+						</span>
+					) : null}
 					{heatLabel && hasCover ? (
 						<span className="inline-flex items-center gap-0.5 text-[var(--accent-orange)] tabular-nums">
 							<Flame aria-hidden className="size-3" />
@@ -455,6 +489,27 @@ function HoverDetail({ item }: { item: NewsItem }) {
 			) : null}
 			<span className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-[var(--surface-card)] to-transparent" />
 		</span>
+	);
+}
+
+function KindChip({
+	active,
+	children,
+	onClick,
+}: {
+	active: boolean;
+	children: React.ReactNode;
+	onClick: () => void;
+}) {
+	return (
+		<button
+			aria-pressed={active}
+			className="rounded-full px-2.5 py-0.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:font-medium aria-pressed:text-[var(--accent-blue)]"
+			onClick={onClick}
+			type="button"
+		>
+			{children}
+		</button>
 	);
 }
 

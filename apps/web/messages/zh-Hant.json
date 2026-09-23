@@ -205,5 +205,13 @@
   "view_sources": "來源",
   "source_manager_button": "管理來源",
   "summary_show_rest": "展開其餘 {count} 條",
-  "summary_show_less": "收起"
+  "summary_show_less": "收起",
+  "kind_all": "全部",
+  "kind_release": "發布",
+  "kind_paper": "論文",
+  "kind_opinion": "觀點",
+  "kind_tutorial": "教學",
+  "kind_industry": "產業",
+  "kind_policy": "政策",
+  "kind_benchmark": "評測"
 }

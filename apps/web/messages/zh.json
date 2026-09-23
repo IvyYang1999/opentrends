@@ -205,5 +205,13 @@
   "view_sources": "来源",
   "source_manager_button": "管理来源",
   "summary_show_rest": "展开其余 {count} 条",
-  "summary_show_less": "收起"
+  "summary_show_less": "收起",
+  "kind_all": "全部",
+  "kind_release": "发布",
+  "kind_paper": "论文",
+  "kind_opinion": "观点",
+  "kind_tutorial": "教程",
+  "kind_industry": "行业",
+  "kind_policy": "政策",
+  "kind_benchmark": "评测"
 }

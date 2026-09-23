@@ -205,5 +205,13 @@
   "view_sources": "Источники",
   "source_manager_button": "Управление источниками",
   "summary_show_rest": "Показать ещё {count}",
-  "summary_show_less": "Свернуть"
+  "summary_show_less": "Свернуть",
+  "kind_all": "Все",
+  "kind_release": "Релизы",
+  "kind_paper": "Статьи",
+  "kind_opinion": "Мнения",
+  "kind_tutorial": "Руководства",
+  "kind_industry": "Индустрия",
+  "kind_policy": "Политика",
+  "kind_benchmark": "Бенчмарки"
 }
