@@ -31,6 +31,8 @@ Topic endpoint: GET /api/trends/:topic
 Source endpoint: GET /api/trends/:topic/sources/:sourceId
 Summary endpoint: GET /api/trends/:topic/summary
 Sources endpoint: GET /api/sources
+RSS: GET /api/trends/:topic/feed.xml, GET /api/trends/:topic/summary.xml
+MCP (Streamable HTTP, no key): https://api.opentrends.io/mcp
 ```
 
 Supported topics:

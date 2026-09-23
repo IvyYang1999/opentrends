@@ -2,7 +2,7 @@ import { Hono } from "hono";
 
 const OPENTRENDS_SKILL_MANIFEST = {
 	name: "opentrends",
-	version: "2026.09.23.1",
+	version: "2026.09.23.2",
 	updatedAt: "2026-09-23T00:00:00Z",
 	baseUrl: "https://api.opentrends.io",
 	installUrl: "https://opentrends.io/agents",
@@ -23,6 +23,13 @@ const OPENTRENDS_SKILL_MANIFEST = {
 		summary: "/api/trends/:topic/summary",
 		events: "/api/trends/:topic/events",
 		sources: "/api/sources",
+		itemsFeed: "/api/trends/:topic/feed.xml",
+		digestFeed: "/api/trends/:topic/summary.xml",
+	},
+	mcp: {
+		url: "https://api.opentrends.io/mcp",
+		transport: "streamable-http",
+		tools: ["get_digest", "get_topic", "get_source", "search"],
 	},
 	query: {
 		lang: ["zh", "en", "zh-Hant", "ru", "fr-FR", "es-ES", "de-DE", "pt-BR"],

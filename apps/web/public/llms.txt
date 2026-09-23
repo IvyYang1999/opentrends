@@ -18,6 +18,12 @@ Agents should use the JSON API, not the HTML pages. Every endpoint is public and
 - `GET https://api.opentrends.io/api/trends/{topic}/sources/{sourceId}?lang=zh` — one source, full item list
 - `GET https://api.opentrends.io/api/trends/{topic}/events?lang=zh` — clustered stories across sources
 - `GET https://api.opentrends.io/api/sources` — all source ids and metadata
+- `GET https://api.opentrends.io/api/trends/{topic}/feed.xml?lang=zh` — latest items as RSS 2.0
+- `GET https://api.opentrends.io/api/trends/{topic}/summary.xml?lang=zh&window=today` — the digest as RSS, one entry per edition
+
+## MCP
+
+`https://api.opentrends.io/mcp` — Streamable HTTP, stateless, no key. Tools: `get_digest`, `get_topic`, `get_source`, `search`. Claude Code: `claude mcp add --transport http opentrends https://api.opentrends.io/mcp`.
 
 Topics: `featured` (the cross-topic landing digest), `ai`, `programming`, `hardware`, `biotech`, `embodied`, `cn`.
 Languages: `zh`, `en`, `zh-Hant`, `ru`, `fr-FR`, `es-ES`, `de-DE`, `pt-BR`.

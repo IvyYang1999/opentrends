@@ -19,6 +19,16 @@ Languages: `en`, `zh`, `zh-Hant`, `ru`, `fr-FR`, `es-ES`, `de-DE`, `pt-BR`.
 
 ## Setup
 
+The easiest way needs no install: the API serves the same tools over
+Streamable HTTP at `https://api.opentrends.io/mcp`.
+
+```bash
+claude mcp add --transport http opentrends https://api.opentrends.io/mcp
+codex mcp add opentrends --url https://api.opentrends.io/mcp
+```
+
+For a client that only runs local commands, the stdio server below.
+
 Claude Desktop / Claude Code (`claude mcp add`):
 
 ```json
@@ -41,3 +51,9 @@ From this repository, without publishing:
 
 Environment: `OPENTRENDS_LANG` (default language), `OPENTRENDS_API_URL`
 (point a self-hosted instance at its own API).
+
+## Embedding
+
+`createOpenTrendsMcpServer({ baseUrl, defaultLang })` returns the `McpServer`;
+`createStatelessHttpTransport()` gives a per-request Streamable HTTP
+transport. `apps/server/src/routes/mcp.ts` is the eleven-line host.
