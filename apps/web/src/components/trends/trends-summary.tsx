@@ -540,6 +540,9 @@ function SummaryBody({
 							: t("summary.showRest", { count: total - DIGEST_FOLD })}
 					</button>
 				) : null}
+				{status === "streaming" ? (
+					<DigestSkeleton rows={DIGEST_FOLD - total} />
+				) : null}
 				{hoverState ? (
 					<CitationLinkPopover
 						anchor={hoverState.anchor}
@@ -553,13 +556,38 @@ function SummaryBody({
 		);
 	}
 	if (status === "loading" || status === "pending" || status === "streaming") {
-		return (
-			<p className="text-[13px] text-[var(--text-secondary)]">
-				{status === "pending" ? t("summary.preparing") : t("summary.reading")}
-			</p>
-		);
+		return <DigestSkeleton rows={DIGEST_FOLD} />;
 	}
 	return null;
+}
+
+const SKELETON_WIDTHS = ["w-[72%]", "w-[64%]", "w-[80%]", "w-[58%]", "w-[68%]"];
+
+// Placeholder lines the size of digest lines. Shown for the lines that have
+// not arrived yet, so switching topic shows a bar of five lines that fill
+// in, never one that collapses and grows back.
+function DigestSkeleton({ rows }: { rows: number }) {
+	if (rows <= 0) {
+		return null;
+	}
+	return (
+		<ol aria-busy className="space-y-1">
+			{Array.from({ length: rows }, (_, index) => (
+				<li
+					className="flex h-5 items-center gap-2"
+					// biome-ignore lint/suspicious/noArrayIndexKey: placeholders have no identity
+					key={index}
+				>
+					<span className="w-4 text-right text-[13px] text-[var(--text-muted)] tabular-nums">
+						{index + 1}.
+					</span>
+					<span
+						className={`h-3 animate-pulse bg-[var(--state-hover-subtle)] ${SKELETON_WIDTHS[index % SKELETON_WIDTHS.length]}`}
+					/>
+				</li>
+			))}
+		</ol>
+	);
 }
 
 const EMPTY_CITATIONS: CitationMap = new Map();
