@@ -12,7 +12,7 @@ test("SSR reads the existing localized preview without credentials or generation
 			expect(url.pathname).toBe("/api/trends/ai");
 			expect(url.searchParams.get("lang")).toBe("zh");
 			expect(url.searchParams.get("translations")).toBe("background");
-			expect(url.searchParams.get("items")).toBe("16");
+			expect(url.searchParams.get("items")).toBe("8");
 			// Bun 1.3 reports Request.credentials as include even when constructed with omit.
 			expect(request.headers.has("authorization")).toBe(false);
 			expect(request.headers.has("cookie")).toBe(false);

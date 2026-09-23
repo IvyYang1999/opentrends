@@ -78,6 +78,7 @@ import {
 	pageNeedsTranslationWarmup,
 	textNeedsTranslation,
 } from "./translation-status";
+import { SOURCE_RENDER_BATCH_SIZE } from "./trends-limits";
 import { trendSourceQueryOptions } from "./trends-query";
 import { TrendsSummary } from "./trends-summary";
 import type {
@@ -514,6 +515,39 @@ interface SourceWithSection {
 	source: SourceCardData;
 }
 
+function useProgressiveSources(sources: SourceWithSection[]) {
+	const [limit, setLimit] = useState(SOURCE_RENDER_BATCH_SIZE);
+	const sentinelRef = useRef<HTMLDivElement>(null);
+	const hasMore = limit < sources.length;
+
+	useEffect(() => {
+		if (!hasMore) {
+			return;
+		}
+		const sentinel = sentinelRef.current;
+		if (!sentinel || typeof IntersectionObserver === "undefined") {
+			setLimit(sources.length);
+			return;
+		}
+		const observer = new IntersectionObserver(
+			(records) => {
+				if (records.some((record) => record.isIntersecting)) {
+					setLimit(Math.min(sources.length, limit + SOURCE_RENDER_BATCH_SIZE));
+				}
+			},
+			{ rootMargin: "640px 0px" }
+		);
+		observer.observe(sentinel);
+		return () => observer.disconnect();
+	}, [hasMore, limit, sources.length]);
+
+	return {
+		hasMore,
+		sentinelRef,
+		visibleSources: sources.slice(0, limit),
+	};
+}
+
 interface SourceDragHandleProps {
 	onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
 	onPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void;
@@ -591,9 +625,11 @@ function SourceGridLayout({
 	onPinSource: (sourceId: string) => void;
 	pinnedSourceIds: ReadonlySet<string>;
 }) {
+	const { hasMore, sentinelRef, visibleSources } =
+		useProgressiveSources(sources);
 	return (
 		<div className="grid grid-cols-1 items-start sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
-			{sources.map(({ sectionId, source }) => (
+			{visibleSources.map(({ sectionId, source }) => (
 				<SourceCard
 					dragHandleProps={dragHandleProps(source.sourceId)}
 					isDragging={draggingSourceId === source.sourceId}
@@ -609,6 +645,9 @@ function SourceGridLayout({
 					translationPending={translationPending}
 				/>
 			))}
+			{hasMore ? (
+				<div aria-hidden className="col-span-full h-px" ref={sentinelRef} />
+			) : null}
 		</div>
 	);
 }
@@ -638,9 +677,11 @@ function SourceSectionsLayout({
 	onPinSource: (sourceId: string) => void;
 	pinnedSourceIds: ReadonlySet<string>;
 }) {
+	const { hasMore, sentinelRef, visibleSources } =
+		useProgressiveSources(sources);
 	return (
 		<div className="bg-[var(--surface-app)]">
-			{sources.map(({ sectionId, source }) => (
+			{visibleSources.map(({ sectionId, source }) => (
 				<SourceSection
 					dragHandleProps={dragHandleProps(source.sourceId)}
 					isDragging={draggingSourceId === source.sourceId}
@@ -656,6 +697,7 @@ function SourceSectionsLayout({
 					translationPending={translationPending}
 				/>
 			))}
+			{hasMore ? <div aria-hidden className="h-px" ref={sentinelRef} /> : null}
 		</div>
 	);
 }

@@ -1,7 +1,7 @@
 import { env } from "@opentrends/env/web";
 
 import type { Locale } from "@/lib/i18n";
-
+import { TRENDS_FULL_ITEMS_PER_SOURCE } from "./trends-limits";
 import type {
 	EventDetailData,
 	EventFeedData,
@@ -10,8 +10,6 @@ import type {
 } from "./types";
 
 const TRENDS_FETCH_TIMEOUT_MS = 25_000;
-export const TRENDS_PREVIEW_ITEMS_PER_SOURCE = 16;
-export const TRENDS_FULL_ITEMS_PER_SOURCE = 30;
 
 export class TrendsTopicNotFoundError extends Error {
 	constructor(topic: string) {

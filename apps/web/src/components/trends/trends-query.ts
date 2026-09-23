@@ -7,10 +7,12 @@ import {
 	loadTrendEvents,
 	loadTrendSource,
 	loadTrends,
-	TRENDS_FULL_ITEMS_PER_SOURCE,
-	TRENDS_PREVIEW_ITEMS_PER_SOURCE,
 } from "./load-trends";
 import { pageNeedsTranslationWarmup } from "./translation-status";
+import {
+	TRENDS_FULL_ITEMS_PER_SOURCE,
+	TRENDS_PREVIEW_ITEMS_PER_SOURCE,
+} from "./trends-limits";
 import type {
 	EventDetailData,
 	EventFeedData,

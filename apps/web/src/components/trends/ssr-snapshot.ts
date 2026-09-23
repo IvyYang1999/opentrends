@@ -1,4 +1,5 @@
 import type { Locale } from "@/lib/i18n";
+import { TRENDS_PREVIEW_ITEMS_PER_SOURCE } from "./trends-limits";
 import type { TrendsPageData } from "./types";
 
 export const SSR_TRENDS_TIMEOUT_MS = 3000;
@@ -13,7 +14,7 @@ export async function readTrendsSnapshot(
 ): Promise<TrendsPageData | null> {
 	const url = new URL(`/api/trends/${encodeURIComponent(topic)}`, origin);
 	url.search = new URLSearchParams({
-		items: "16",
+		items: String(TRENDS_PREVIEW_ITEMS_PER_SOURCE),
 		lang: locale,
 		translations: "background",
 	}).toString();
