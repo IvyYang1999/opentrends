@@ -157,12 +157,25 @@ function TopicLink({
 	// Switching topic keeps the current view (feed or events), except that
 	// the followed list has no events view.
 	const onEvents = location.pathname.includes("/events") && id !== "mine";
+	const onCalendar = location.pathname.includes("/calendar") && id !== "mine";
 	const onFeed = location.pathname.includes("/feed");
 	const className = cn(
 		segmentClassName,
-		(onEvents || onFeed ? search.topic === id : topic === id) &&
+		(onEvents || onFeed || onCalendar ? search.topic === id : topic === id) &&
 			segmentActiveClassName
 	);
+	if (onCalendar) {
+		return (
+			<Link
+				className={className}
+				params={{ locale: localeParam }}
+				search={{ topic: id }}
+				to="/{-$locale}/calendar"
+			>
+				{t(`topic.${id}`)}
+			</Link>
+		);
+	}
 	if (onFeed) {
 		return (
 			<Link
@@ -280,14 +293,6 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 						to="/{-$locale}/briefings"
 					>
 						{t("nav.briefings")}
-					</Link>
-					<Link
-						activeOptions={{ exact: false }}
-						className={segmentClassName}
-						params={{ locale: localeParam }}
-						to="/{-$locale}/calendar"
-					>
-						{t("nav.calendar")}
 					</Link>
 					<Link
 						activeOptions={{ exact: false }}

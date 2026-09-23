@@ -1,7 +1,7 @@
 import { ScrollArea } from "@opentrends/ui/components/scroll-area";
 import { createFileRoute } from "@tanstack/react-router";
 import { Check, Copy } from "lucide-react";
-import { type ReactElement, useEffect, useState } from "react";
+import { type ReactElement, type ReactNode, useEffect, useState } from "react";
 
 import { type Locale, resolveLocale } from "@/lib/i18n";
 import { buildSeo } from "@/lib/seo";
@@ -24,6 +24,8 @@ const MCP_JSON = `{
 const MCP_CLAUDE = `claude mcp add --transport http opentrends ${MCP_URL}`;
 const MCP_CODEX = `codex mcp add opentrends --url ${MCP_URL}`;
 const MCP_LOCAL = "bun run packages/mcp/src/index.ts";
+const MCP_PROMPT = `请把 OpenTrends 的 MCP server 加到我当前的工具里：地址 ${MCP_URL}，传输方式 Streamable HTTP，不需要 API key。配好后列出它提供的工具。`;
+const MCP_PROMPT_EN = `Add the OpenTrends MCP server to my tools: URL ${MCP_URL}, Streamable HTTP transport, no API key. When it is connected, list the tools it provides.`;
 const API_FIRST = `curl '${API_URL}/api/trends/ai/summary?format=json&lang=zh&window=today'`;
 const API_RESPONSE = `{
   "topic": "ai", "window": "today", "lang": "zh",
@@ -82,27 +84,42 @@ interface Strings {
 	apiIntro: string;
 	apiNotes: [string, string][];
 	apiNotesTitle: string;
+	apiStepEndpoints: [string, string];
+	apiStepFirst: [string, string];
+	apiStepResponse: [string, string];
 	apiSuccess: string;
 	apiTitle: string;
 	copied: string;
 	copy: string;
+	difference: string;
 	examples: string[];
 	examplesTitle: string;
 	footer: string[];
+	guide: [string, string][];
+	guideTitle: string;
 	heroBody: string;
 	heroTitle: string;
+	manualTitle: string;
 	mcpIntro: string;
 	mcpLocal: string;
 	mcpLocalTitle: string;
+	mcpPrompt: string;
+	mcpStepConnect: [string, string];
+	mcpStepTools: [string, string];
+	mcpStepVerify: [string, string];
 	mcpSuccess: string;
 	mcpTitle: string;
 	mcpTools: string;
 	mcpUrl: string;
 	mcpVerify: string;
 	rssDigest: string;
+	rssDigestSuccess: string;
 	rssIntro: string;
 	rssItems: string;
+	rssItemsSuccess: string;
 	rssNotes: string[];
+	rssStepAdd: [string, string];
+	rssStepPick: [string, string];
 	rssSuccess: string;
 	rssTitle: string;
 	rssTopic: string;
@@ -118,6 +135,49 @@ interface Strings {
 }
 
 const EN: Strings = {
+	guide: [
+		[
+			"I want my agent (Claude Code, Codex, Cursor…) to read trends for me",
+			"Skill or MCP. One is enough: MCP if your client takes a server URL, otherwise the Skill.",
+		],
+		[
+			"I want OpenTrends data inside my own product",
+			"API. Plain JSON over HTTPS, no key.",
+		],
+		["I want it in my reader, Slack or an automation", "RSS."],
+	],
+	guideTitle: "Which one do I need?",
+	manualTitle: "Set it up by hand",
+	mcpPrompt: MCP_PROMPT_EN,
+	mcpStepConnect: [
+		"Send this to your agent",
+		"It adds the server to its own settings. No install, no key.",
+	],
+	mcpStepTools: [
+		"Check the tools",
+		"Once connected the agent should list these four.",
+	],
+	mcpStepVerify: [
+		"Ask one question to verify",
+		"A real call, with a visible result.",
+	],
+	rssDigestSuccess:
+		"Your reader shows one entry, today's ten lines with citation links; a new entry appears when the digest changes.",
+	rssItemsSuccess:
+		"Your reader shows the topic's latest items, newest first, each linking to the original article.",
+	rssStepPick: ["Pick a topic", "Both addresses below follow it."],
+	rssStepAdd: [
+		"Add an address to your reader",
+		"Two feeds, two different things.",
+	],
+	apiStepFirst: ["Make the first request", "Any HTTP client, no key."],
+	apiStepEndpoints: [
+		"Pick an endpoint",
+		"Everything the site shows is here as JSON.",
+	],
+	apiStepResponse: ["Read the response", "The digest comes back as data."],
+	difference:
+		"A Skill is a page of instructions that teaches the agent how to call the API. An MCP server hands the agent tools directly. Same data, same result; install one, not both.",
 	apiEndpoints: {
 		digest: "The digest as entries with reasons and citation links",
 		digestFeed: "The digest as RSS, one entry per edition",
@@ -222,6 +282,33 @@ const EN: Strings = {
 };
 
 const ZH: Strings = {
+	guide: [
+		[
+			"我想让 Agent（Claude Code、Codex、Cursor…）替我看趋势",
+			"Skill 或 MCP，装一个就够：客户端能填 server 地址的用 MCP，否则用 Skill。",
+		],
+		["我想把 OpenTrends 的数据接进自己的产品", "API。纯 JSON，不用 key。"],
+		["我想在阅读器、Slack 或自动化里订阅", "RSS。"],
+	],
+	guideTitle: "我该用哪个？",
+	manualTitle: "手动配置",
+	mcpPrompt: MCP_PROMPT,
+	mcpStepConnect: [
+		"把这句话发给你的 Agent",
+		"它会把 server 写进自己的配置。不用安装，不用 key。",
+	],
+	mcpStepTools: ["看一眼工具", "接上后 Agent 应该列出这四个。"],
+	mcpStepVerify: ["问一句验证", "真实调用一次，看得见结果。"],
+	rssDigestSuccess:
+		"阅读器里出现一条：今天的 10 条，每条带引用链接；摘要变了才会出新的一条。",
+	rssItemsSuccess: "阅读器里出现该主题的最新条目，新的在前，每条链接到原文。",
+	rssStepPick: ["选一个主题", "下面两个地址跟着变。"],
+	rssStepAdd: ["把地址加进阅读器", "两条 feed，是两种东西。"],
+	apiStepFirst: ["发第一个请求", "任何 HTTP 客户端，不用 key。"],
+	apiStepEndpoints: ["挑一个端点", "网站上看到的一切，这里都有 JSON。"],
+	apiStepResponse: ["读返回", "摘要以数据形式返回。"],
+	difference:
+		"Skill 是一页说明书，教 Agent 怎么调 API；MCP 是直接把工具塞给 Agent。数据一样、结果一样，装一个就行，不用都装。",
 	apiEndpoints: {
 		digest: "摘要：结论、原因、引用链接",
 		digestFeed: "摘要的 RSS，每期一条",
@@ -320,6 +407,32 @@ const ZH: Strings = {
 
 const ZH_HANT: Strings = {
 	...ZH,
+	guide: [
+		[
+			"我想讓 Agent（Claude Code、Codex、Cursor…）替我看趨勢",
+			"Skill 或 MCP，裝一個就夠：用戶端能填 server 位址的用 MCP，否則用 Skill。",
+		],
+		["我想把 OpenTrends 的資料接進自己的產品", "API。純 JSON，不用 key。"],
+		["我想在閱讀器、Slack 或自動化裡訂閱", "RSS。"],
+	],
+	guideTitle: "我該用哪個？",
+	manualTitle: "手動設定",
+	mcpStepConnect: [
+		"把這句話發給你的 Agent",
+		"它會把 server 寫進自己的設定。不用安裝，不用 key。",
+	],
+	mcpStepTools: ["看一眼工具", "接上後 Agent 應該列出這四個。"],
+	mcpStepVerify: ["問一句驗證", "真實呼叫一次，看得見結果。"],
+	rssDigestSuccess:
+		"閱讀器裡出現一則：今天的 10 則，每則附引用連結；摘要變了才會出新的一則。",
+	rssItemsSuccess: "閱讀器裡出現該主題的最新條目，新的在前，每則連結到原文。",
+	rssStepPick: ["選一個主題", "下面兩個位址跟著變。"],
+	rssStepAdd: ["把位址加進閱讀器", "兩條 feed，是兩種東西。"],
+	apiStepFirst: ["發第一個請求", "任何 HTTP 用戶端，不用 key。"],
+	apiStepEndpoints: ["挑一個端點", "網站上看到的一切，這裡都有 JSON。"],
+	apiStepResponse: ["讀回傳", "摘要以資料形式回傳。"],
+	difference:
+		"Skill 是一頁說明書，教 Agent 怎麼呼叫 API；MCP 是直接把工具塞給 Agent。資料一樣、結果一樣，裝一個就行，不用都裝。",
 	apiEndpoints: {
 		digest: "摘要：結論、原因、引用連結",
 		digestFeed: "摘要的 RSS，每期一則",
@@ -493,12 +606,16 @@ function Snippet({
 	);
 }
 
+// One numbered step with everything it needs right under its heading: the
+// prompt to copy, the table to check, the sentence that says it worked.
 function Step({
 	body,
+	children,
 	index,
 	title,
 }: {
 	body: string;
+	children?: ReactNode;
 	index: number;
 	title: string;
 }) {
@@ -507,46 +624,35 @@ function Step({
 			<span className="mt-0.5 inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-[var(--accent-blue-bg)] font-semibold text-[11px] text-[var(--accent-blue)]">
 				{index}
 			</span>
-			<span>
-				<span className="block font-semibold text-[14px] text-[var(--text-heading)]">
-					{title}
-				</span>
-				<span className="block text-[13px] text-[var(--text-secondary)] leading-relaxed">
-					{body}
-				</span>
-			</span>
+			<div className="min-w-0 flex-1 space-y-2">
+				<div>
+					<span className="block font-semibold text-[14px] text-[var(--text-heading)]">
+						{title}
+					</span>
+					<span className="block text-[13px] text-[var(--text-secondary)] leading-relaxed">
+						{body}
+					</span>
+				</div>
+				{children}
+			</div>
 		</li>
 	);
 }
 
-// The verify prompt and what a correct answer looks like, the same shape on
-// every tab so the reader knows the drill after the first one.
-function Verify({
+function Success({
+	children,
 	strings,
-	success,
-	verify,
 }: {
+	children: string;
 	strings: Strings;
-	success: string;
-	verify?: string;
 }) {
 	return (
-		<div className="space-y-3 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-card)] p-4">
-			{verify ? (
-				<>
-					<h3 className="font-semibold text-[13px] text-[var(--text-heading)]">
-						{strings.verifyLabel}
-					</h3>
-					<Snippet label="Prompt" strings={strings} value={verify} />
-				</>
-			) : null}
-			<p className="text-[13px] leading-relaxed">
-				<span className="mr-1.5 rounded-[4px] bg-[var(--accent-green-bg,#e6f4ea)] px-1.5 py-0.5 font-medium text-[11px] text-[var(--accent-green,#1e7a3c)]">
-					{strings.successLabel}
-				</span>
-				<span className="text-[var(--text-secondary)]">{success}</span>
-			</p>
-		</div>
+		<p className="text-[13px] leading-relaxed">
+			<span className="mr-1.5 rounded-[4px] bg-[#e6f4ea] px-1.5 py-0.5 font-medium text-[#1e7a3c] text-[11px] dark:bg-[#1f3a28] dark:text-[#9fe0b5]">
+				{strings.successLabel}
+			</span>
+			<span className="text-[var(--text-secondary)]">{children}</span>
+		</p>
 	);
 }
 
@@ -559,20 +665,24 @@ function Intro({ children }: { children: string }) {
 }
 
 function SkillTab({ strings }: { strings: Strings }) {
+	const [install, session, verify] = strings.skillSteps;
 	return (
 		<div className="space-y-6">
 			<Intro>{strings.skillIntro}</Intro>
-			<ol className="space-y-4">
-				{strings.skillSteps.map(([title, body], index) => (
-					<Step body={body} index={index + 1} key={title} title={title} />
-				))}
+			<ol className="space-y-5">
+				<Step body={install[1]} index={1} title={install[0]}>
+					<Snippet label="Prompt" strings={strings} value={INSTALL_PROMPT} />
+				</Step>
+				<Step body={session[1]} index={2} title={session[0]} />
+				<Step body={verify[1]} index={3} title={verify[0]}>
+					<Snippet
+						label="Prompt"
+						strings={strings}
+						value={strings.skillVerify}
+					/>
+					<Success strings={strings}>{strings.skillSuccess}</Success>
+				</Step>
 			</ol>
-			<Snippet label="Prompt" strings={strings} value={INSTALL_PROMPT} />
-			<Verify
-				strings={strings}
-				success={strings.skillSuccess}
-				verify={strings.skillVerify}
-			/>
 			<section className="space-y-3">
 				<h3 className="font-semibold text-[13px] text-[var(--text-heading)]">
 					{strings.examplesTitle}
@@ -596,42 +706,62 @@ function McpTab({ strings }: { strings: Strings }) {
 	return (
 		<div className="space-y-6">
 			<Intro>{strings.mcpIntro}</Intro>
-			<Snippet label={strings.mcpUrl} strings={strings} value={MCP_URL} />
-			<Snippet label="Claude Code" strings={strings} value={MCP_CLAUDE} />
-			<Snippet label="Codex" strings={strings} value={MCP_CODEX} />
-			<Snippet label="Cursor / mcp.json" strings={strings} value={MCP_JSON} />
-			<section className="space-y-2">
-				<h3 className="font-semibold text-[13px] text-[var(--text-heading)]">
-					{strings.mcpTools}
-				</h3>
-				<table className="w-full text-[13px]">
-					<tbody>
-						{MCP_TOOLS.map(([name, args]) => (
-							<tr className="border-[var(--border-subtle)] border-t" key={name}>
-								<td className="py-1.5 pr-4 font-mono text-[var(--text-primary)]">
-									{name}
-								</td>
-								<td className="py-1.5 font-mono text-[var(--text-muted)]">
-									{args}
-								</td>
-							</tr>
-						))}
-					</tbody>
-				</table>
-			</section>
-			<Verify
-				strings={strings}
-				success={strings.mcpSuccess}
-				verify={strings.mcpVerify}
-			/>
-			<details className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-app)] p-3 text-[13px]">
+			<ol className="space-y-5">
+				<Step
+					body={strings.mcpStepConnect[1]}
+					index={1}
+					title={strings.mcpStepConnect[0]}
+				>
+					<Snippet label="Prompt" strings={strings} value={strings.mcpPrompt} />
+				</Step>
+				<Step
+					body={strings.mcpStepTools[1]}
+					index={2}
+					title={strings.mcpStepTools[0]}
+				>
+					<table className="w-full text-[13px]">
+						<tbody>
+							{MCP_TOOLS.map(([name, args]) => (
+								<tr
+									className="border-[var(--border-subtle)] border-t"
+									key={name}
+								>
+									<td className="py-1.5 pr-4 font-mono text-[var(--text-primary)]">
+										{name}
+									</td>
+									<td className="py-1.5 font-mono text-[var(--text-muted)]">
+										{args}
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</Step>
+				<Step
+					body={strings.mcpStepVerify[1]}
+					index={3}
+					title={strings.mcpStepVerify[0]}
+				>
+					<Snippet label="Prompt" strings={strings} value={strings.mcpVerify} />
+					<Success strings={strings}>{strings.mcpSuccess}</Success>
+				</Step>
+			</ol>
+			<details className="space-y-3 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-app)] p-3 text-[13px]">
 				<summary className="cursor-pointer font-medium text-[var(--text-heading)]">
-					{strings.mcpLocalTitle}
+					{strings.manualTitle}
 				</summary>
-				<p className="mt-2 mb-3 text-[var(--text-secondary)]">
-					{strings.mcpLocal}
-				</p>
-				<Snippet label="stdio" strings={strings} value={MCP_LOCAL} />
+				<div className="mt-3 space-y-3">
+					<Snippet label={strings.mcpUrl} strings={strings} value={MCP_URL} />
+					<Snippet label="Claude Code" strings={strings} value={MCP_CLAUDE} />
+					<Snippet label="Codex" strings={strings} value={MCP_CODEX} />
+					<Snippet
+						label="Cursor / mcp.json"
+						strings={strings}
+						value={MCP_JSON}
+					/>
+					<p className="text-[var(--text-secondary)]">{strings.mcpLocal}</p>
+					<Snippet label="stdio" strings={strings} value={MCP_LOCAL} />
+				</div>
 			</details>
 		</div>
 	);
@@ -643,31 +773,49 @@ function RssTab({ strings }: { strings: Strings }) {
 	return (
 		<div className="space-y-6">
 			<Intro>{strings.rssIntro}</Intro>
-			<div className="flex flex-wrap items-center gap-2 text-[12px]">
-				<span className="text-[var(--text-muted)]">{strings.rssTopic}</span>
-				{TOPICS.map((id) => (
-					<button
-						aria-pressed={topic === id}
-						className="rounded-full border border-[var(--border-default)] bg-[var(--surface-app)] px-2.5 py-0.5 font-mono text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-blue)] aria-pressed:border-[var(--accent-blue)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:text-[var(--accent-blue)]"
-						key={id}
-						onClick={() => setTopic(id)}
-						type="button"
-					>
-						{id}
-					</button>
-				))}
-			</div>
-			<Snippet
-				label={strings.rssItems}
-				strings={strings}
-				value={`${base}/feed.xml?lang=zh`}
-			/>
-			<Snippet
-				label={strings.rssDigest}
-				strings={strings}
-				value={`${base}/summary.xml?lang=zh&window=today`}
-			/>
-			<Verify strings={strings} success={strings.rssSuccess} />
+			<ol className="space-y-5">
+				<Step
+					body={strings.rssStepPick[1]}
+					index={1}
+					title={strings.rssStepPick[0]}
+				>
+					<div className="flex flex-wrap items-center gap-2 text-[12px]">
+						{TOPICS.map((id) => (
+							<button
+								aria-pressed={topic === id}
+								className="rounded-full border border-[var(--border-default)] bg-[var(--surface-app)] px-2.5 py-0.5 font-mono text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-blue)] aria-pressed:border-[var(--accent-blue)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:text-[var(--accent-blue)]"
+								key={id}
+								onClick={() => setTopic(id)}
+								type="button"
+							>
+								{id}
+							</button>
+						))}
+					</div>
+				</Step>
+				<Step
+					body={strings.rssStepAdd[1]}
+					index={2}
+					title={strings.rssStepAdd[0]}
+				>
+					<div className="space-y-2">
+						<Snippet
+							label={strings.rssItems}
+							strings={strings}
+							value={`${base}/feed.xml?lang=zh`}
+						/>
+						<Success strings={strings}>{strings.rssItemsSuccess}</Success>
+					</div>
+					<div className="space-y-2">
+						<Snippet
+							label={strings.rssDigest}
+							strings={strings}
+							value={`${base}/summary.xml?lang=zh&window=today`}
+						/>
+						<Success strings={strings}>{strings.rssDigestSuccess}</Success>
+					</div>
+				</Step>
+			</ol>
 			<ul className="list-disc space-y-1 pl-5 text-[13px] text-[var(--text-secondary)] leading-relaxed">
 				{strings.rssNotes.map((note) => (
 					<li key={note}>{note}</li>
@@ -681,31 +829,47 @@ function ApiTab({ strings }: { strings: Strings }) {
 	return (
 		<div className="space-y-6">
 			<Intro>{strings.apiIntro}</Intro>
-			<Snippet label={strings.apiFirst} strings={strings} value={API_FIRST} />
-			<table className="w-full text-[13px]">
-				<tbody>
-					{ENDPOINTS.map(([path, key]) => (
-						<tr className="border-[var(--border-subtle)] border-t" key={path}>
-							<td className="py-1.5 pr-4 font-mono text-[12px] text-[var(--text-primary)]">
-								<span className="mr-2 text-[var(--text-muted)]">GET</span>
-								{path}
-							</td>
-							<td className="py-1.5 text-[var(--text-secondary)]">
-								{strings.apiEndpoints[key]}
-							</td>
-						</tr>
-					))}
-				</tbody>
-			</table>
-			<Verify strings={strings} success={strings.apiSuccess} />
-			<details className="rounded-md border border-[var(--border-subtle)] bg-[var(--surface-app)] p-3 text-[13px]">
-				<summary className="cursor-pointer font-medium text-[var(--text-heading)]">
-					Response
-				</summary>
-				<div className="mt-3">
+			<ol className="space-y-5">
+				<Step
+					body={strings.apiStepFirst[1]}
+					index={1}
+					title={strings.apiStepFirst[0]}
+				>
+					<Snippet label="curl" strings={strings} value={API_FIRST} />
+				</Step>
+				<Step
+					body={strings.apiStepEndpoints[1]}
+					index={2}
+					title={strings.apiStepEndpoints[0]}
+				>
+					<table className="w-full text-[13px]">
+						<tbody>
+							{ENDPOINTS.map(([path, key]) => (
+								<tr
+									className="border-[var(--border-subtle)] border-t"
+									key={path}
+								>
+									<td className="py-1.5 pr-4 font-mono text-[12px] text-[var(--text-primary)]">
+										<span className="mr-2 text-[var(--text-muted)]">GET</span>
+										{path}
+									</td>
+									<td className="py-1.5 text-[var(--text-secondary)]">
+										{strings.apiEndpoints[key]}
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+				</Step>
+				<Step
+					body={strings.apiStepResponse[1]}
+					index={3}
+					title={strings.apiStepResponse[0]}
+				>
 					<Snippet label="JSON" strings={strings} value={API_RESPONSE} />
-				</div>
-			</details>
+					<Success strings={strings}>{strings.apiSuccess}</Success>
+				</Step>
+			</ol>
 			<section className="space-y-2">
 				<h3 className="font-semibold text-[13px] text-[var(--text-heading)]">
 					{strings.apiNotesTitle}
@@ -781,6 +945,27 @@ function AgentsRoute() {
 							))}
 						</div>
 					</header>
+
+					<section className="space-y-2 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-card)] p-4">
+						<h2 className="font-semibold text-[13px] text-[var(--text-heading)]">
+							{strings.guideTitle}
+						</h2>
+						<dl className="space-y-1.5 text-[13px]">
+							{strings.guide.map(([want, answer]) => (
+								<div className="flex flex-col sm:flex-row sm:gap-3" key={want}>
+									<dt className="text-[var(--text-secondary)] sm:w-1/2">
+										{want}
+									</dt>
+									<dd className="font-medium text-[var(--text-heading)] sm:w-1/2">
+										{answer}
+									</dd>
+								</div>
+							))}
+						</dl>
+						<p className="text-[12px] text-[var(--text-muted)] leading-relaxed">
+							{strings.difference}
+						</p>
+					</section>
 
 					<div
 						aria-label="Integration"

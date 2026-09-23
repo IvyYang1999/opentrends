@@ -13,7 +13,7 @@ interface ViewSwitchProps {
 	localeParam: Locale | undefined;
 	/** Topic to keep when switching; omitted on the all-topics events feed. */
 	topicId?: string;
-	view: "feed" | "trends" | "events";
+	view: "feed" | "trends" | "events" | "calendar";
 }
 
 // Trends (source cards) or Events (clustered stories) for the open topic.
@@ -43,17 +43,30 @@ export function ViewSwitch({ localeParam, topicId, view }: ViewSwitchProps) {
 				{t("view.sources")}
 			</Link>
 			{topicId === FOLLOWED_TOPIC_ID ? null : (
-				<Link
-					className={cn(
-						segmentClassName,
-						view === "events" && segmentActiveClassName
-					)}
-					params={{ locale: localeParam }}
-					search={topicId ? { topic: topicId } : {}}
-					to="/{-$locale}/events"
-				>
-					{t("nav.events")}
-				</Link>
+				<>
+					<Link
+						className={cn(
+							segmentClassName,
+							view === "events" && segmentActiveClassName
+						)}
+						params={{ locale: localeParam }}
+						search={topicId ? { topic: topicId } : {}}
+						to="/{-$locale}/events"
+					>
+						{t("nav.events")}
+					</Link>
+					<Link
+						className={cn(
+							segmentClassName,
+							view === "calendar" && segmentActiveClassName
+						)}
+						params={{ locale: localeParam }}
+						search={{ topic: topicId ?? "ai" }}
+						to="/{-$locale}/calendar"
+					>
+						{t("nav.calendar")}
+					</Link>
+				</>
 			)}
 		</nav>
 	);

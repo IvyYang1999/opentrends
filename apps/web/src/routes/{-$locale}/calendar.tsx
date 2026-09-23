@@ -1,21 +1,20 @@
 import { env } from "@opentrends/env/web";
 import { ScrollArea } from "@opentrends/ui/components/scroll-area";
 import { queryOptions, useQuery } from "@tanstack/react-query";
-import { createFileRoute, Link } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import { segmentClassName } from "@/components/chrome-styles";
 import {
 	CONTENT_KINDS,
 	type ContentKind,
 	classifyTitle,
 } from "@/components/trends/content-kind";
+import { ViewSwitch } from "@/components/trends/view-switch";
 import {
 	type Locale,
 	localePathParam,
 	resolveLocale,
-	type TranslationKey,
 	translate,
 	useLocale,
 	useT,
@@ -27,14 +26,6 @@ import { buildSeo } from "@/lib/seo";
 // or "policy this month" is one click. Data comes from the item history
 // the API keeps; nothing here calls a model.
 
-const TOPICS = [
-	"ai",
-	"programming",
-	"hardware",
-	"biotech",
-	"embodied",
-	"cn",
-] as const;
 const CELL_ITEMS = 3;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -186,20 +177,7 @@ function CalendarRoute() {
 	return (
 		<ScrollArea className="min-w-0 flex-1 bg-[var(--surface-app)] text-[var(--text-primary)]">
 			<div className="flex flex-wrap items-center gap-2 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-2 sm:px-4">
-				<nav className="flex items-center gap-0.5">
-					{TOPICS.map((id) => (
-						<Link
-							aria-current={id === topic ? "page" : undefined}
-							className={segmentClassName}
-							key={id}
-							params={{ locale: localeParam }}
-							search={{ month, topic: id }}
-							to="/{-$locale}/calendar"
-						>
-							{t(`topic.${id}` as TranslationKey)}
-						</Link>
-					))}
-				</nav>
+				<ViewSwitch localeParam={localeParam} topicId={topic} view="calendar" />
 				<span className="mx-1 h-4 w-px bg-[var(--border-default)]" />
 				<div className="flex items-center gap-1">
 					<button
