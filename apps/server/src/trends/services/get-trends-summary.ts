@@ -1045,6 +1045,47 @@ function buildFallbackSummary(
 	].join("\n");
 }
 
+// Digests cached before citations carried a topic get it filled in from the
+// current pages the first time they are served, then the enriched entry is
+// written back so this runs once per entry.
+async function withCitationTopics(
+	entry: CachedSummaryEntry,
+	cacheTopicId: string,
+	topicId: string,
+	topic: TopicPreset,
+	lang: TranslationLanguage,
+	window: SummaryWindow
+): Promise<Citation[]> {
+	if (entry.citations.every((citation) => citation.topic)) {
+		return entry.citations;
+	}
+	let cited: CitedItem[];
+	try {
+		cited = await collectWindowCitedItems(topicId, topic, lang, window);
+	} catch {
+		return entry.citations;
+	}
+	const topicByUrl = new Map<string, string>();
+	for (const { item } of cited) {
+		const found = topicForSource(item.sourceId);
+		if (found) {
+			topicByUrl.set(item.url, found);
+		}
+	}
+	const citations = entry.citations.map((citation) => {
+		const found = citation.topic ?? topicByUrl.get(citation.url);
+		return found ? { ...citation, topic: found } : citation;
+	});
+	if (
+		citations.some((citation, index) => citation !== entry.citations[index])
+	) {
+		const enriched = { ...entry, citations };
+		hydrateMemorySummary(cacheTopicId, lang, enriched);
+		await writeHotSummaryCache(cacheTopicId, lang, enriched);
+	}
+	return citations;
+}
+
 export async function prepareTrendsSummary(
 	topicId: string,
 	lang: TranslationLanguage = "en",
@@ -1063,7 +1104,14 @@ export async function prepareTrendsSummary(
 	const cachedSummary = await readAnyCachedSummary(cacheTopicId, lang, window);
 	if (cachedSummary) {
 		return {
-			citations: cachedSummary.citations,
+			citations: await withCitationTopics(
+				cachedSummary,
+				cacheTopicId,
+				topicId,
+				resolved.preset,
+				lang,
+				window
+			),
 			stream: (abortSignal) =>
 				replayCachedSummary(cachedSummary.text, abortSignal),
 		};

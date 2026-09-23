@@ -278,7 +278,7 @@ export default function Header({ initialGithubStats }: HeaderProps) {
 						className={segmentClassName}
 						params={{ locale: localeParam }}
 						title={t("nav.skillsTitle")}
-						to="/{-$locale}/skills/opentrends"
+						to="/{-$locale}/agents"
 					>
 						{t("nav.skills")}
 					</Link>

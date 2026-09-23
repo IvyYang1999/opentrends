@@ -5,7 +5,7 @@ const OPENTRENDS_SKILL_MANIFEST = {
 	version: "2026.09.23.1",
 	updatedAt: "2026-09-23T00:00:00Z",
 	baseUrl: "https://api.opentrends.io",
-	installUrl: "https://opentrends.io/skills/opentrends",
+	installUrl: "https://opentrends.io/agents",
 	skillUrl: "https://opentrends.io/skills/opentrends/SKILL.md",
 	llmsTxtUrl: "https://opentrends.io/llms.txt",
 	topics: [

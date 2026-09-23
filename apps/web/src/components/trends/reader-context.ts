@@ -6,6 +6,9 @@ import type { NewsItem } from "./types";
 // timezone), the hour, and which sources and subjects they have been
 // clicking. Nothing here is sent anywhere.
 export interface ReaderContext {
+	/** Card attribute → share of recent clicks that carried it, 0..1. Empty
+	 * until enough clicks exist to say anything. */
+	attributeShare: ReadonlyMap<string, number>;
 	/** Local hour, 0–23. */
 	hour: number;
 	/** The reader's language: "zh" for Chinese, otherwise a Latin-script one. */
@@ -19,6 +22,7 @@ export interface ReaderContext {
 }
 
 export const NEUTRAL_READER: ReaderContext = {
+	attributeShare: new Map(),
 	hour: 12,
 	locale: "en",
 	sinosphere: false,
@@ -32,6 +36,8 @@ const SIGNAL_HALF_LIFE_MS = 7 * DAY_MS;
 // Clicks needed on one source, or shared subjects, before the boost is full.
 const SOURCE_SATURATION = 5;
 const TERM_SATURATION = 3;
+// Fewer clicks than this say nothing about what kind of card a reader likes.
+const ATTRIBUTE_MIN_CLICKS = 5;
 const SINOSPHERE_ZONES = new Set([
 	"Asia/Shanghai",
 	"Asia/Chongqing",
@@ -115,14 +121,28 @@ function saturate(weight: number, saturation: number): number {
 export function affinitiesFromSignals(
 	signals: readonly FeedSignal[],
 	now: number
-): Pick<ReaderContext, "sourceAffinity" | "termAffinity"> {
+): Pick<ReaderContext, "attributeShare" | "sourceAffinity" | "termAffinity"> {
 	const sources = new Map<string, number>();
 	const terms = new Map<string, number>();
+	const attributes = new Map<string, number>();
+	let tagged = 0;
 	for (const signal of signals) {
 		const weight = decayed(signal.at, now);
 		sources.set(signal.sourceId, (sources.get(signal.sourceId) ?? 0) + weight);
 		for (const term of titleTerms(signal.title)) {
 			terms.set(term, (terms.get(term) ?? 0) + weight);
+		}
+		if (signal.attributes) {
+			tagged += weight;
+			for (const attribute of signal.attributes) {
+				attributes.set(attribute, (attributes.get(attribute) ?? 0) + weight);
+			}
+		}
+	}
+	const attributeShare = new Map<string, number>();
+	if (tagged >= ATTRIBUTE_MIN_CLICKS) {
+		for (const [attribute, weight] of attributes) {
+			attributeShare.set(attribute, weight / tagged);
 		}
 	}
 	for (const [id, weight] of sources) {
@@ -131,7 +151,7 @@ export function affinitiesFromSignals(
 	for (const [term, weight] of terms) {
 		terms.set(term, saturate(weight, TERM_SATURATION));
 	}
-	return { sourceAffinity: sources, termAffinity: terms };
+	return { attributeShare, sourceAffinity: sources, termAffinity: terms };
 }
 
 export function isSinosphereZone(timeZone: string | undefined): boolean {

@@ -1,3 +1,4 @@
+import { type ItemAttribute, itemAttributes } from "./item-attributes";
 import {
 	itemIsChinese,
 	NEUTRAL_READER,
@@ -8,6 +9,7 @@ import { coverKind } from "./source-card-model";
 import type { NewsItem, SourceCardData, TrendsPageData } from "./types";
 
 export interface FeedEntry {
+	attributes: ItemAttribute[];
 	heat?: number;
 	item: NewsItem;
 	kind: "item";
@@ -40,6 +42,16 @@ const OWN_LANGUAGE_BOOST = 1.12;
 const REGION_BOOST = 1.08;
 const SOURCE_AFFINITY_WEIGHT = 0.4;
 const TERM_AFFINITY_WEIGHT = 0.25;
+// Taste for kinds of card: a reader who clicks pictures twice as often as
+// the feed shows them gets more pictures, and so on for fresh vs hot,
+// community vs official, Chinese vs not. Measured against the current pool,
+// so it corrects for what was on offer, and capped so it never drowns
+// freshness.
+const ATTRIBUTE_WEIGHT = 0.3;
+const ATTRIBUTE_BOOST_MAX = 1.3;
+const ATTRIBUTE_BOOST_MIN = 0.85;
+// Heat above this share of the source's top is "hot".
+const HOT_THRESHOLD = 0.5;
 // In the morning the feed should catch up on the night: freshness fades more
 // slowly and heat counts for more, since what the world reacted to overnight
 // is the news.
@@ -143,15 +155,55 @@ function scoreSource(
 			: UNDATED_AGE_MS;
 		const recency = 2 ** (-age / halfLife);
 		const heat = heats[index];
+		const hotness = heatFactor(heat, maxHeat);
 		const score =
 			recency *
-			(1 + heatWeight * heatFactor(heat, maxHeat)) *
+			(1 + heatWeight * hotness) *
 			(followed ? FOLLOWED_BOOST : 1) *
 			(coverKind(item.imageUrl) === "cover" ? COVER_BOOST : 1) *
 			sourceBoost *
 			readerFit(item, reader);
-		return { heat, item, kind: "item" as const, score, source };
+		return {
+			attributes: itemAttributes(item, source, {
+				hot: hotness >= HOT_THRESHOLD,
+				now,
+			}),
+			heat,
+			item,
+			kind: "item" as const,
+			score,
+			source,
+		};
 	});
+}
+
+// Scales each entry by how much more (or less) the reader clicks its kind of
+// card than the pool offers it.
+function applyAttributeTaste(entries: FeedEntry[], reader: ReaderContext) {
+	if (reader.attributeShare.size === 0 || entries.length === 0) {
+		return;
+	}
+	const poolShare = new Map<string, number>();
+	for (const entry of entries) {
+		for (const attribute of entry.attributes) {
+			poolShare.set(attribute, (poolShare.get(attribute) ?? 0) + 1);
+		}
+	}
+	const factor = new Map<string, number>();
+	for (const [attribute, count] of poolShare) {
+		const offered = Math.max(count / entries.length, 0.05);
+		const clicked = reader.attributeShare.get(attribute) ?? 0;
+		const raw = 1 + (ATTRIBUTE_WEIGHT * (clicked - offered)) / offered;
+		factor.set(
+			attribute,
+			Math.min(ATTRIBUTE_BOOST_MAX, Math.max(ATTRIBUTE_BOOST_MIN, raw))
+		);
+	}
+	for (const entry of entries) {
+		for (const attribute of entry.attributes) {
+			entry.score *= factor.get(attribute) ?? 1;
+		}
+	}
 }
 
 export function rankFeed(
@@ -175,6 +227,7 @@ export function rankFeed(
 			seen.add(entry.item.url);
 			return true;
 		});
+	applyAttributeTaste(entries, reader);
 	entries.sort((a, b) => b.score - a.score);
 	return arrangeFeed(entries);
 }

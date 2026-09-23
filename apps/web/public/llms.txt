@@ -6,6 +6,7 @@ Agents should use the JSON API, not the HTML pages. Every endpoint is public and
 
 ## Read this first
 
+- [For Agents](https://opentrends.io/agents): the human-readable overview (skill, MCP, API)
 - [Skill](https://opentrends.io/skills/opentrends/SKILL.md): how to use the API, with the workflow and response rules
 - [Skill manifest](https://api.opentrends.io/api/skills/opentrends): current base URL, topics and endpoints (source of truth)
 - [OpenAPI spec](https://api.opentrends.io/api-reference/spec.json)

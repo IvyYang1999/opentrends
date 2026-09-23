@@ -136,3 +136,56 @@ describe("rankFeed with a reader", () => {
 		expect(gapInMorning).toBeLessThan(gapAtNoon);
 	});
 });
+
+describe("attribute taste", () => {
+	test("a reader who only clicks pictures gets pictures first", () => {
+		const pages = [
+			page([
+				source("pics", [
+					{ imageUrl: "https://img/1.jpg", title: "one" },
+					{ imageUrl: "https://img/2.jpg", title: "two" },
+				]),
+				source("words", [{ title: "three" }, { title: "four" }]),
+			]),
+		];
+		const clicks = Array.from({ length: 6 }, () => ({
+			at: NOW,
+			attributes: ["cover", "lang:other", "genre:news"],
+			kind: "click" as const,
+			sourceId: "elsewhere",
+			title: "x",
+			url: "u",
+		}));
+		const reader = buildReaderContext({
+			locale: "en",
+			now: NOW,
+			signals: clicks,
+		});
+		expect(reader.attributeShare.get("cover")).toBe(1);
+		const feed = rankFeed(pages, [], NOW, reader);
+		expect(feed[0]?.attributes).toContain("cover");
+		const pictureScore =
+			feed.find((e) => e.source.sourceId === "pics")?.score ?? 0;
+		const wordScore =
+			feed.find((e) => e.source.sourceId === "words")?.score ?? 0;
+		expect(pictureScore / wordScore).toBeGreaterThan(1.3);
+	});
+
+	test("fewer than five clicks change nothing", () => {
+		const reader = buildReaderContext({
+			locale: "en",
+			now: NOW,
+			signals: [
+				{
+					at: NOW,
+					attributes: ["cover"],
+					kind: "click",
+					sourceId: "s",
+					title: "x",
+					url: "u",
+				},
+			],
+		});
+		expect(reader.attributeShare.size).toBe(0);
+	});
+});

@@ -80,6 +80,7 @@ describe("arrangeFeed", () => {
 		);
 		const bySource = { a, b, c } as const;
 		const entries = [...a.items, ...c.items, ...b.items].map((item) => ({
+			attributes: [],
 			heat: undefined,
 			item,
 			kind: "item" as const,
@@ -106,6 +107,7 @@ describe("withListCards", () => {
 			Array.from({ length: 23 }, () => ({}))
 		);
 		const entries = s.items.map((item) => ({
+			attributes: [],
 			heat: undefined,
 			item,
 			kind: "item" as const,

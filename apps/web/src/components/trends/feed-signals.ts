@@ -8,6 +8,8 @@ const MAX_SIGNALS = 500;
 
 export interface FeedSignal {
 	at: number;
+	/** What kind of card was clicked, see item-attributes.ts. */
+	attributes?: string[];
 	kind: "click";
 	sourceId: string;
 	title: string;
@@ -28,7 +30,11 @@ export function readFeedSignals(): FeedSignal[] {
 	}
 }
 
-export function recordFeedClick(item: NewsItem, source: SourceCardData): void {
+export function recordFeedClick(
+	item: NewsItem,
+	source: SourceCardData,
+	attributes?: readonly string[]
+): void {
 	if (typeof window === "undefined") {
 		return;
 	}
@@ -36,6 +42,7 @@ export function recordFeedClick(item: NewsItem, source: SourceCardData): void {
 		const signals = readFeedSignals();
 		signals.push({
 			at: Date.now(),
+			attributes: attributes ? [...attributes] : undefined,
 			kind: "click",
 			sourceId: source.sourceId,
 			title: item.original?.title ?? item.title,
