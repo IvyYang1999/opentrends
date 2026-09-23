@@ -8,6 +8,7 @@ test("SSR requests stay isolated and hydrated previews do not fetch again", asyn
 	const second = createQueryClient();
 	const browser = createQueryClient();
 	const options = trendsPageQueryOptions("ai", "en");
+	expect(options.queryKey).toContain(30);
 	const page = { id: "ai", title: "AI", updatedAt: 1, sections: [] };
 	first.setQueryData(options.queryKey, page);
 	expect(second.getQueryData(options.queryKey)).toBeUndefined();

@@ -1,20 +1,13 @@
 export const SOURCE_CARD_GRID_CLASSES =
 	"grid grid-cols-1 items-stretch sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
 
-export function shouldLoadFullSource(
-	hasItems: boolean,
-	itemsTruncated: boolean | undefined
-): boolean {
-	return hasItems && Boolean(itemsTruncated);
-}
-
 export function sourceCardViewportClasses(
 	hasItems: boolean,
 	_expanded = false
 ): string {
-	// Every desktop card exposes the same viewport. Its full queue is loaded in
-	// the background: collapsed cards clip the overflow, expanded cards scroll
-	// it without changing the surrounding grid.
+	// Every desktop card exposes the same viewport. The page response already
+	// contains its full queue: collapsed cards clip the overflow, expanded cards
+	// scroll it without changing the surrounding grid.
 	return hasItems ? "h-[480px] max-sm:h-auto max-sm:max-h-none" : "h-auto";
 }
 

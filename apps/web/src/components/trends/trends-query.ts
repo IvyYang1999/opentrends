@@ -9,10 +9,7 @@ import {
 	loadTrends,
 } from "./load-trends";
 import { pageNeedsTranslationWarmup } from "./translation-status";
-import {
-	TRENDS_FULL_ITEMS_PER_SOURCE,
-	TRENDS_PREVIEW_ITEMS_PER_SOURCE,
-} from "./trends-limits";
+import { TRENDS_FULL_ITEMS_PER_SOURCE } from "./trends-limits";
 import type {
 	EventDetailData,
 	EventFeedData,
@@ -33,11 +30,11 @@ export function trendsPageQueryOptions(
 			"trends-page",
 			topic,
 			locale,
-			TRENDS_PREVIEW_ITEMS_PER_SOURCE,
+			TRENDS_FULL_ITEMS_PER_SOURCE,
 			...(sourceIds ? [sourceIds.join(",")] : []),
 		],
 		queryFn: () =>
-			loadTrends(topic, locale, TRENDS_PREVIEW_ITEMS_PER_SOURCE, sourceIds),
+			loadTrends(topic, locale, TRENDS_FULL_ITEMS_PER_SOURCE, sourceIds),
 		gcTime: TRENDS_PAGE_GC_MS,
 		refetchInterval: (query) =>
 			query.state.data && pageNeedsTranslationWarmup(query.state.data, locale)

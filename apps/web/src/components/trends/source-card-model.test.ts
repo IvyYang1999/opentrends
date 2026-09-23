@@ -3,19 +3,12 @@ import { describe, expect, test } from "bun:test";
 import {
 	isDecorativeBadgeImage,
 	SOURCE_CARD_GRID_CLASSES,
-	shouldLoadFullSource,
 	sourceCardViewportClasses,
 } from "./source-card-model";
 
 test("source cards stretch to the tallest card in their grid row", () => {
 	expect(SOURCE_CARD_GRID_CLASSES).toContain("items-stretch");
 	expect(SOURCE_CARD_GRID_CLASSES).not.toContain("items-start");
-});
-
-test("loads the full queue behind a populated truncated card", () => {
-	expect(shouldLoadFullSource(true, true)).toBe(true);
-	expect(shouldLoadFullSource(false, true)).toBe(false);
-	expect(shouldLoadFullSource(true, false)).toBe(false);
 });
 
 describe("sourceCardViewportClasses", () => {

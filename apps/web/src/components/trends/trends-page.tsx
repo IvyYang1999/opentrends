@@ -68,7 +68,6 @@ import { revealSourceCard, sourceCardElementId } from "./reveal-source-card";
 import {
 	coverKind,
 	SOURCE_CARD_GRID_CLASSES,
-	shouldLoadFullSource,
 	sourceCardViewportClasses,
 } from "./source-card-model";
 import { SourceFavicon } from "./source-favicon";
@@ -435,7 +434,6 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				settings={settings}
 				sources={visibleSources}
 				t={t}
-				topicId={displayPage.id}
 				translationPending={translationPending}
 			/>
 		);
@@ -609,7 +607,6 @@ function SourceGridLayout({
 	sources,
 	settings,
 	t,
-	topicId,
 	locale,
 	translationPending,
 	dragHandleProps,
@@ -621,7 +618,6 @@ function SourceGridLayout({
 	sources: SourceWithSection[];
 	settings: DisplaySettings;
 	t: Translator;
-	topicId: string;
 	locale: Locale;
 	translationPending: boolean;
 	dragHandleProps: (sourceId: string) => SourceDragHandleProps;
@@ -646,7 +642,6 @@ function SourceGridLayout({
 					settings={settings}
 					source={source}
 					t={t}
-					topicId={topicId}
 					translationPending={translationPending}
 				/>
 			))}
@@ -711,7 +706,6 @@ function SourceCard({
 	source,
 	settings,
 	t,
-	topicId,
 	locale,
 	translationPending,
 	dragHandleProps,
@@ -723,7 +717,6 @@ function SourceCard({
 	source: SourceCardData;
 	settings: DisplaySettings;
 	t: Translator;
-	topicId: string;
 	locale: Locale;
 	translationPending: boolean;
 	dragHandleProps: SourceDragHandleProps;
@@ -735,13 +728,6 @@ function SourceCard({
 	const [expanded, setExpanded] = useState(false);
 	const [overflowing, setOverflowing] = useState(false);
 	const hasItems = source.items.length > 0;
-	// Expanding loads the source's full list and lets the body scroll in
-	// place; nothing opens over the page.
-	const fullSource = useQuery({
-		...trendSourceQueryOptions(topicId, source.sourceId, locale),
-		enabled: shouldLoadFullSource(hasItems, source.itemsTruncated),
-	});
-	const shownSource = fullSource.data ?? source;
 
 	const bodyRef = useCallback((el: HTMLDivElement | null) => {
 		if (!el) {
@@ -776,7 +762,7 @@ function SourceCard({
 					<SourceCardBody
 						locale={locale}
 						settings={settings}
-						source={shownSource}
+						source={source}
 						t={t}
 						translationPending={translationPending}
 					/>

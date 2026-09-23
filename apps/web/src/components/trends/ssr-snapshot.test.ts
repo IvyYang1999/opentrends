@@ -3,7 +3,7 @@ import { readTrendsSnapshot } from "./ssr-snapshot";
 
 const page = { id: "ai", title: "AI", updatedAt: 1, sections: [] };
 
-test("SSR reads the existing localized preview without credentials or generation", async () => {
+test("SSR reads the complete localized snapshot without credentials or generation", async () => {
 	let calls = 0;
 	const result = await readTrendsSnapshot(
 		(request) => {
@@ -12,7 +12,10 @@ test("SSR reads the existing localized preview without credentials or generation
 			expect(url.pathname).toBe("/api/trends/ai");
 			expect(url.searchParams.get("lang")).toBe("zh");
 			expect(url.searchParams.get("translations")).toBe("background");
-			expect(url.searchParams.get("items")).toBe("8");
+			// The first response already carries the complete source queue. This
+			// prevents every card from painting eight rows and jumping later when
+			// a second per-source request arrives.
+			expect(url.searchParams.get("items")).toBe("30");
 			// Bun 1.3 reports Request.credentials as include even when constructed with omit.
 			expect(request.headers.has("authorization")).toBe(false);
 			expect(request.headers.has("cookie")).toBe(false);
