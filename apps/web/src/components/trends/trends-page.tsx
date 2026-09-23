@@ -35,7 +35,6 @@ import {
 	type KeyboardEvent as ReactKeyboardEvent,
 	type ReactNode,
 	type PointerEvent as ReactPointerEvent,
-	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
@@ -68,6 +67,7 @@ import { revealSourceCard, sourceCardElementId } from "./reveal-source-card";
 import {
 	coverKind,
 	SOURCE_CARD_GRID_CLASSES,
+	shouldShowCollapsedSourceCardFooter,
 	sourceCardViewportClasses,
 } from "./source-card-model";
 import { SourceFavicon } from "./source-favicon";
@@ -726,19 +726,7 @@ function SourceCard({
 	pinned: boolean;
 }) {
 	const [expanded, setExpanded] = useState(false);
-	const [overflowing, setOverflowing] = useState(false);
 	const hasItems = source.items.length > 0;
-
-	const bodyRef = useCallback((el: HTMLDivElement | null) => {
-		if (!el) {
-			return;
-		}
-		const update = () => setOverflowing(el.scrollHeight > el.clientHeight + 1);
-		update();
-		const ro = new ResizeObserver(update);
-		ro.observe(el);
-		return () => ro.disconnect();
-	}, []);
 
 	return (
 		<article
@@ -757,7 +745,6 @@ function SourceCard({
 			{hasItems ? (
 				<div
 					className={`relative min-h-0 flex-1 max-sm:max-h-[70svh] ${expanded ? "overflow-y-auto" : "overflow-hidden"}`}
-					ref={bodyRef}
 				>
 					<SourceCardBody
 						locale={locale}
@@ -766,14 +753,17 @@ function SourceCard({
 						t={t}
 						translationPending={translationPending}
 					/>
-					{!expanded && (overflowing || source.itemsTruncated) ? (
+					{shouldShowCollapsedSourceCardFooter(
+						source.items.length,
+						expanded
+					) ? (
 						<>
 							<div
 								aria-hidden
-								className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-t from-[var(--surface-card)] via-[var(--surface-card)]/85 to-transparent"
+								className="pointer-events-none absolute inset-x-0 bottom-0 hidden h-16 bg-gradient-to-t from-[var(--surface-card)] via-[var(--surface-card)]/85 to-transparent sm:block"
 							/>
 							<button
-								className="absolute inset-x-0 bottom-2 mx-auto flex w-fit items-center gap-1 rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 py-1 text-[11px] text-[var(--text-secondary)] shadow-sm transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
+								className="absolute inset-x-0 bottom-2 mx-auto hidden w-fit items-center gap-1 rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 py-1 text-[11px] text-[var(--text-secondary)] shadow-sm transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] sm:flex"
 								onClick={() => setExpanded(true)}
 								type="button"
 							>

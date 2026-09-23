@@ -3,6 +3,7 @@ import { describe, expect, test } from "bun:test";
 import {
 	isDecorativeBadgeImage,
 	SOURCE_CARD_GRID_CLASSES,
+	shouldShowCollapsedSourceCardFooter,
 	sourceCardViewportClasses,
 } from "./source-card-model";
 
@@ -29,6 +30,17 @@ describe("sourceCardViewportClasses", () => {
 		const classes = sourceCardViewportClasses(true, true);
 		expect(classes).toContain("h-[480px]");
 		expect(classes).not.toContain("content-visibility:auto");
+	});
+});
+
+describe("shouldShowCollapsedSourceCardFooter", () => {
+	test("keeps the footer for a complete non-empty queue", () => {
+		expect(shouldShowCollapsedSourceCardFooter(30, false)).toBe(true);
+	});
+
+	test("hides it for empty or expanded cards", () => {
+		expect(shouldShowCollapsedSourceCardFooter(0, false)).toBe(false);
+		expect(shouldShowCollapsedSourceCardFooter(30, true)).toBe(false);
 	});
 });
 

@@ -11,6 +11,15 @@ export function sourceCardViewportClasses(
 	return hasItems ? "h-[480px] max-sm:h-auto max-sm:max-h-none" : "h-auto";
 }
 
+export function shouldShowCollapsedSourceCardFooter(
+	itemCount: number,
+	expanded: boolean
+): boolean {
+	// The first response now contains the complete queue, so server truncation
+	// no longer tells us whether the fixed-height viewport clips any rows.
+	return itemCount > 0 && !expanded;
+}
+
 const DECORATIVE_BADGE_IMAGE_PATTERNS = [
 	"simg.s.weibo.com/moter/flags/",
 	"/top-static-files-outer/breaknews/",
