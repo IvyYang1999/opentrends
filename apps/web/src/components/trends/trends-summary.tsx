@@ -423,6 +423,14 @@ function SummaryBody({
 		url: string;
 	} | null>(null);
 	const closeTimerRef = useRef<number | null>(null);
+	const measureRef = useCallback(
+		(el: HTMLDivElement | null) => {
+			if (el && status === "done") {
+				lastDigestHeight = el.offsetHeight;
+			}
+		},
+		[status]
+	);
 
 	const cancelClose = useCallback(() => {
 		if (closeTimerRef.current !== null) {
@@ -486,7 +494,7 @@ function SummaryBody({
 	}
 	if (text) {
 		return (
-			<>
+			<div ref={measureRef}>
 				<div
 					className="text-[13px] text-[var(--text-primary)] leading-[1.55] [&_[data-streamdown=link]:hover_sup]:bg-[var(--accent-blue)] [&_[data-streamdown=link]:hover_sup]:text-white [&_[data-streamdown=link]]:cursor-pointer [&_[data-streamdown=link]]:font-normal [&_[data-streamdown=link]]:no-underline [&_sup]:mx-[2px] [&_sup]:inline-flex [&_sup]:h-[1.125rem] [&_sup]:min-w-[1.125rem] [&_sup]:items-center [&_sup]:justify-center [&_sup]:rounded-[4px] [&_sup]:bg-[var(--accent-blue-bg)] [&_sup]:px-[5px] [&_sup]:align-[-4px] [&_sup]:font-medium [&_sup]:text-[10px] [&_sup]:text-[var(--accent-blue)] [&_sup]:leading-none [&_sup]:transition-colors"
 					data-testid="trends-summary-body"
@@ -552,14 +560,24 @@ function SummaryBody({
 						url={hoverState.url}
 					/>
 				) : null}
-			</>
+			</div>
 		);
 	}
 	if (status === "loading" || status === "pending" || status === "streaming") {
-		return <DigestSkeleton rows={DIGEST_FOLD} />;
+		// The bar keeps the height the last finished digest had, so the swap
+		// from placeholder to text moves nothing around it.
+		return (
+			<div style={{ minHeight: lastDigestHeight || undefined }}>
+				<DigestSkeleton rows={DIGEST_FOLD} />
+				<div className="mt-1 h-5" />
+			</div>
+		);
 	}
 	return null;
 }
+
+// Height of the last digest that finished rendering, on this page load.
+let lastDigestHeight = 0;
 
 const SKELETON_WIDTHS = ["w-[72%]", "w-[64%]", "w-[80%]", "w-[58%]", "w-[68%]"];
 
@@ -689,6 +707,7 @@ export function TrendsSummary({
 			// behind it and replaces it whole when done; watching the list
 			// shrink to one line and grow back is the jump readers noticed.
 			const holdMemo = Boolean(memo);
+			let hold = holdMemo;
 			if (memo) {
 				setText(memo.text);
 				setCitations(memo.citations);
@@ -720,22 +739,27 @@ export function TrendsSummary({
 						if (holdMemo) {
 							return;
 						}
-						setStatus("streaming");
-						if (shouldExpandGeneratedSummary(origin)) {
-							setExpanded(true);
+						// A cached digest arrives in a moment; it is shown whole when
+						// it has, behind the placeholder, rather than typed out. Only
+						// a digest being generated right now streams visibly.
+						if (!shouldExpandGeneratedSummary(origin)) {
+							hold = true;
+							return;
 						}
+						setStatus("streaming");
+						setExpanded(true);
 					},
 					onChunk: (full) => {
 						if (full.trim()) {
 							latestText = full;
-							if (!holdMemo) {
+							if (!hold) {
 								setText(full);
 							}
 						}
 					},
 					onCitations: (next) => {
 						latestCitations = next;
-						if (!holdMemo) {
+						if (!hold) {
 							setCitations(next);
 						}
 					},
@@ -750,7 +774,7 @@ export function TrendsSummary({
 					},
 					onDone: () => {
 						setStatus("done");
-						if (holdMemo && latestText.trim()) {
+						if (hold && latestText.trim()) {
 							setText(latestText);
 							setCitations(latestCitations);
 						}
