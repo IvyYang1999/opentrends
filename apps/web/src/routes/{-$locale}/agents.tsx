@@ -172,8 +172,6 @@ const EN: Strings = {
 		"Everything the site shows is here as JSON.",
 	],
 	apiStepResponse: ["Read the response", "The digest comes back as data."],
-	difference:
-		"A Skill is a page of instructions that teaches the agent how to call the API. An MCP server hands the agent tools directly. Same data, same result; install one, not both.",
 	apiEndpoints: {
 		digest: "The digest as entries with reasons and citation links",
 		digestFeed: "The digest as RSS, one entry per edition",
@@ -299,8 +297,6 @@ const ZH: Strings = {
 	apiStepFirst: ["发第一个请求", "任何 HTTP 客户端，不用 key。"],
 	apiStepEndpoints: ["挑一个端点", "网站上看到的一切，这里都有 JSON。"],
 	apiStepResponse: ["读返回", "摘要以数据形式返回。"],
-	difference:
-		"Skill 是一页说明书，教 Agent 怎么调 API；MCP 是直接把工具塞给 Agent。数据一样、结果一样，装一个就行，不用都装。",
 	apiEndpoints: {
 		digest: "摘要：结论、原因、引用链接",
 		digestFeed: "摘要的 RSS，每期一条",
@@ -419,8 +415,6 @@ const ZH_HANT: Strings = {
 	apiStepFirst: ["發第一個請求", "任何 HTTP 用戶端，不用 key。"],
 	apiStepEndpoints: ["挑一個端點", "網站上看到的一切，這裡都有 JSON。"],
 	apiStepResponse: ["讀回傳", "摘要以資料形式回傳。"],
-	difference:
-		"Skill 是一頁說明書，教 Agent 怎麼呼叫 API；MCP 是直接把工具塞給 Agent。資料一樣、結果一樣，裝一個就行，不用都裝。",
 	apiEndpoints: {
 		digest: "摘要：結論、原因、引用連結",
 		digestFeed: "摘要的 RSS，每期一則",
