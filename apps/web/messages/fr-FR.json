@@ -190,7 +190,6 @@
   "search_shortcut": "⌘K",
   "card_unpin_source": "Désépingler",
   "card_pinned": "Épinglée",
-  "summary_label": "Résumé IA",
   "source_manager_title": "Sources",
   "source_manager_count": "{shown} sur {total} affichées",
   "card_show_source": "Afficher la source",
@@ -202,5 +201,7 @@
   "display_original_title": "Titre original",
   "card_hot_list": "Tendances",
   "feed_count": "{count} éléments",
-  "feed_seo_description": "Un seul flux du neuf et du chaud parmi vos sources."
+  "feed_seo_description": "Un seul flux du neuf et du chaud parmi vos sources.",
+  "view_sources": "Sources",
+  "source_manager_button": "Gérer les sources"
 }

@@ -4,7 +4,13 @@ import { useCallback, useMemo, useRef, useState } from "react";
 import { Streamdown } from "streamdown";
 
 import { segmentClassName } from "@/components/chrome-styles";
-import { type Locale, type Translator, useLocale, useT } from "@/lib/i18n";
+import {
+	type Locale,
+	type TranslationKey,
+	type Translator,
+	useLocale,
+	useT,
+} from "@/lib/i18n";
 
 import {
 	CitationLinkPopover,
@@ -34,6 +40,12 @@ type SummaryStatus =
 
 const SUMMARY_WINDOWS = ["today", "week", "month"] as const;
 type SummaryWindow = (typeof SUMMARY_WINDOWS)[number];
+
+const WINDOW_HEADING_KEYS = {
+	today: "share.headingToday",
+	week: "share.headingWeek",
+	month: "share.headingMonth",
+} as const;
 
 const SUMMARY_WINDOW_LABELS = {
 	today: "summary.windowToday",
@@ -466,6 +478,11 @@ export function TrendsSummary({
 		[page, topicId]
 	);
 	const memoKey = digestMemoKey(topicId, locale, summaryWindow, followedIds);
+	// "AI · 今日 10 条": the digest names its topic and period, since it is the
+	// first thing on the page and the share image carries the same heading.
+	const topicKey = `topic.${topicId}` as TranslationKey;
+	const translatedTopic = t(topicKey);
+	const digestTitle = `${translatedTopic === topicKey ? page.title : translatedTopic} · ${t(WINDOW_HEADING_KEYS[summaryWindow])}`;
 	const [shareOpen, setShareOpen] = useState(false);
 	// Sharing is offered once the whole digest has arrived, so the image never
 	// shows a half-written entry.
@@ -575,7 +592,7 @@ export function TrendsSummary({
 				<div className="min-w-0 flex-1">
 					<div className="flex h-10 flex-wrap items-center gap-2 text-[11px] text-[var(--text-secondary)]">
 						<span className="text-[12px] text-[var(--text-primary)]">
-							{t("summary.label")}
+							{digestTitle}
 						</span>
 						<span>·</span>
 						<span className="inline-flex min-w-0 flex-wrap items-center gap-1.5 tabular-nums">

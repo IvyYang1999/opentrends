@@ -40,7 +40,7 @@ export function ViewSwitch({ localeParam, topicId, view }: ViewSwitchProps) {
 				params={{ locale: localeParam, topic: topicId ?? "ai" }}
 				to="/{-$locale}/trends/$topic"
 			>
-				{t("nav.trends")}
+				{t("view.sources")}
 			</Link>
 			{topicId === FOLLOWED_TOPIC_ID ? null : (
 				<Link

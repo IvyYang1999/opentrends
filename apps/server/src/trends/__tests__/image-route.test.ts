@@ -68,7 +68,7 @@ describe("image thumbnail route", () => {
 		expect(calls).toEqual([{ fit: "cover", height: 96, width: 96 }]);
 	});
 
-	test("uses a retina 16:9 transform for card covers", async () => {
+	test("scales card covers down to 640px without enlarging small originals", async () => {
 		globalThis.fetch = mock(() =>
 			Promise.resolve(
 				new Response("original", {
@@ -86,7 +86,7 @@ describe("image thumbnail route", () => {
 		);
 
 		expect(response.status).toBe(200);
-		expect(calls).toEqual([{ fit: "cover", height: 360, width: 640 }]);
+		expect(calls).toEqual([{ fit: "scale-down", height: 640, width: 640 }]);
 	});
 
 	test("serves SVG covers with a restrictive document sandbox", async () => {

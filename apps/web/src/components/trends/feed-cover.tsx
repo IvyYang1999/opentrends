@@ -1,7 +1,7 @@
 import { env } from "@opentrends/env/web";
 import { useEffect, useState } from "react";
 
-import { FLAME_PATH, RAY_PATHS } from "./brand-motif-paths";
+import { FLAME_PATH, RAY_LINES } from "./brand-motif-paths";
 import { SourceFavicon } from "./source-favicon";
 import type { NewsItem, SourceCardData } from "./types";
 
@@ -10,7 +10,9 @@ import type { NewsItem, SourceCardData } from "./types";
 const RATIOS = ["aspect-[4/3]", "aspect-[16/10]", "aspect-[1/1]"] as const;
 
 // Punctuation that splits a title into a kicker and a headline.
-const KICKER_RE = /^(.{2,24}?)[：:｜|—–-]\s*(.{4,})$/;
+// "谁：说了什么" only: a short speaker before a colon. Dashes and pipes
+// separate sections and outlets, not speakers.
+const KICKER_RE = /^([^：:]{2,12})[：:]\s*(.{4,})$/;
 // A figure is only a headline number when it carries a unit or a
 // thousands separator; a bare "8105" is usually a code, not a fact.
 const FIGURE_RE =
@@ -295,11 +297,11 @@ function Motif({ hue, kind }: { hue: number; kind: (typeof MOTIFS)[number] }) {
 				role="presentation"
 				stroke={stroke}
 				strokeLinecap="round"
-				strokeWidth="10"
+				strokeWidth="6"
 				viewBox="0 0 1024 1024"
 			>
-				{RAY_PATHS.map((d) => (
-					<path d={d} key={d} />
+				{RAY_LINES.map((line) => (
+					<line key={`${line.x2}:${line.y2}`} {...line} />
 				))}
 			</svg>
 		);

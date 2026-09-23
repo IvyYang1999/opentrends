@@ -56,10 +56,7 @@ import {
 	setDisplaySetting,
 	useDisplaySettings,
 } from "./display-settings";
-import {
-	DisplaySettingsMenuContent,
-	LayoutSettingsMenuContent,
-} from "./display-settings-menu";
+import { DisplaySettingsMenuContent } from "./display-settings-menu";
 import {
 	FollowedSourcesContext,
 	useFollowedSources,
@@ -555,13 +552,8 @@ function ViewBar({
 					type="button"
 				>
 					<Rss aria-hidden className="size-3.5" />
-					<span>{t("sourceManager.title")}</span>
+					<span>{t("sourceManager.button")}</span>
 				</button>
-				<LayoutSettingsMenuContent
-					settings={settings}
-					storeOptions={displaySettingsStore}
-					t={t}
-				/>
 				<DisplaySettingsMenuContent
 					settings={settings}
 					storeOptions={displaySettingsStore}

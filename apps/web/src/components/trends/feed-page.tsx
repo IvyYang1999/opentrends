@@ -1,8 +1,9 @@
 import { env } from "@opentrends/env/web";
 import { useQueries } from "@tanstack/react-query";
-import { Flame } from "lucide-react";
+import { Flame, Rss } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { toolButtonClassName } from "@/components/chrome-styles";
 import Loader from "@/components/loader";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
 
@@ -23,6 +24,12 @@ import { recordFeedClick } from "./feed-signals";
 import { FOLLOWED_TOPIC_ID, useFollowedSources } from "./followed-sources";
 import { formatRelativeTime } from "./relative-time";
 import { SourceFavicon } from "./source-favicon";
+import {
+	type ManagedSource,
+	SourceManagerDialog,
+} from "./source-manager-dialog";
+import { useSourcePreferences } from "./source-preferences";
+import { orderWithPinned } from "./source-preferences-model";
 import { trendsPageQueryOptions } from "./trends-query";
 import { TrendsSummary } from "./trends-summary";
 import type { SourceCardData, TrendsPageData } from "./types";
@@ -43,6 +50,28 @@ const ALL_TOPIC_IDS = [
 	"programming",
 	"cn",
 ] as const;
+
+function managedSources(
+	page: TrendsPageData,
+	preference: { orderedSourceIds: string[]; pinnedSourceIds: string[] }
+): ManagedSource[] {
+	const byId = new Map(
+		page.sections
+			.flatMap((section) => section.sources)
+			.map((source) => [source.sourceId, source])
+	);
+	return orderWithPinned(
+		preference.orderedSourceIds,
+		preference.pinnedSourceIds
+	)
+		.map((id) => byId.get(id))
+		.filter((source): source is SourceCardData => Boolean(source))
+		.map((source) => ({
+			homeUrl: source.homeUrl,
+			id: source.sourceId,
+			title: source.title,
+		}));
+}
 
 function formatHeat(value: number): string {
 	return new Intl.NumberFormat("en", {
@@ -89,15 +118,39 @@ export function FeedPage({ topicId }: FeedPageProps) {
 		}),
 	});
 	const primary = pages.find((page) => page.id === topicId) ?? pages[0];
+	// The topic's own source preferences: hidden sources stay out of the
+	// feed, and the manage dialog edits the same list the source view uses.
+	const primarySourceIds = useMemo(
+		() =>
+			primary
+				? primary.sections.flatMap((section) =>
+						section.sources.map((source) => source.sourceId)
+					)
+				: [],
+		[primary]
+	);
+	const sourcePreferences = useSourcePreferences(topicId, primarySourceIds);
+	const hiddenSourceIds = sourcePreferences.preference.hiddenSourceIds;
+	const [sourceManagerOpen, setSourceManagerOpen] = useState(false);
 	const blocks = useMemo(() => {
-		const rankings = pages
+		const hidden = new Set(hiddenSourceIds);
+		const visiblePages = pages.map((page) => ({
+			...page,
+			sections: page.sections.map((section) => ({
+				...section,
+				sources: section.sources.filter(
+					(source) => !hidden.has(source.sourceId)
+				),
+			})),
+		}));
+		const rankings = visiblePages
 			.flatMap((page) => page.sections)
 			.flatMap((section) => section.sources)
 			.filter(
 				(source) => source.kind === "ranking" && source.items.length >= 5
 			);
-		return withListCards(rankFeed(pages, followedIds), rankings);
-	}, [pages, followedIds]);
+		return withListCards(rankFeed(visiblePages, followedIds), rankings);
+	}, [pages, followedIds, hiddenSourceIds]);
 	const [limit, setLimit] = useState(PAGE_SIZE);
 	const sentinelRef = useRef<HTMLDivElement>(null);
 
@@ -131,10 +184,34 @@ export function FeedPage({ topicId }: FeedPageProps) {
 			)}
 			<div className="flex h-10 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
 				<ViewSwitch localeParam={localeParam} topicId={topicId} view="feed" />
-				<span className="text-[11px] text-[var(--text-muted)] tabular-nums">
-					{t("feed.count", { count: blocks.length })}
-				</span>
+				<div className="flex items-center gap-2 text-[11px] text-[var(--text-muted)] tabular-nums">
+					<span>{t("feed.count", { count: blocks.length })}</span>
+					{primary ? (
+						<button
+							className={toolButtonClassName}
+							onClick={() => setSourceManagerOpen(true)}
+							type="button"
+						>
+							<Rss aria-hidden className="size-3.5" />
+							<span>{t("sourceManager.button")}</span>
+						</button>
+					) : null}
+				</div>
 			</div>
+			{sourceManagerOpen && primary ? (
+				<SourceManagerDialog
+					hiddenSourceIds={hiddenSourceIds}
+					onOpenChange={setSourceManagerOpen}
+					onOrderChange={sourcePreferences.setOrder}
+					onShowAll={sourcePreferences.showAllSources}
+					onTogglePinned={sourcePreferences.togglePinned}
+					onVisibilityChange={sourcePreferences.setSourceVisible}
+					open={sourceManagerOpen}
+					pinnedSourceIds={sourcePreferences.preference.pinnedSourceIds}
+					sources={managedSources(primary, sourcePreferences.preference)}
+					t={t}
+				/>
+			) : null}
 			{pending && blocks.length === 0 ? (
 				<Loader />
 			) : (
@@ -230,7 +307,7 @@ function FeedCard({
 			: undefined;
 	return (
 		<a
-			className="group block overflow-hidden border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)] transition-shadow visited:text-[#9b9893] hover:shadow-md dark:visited:text-[#6f685f]"
+			className="group block overflow-hidden border border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-primary)] transition-[box-shadow,border-color,transform] duration-200 visited:text-[#9b9893] hover:-translate-y-0.5 hover:border-[var(--accent-blue)] hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)] dark:visited:text-[#6f685f]"
 			href={item.url}
 			onClick={() => recordFeedClick(item, source)}
 			rel="noopener noreferrer"
@@ -240,11 +317,11 @@ function FeedCard({
 			{hasCover ? (
 				// The title sits on the picture over a scrim, where the eye already
 				// is; a caption under the picture goes unread.
-				<span className="relative block">
+				<span className="relative block overflow-hidden">
 					{/* biome-ignore lint/a11y/noNoninteractiveElementInteractions: the load and error listeners only classify the cover */}
 					<img
 						alt=""
-						className={`w-full bg-[var(--surface-sidebar)] object-cover ${coverRatio(item)}`}
+						className={`w-full bg-[var(--surface-sidebar)] object-cover transition-transform duration-300 group-hover:scale-[1.03] ${coverRatio(item)}`}
 						height={240}
 						loading="lazy"
 						onError={() => setCover("failed")}
@@ -258,6 +335,10 @@ function FeedCard({
 						src={proxiedImageUrl(item.imageUrl as string)}
 						width={320}
 					/>
+					<span className="absolute top-3 left-3 flex items-center gap-1.5 rounded-sm bg-black/35 px-1.5 py-0.5 text-[11px] text-white backdrop-blur-sm">
+						<SourceFavicon homeUrl={source.homeUrl} />
+						<span className="max-w-[9rem] truncate">{source.title}</span>
+					</span>
 					<span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/40 to-transparent px-3 pt-10 pb-3">
 						<span className="line-clamp-3 font-semibold text-[14px] text-white leading-snug tracking-tight [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]">
 							<Emphasized text={item.title} />

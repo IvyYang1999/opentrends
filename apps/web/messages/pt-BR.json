@@ -190,7 +190,6 @@
   "search_shortcut": "⌘K",
   "card_unpin_source": "Desafixar",
   "card_pinned": "Fixada",
-  "summary_label": "Resumo de IA",
   "source_manager_title": "Fontes",
   "source_manager_count": "{shown} de {total} exibidas",
   "card_show_source": "Mostrar fonte",
@@ -202,5 +201,7 @@
   "display_original_title": "Título original",
   "card_hot_list": "Em alta",
   "feed_count": "{count} itens",
-  "feed_seo_description": "Um único feed com o que é novo e quente nas suas fontes."
+  "feed_seo_description": "Um único feed com o que é novo e quente nas suas fontes.",
+  "view_sources": "Fontes",
+  "source_manager_button": "Gerenciar fontes"
 }

@@ -59,13 +59,14 @@ async function reserveRequestMarker(
 	return true;
 }
 
+// Scheduled prewarm covers TRANSLATION_PREWARM_LANGUAGES; a page view in
+// any other locale still requests its own translations, so a German reader
+// is not left with Chinese headlines. The cost only arises when someone
+// actually reads in that language.
 export function translationPrewarmMessagesForPage(
 	page: TrendsPageData,
 	lang: TranslationLanguage
 ): TranslationPrewarmMessage[] {
-	if (!(TRANSLATION_PREWARM_LANGUAGES as readonly string[]).includes(lang)) {
-		return [];
-	}
 	const sourceIds = new Set<SourceId>();
 	for (const section of page.sections) {
 		for (const source of section.sources) {

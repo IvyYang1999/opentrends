@@ -6,7 +6,10 @@ const IMAGE_PROXY_TIMEOUT_MS = 8000;
 const MAX_SOURCE_IMAGE_BYTES = 15 * 1024 * 1024;
 const PRIVATE_172_RE = /^172\.(\d{1,2})\./;
 const THUMBNAIL_VARIANTS = {
-	card: { fit: "cover", height: 360, width: 640 },
+	// scale-down never enlarges, so a source's tiny thumbnail stays tiny and
+	// the client can tell it apart from a real cover instead of showing it
+	// blurred to card width. Cards crop with CSS object-fit.
+	card: { fit: "scale-down", height: 640, width: 640 },
 	row: { fit: "cover", height: 96, width: 96 },
 } as const;
 

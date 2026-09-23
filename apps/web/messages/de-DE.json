@@ -190,7 +190,6 @@
   "search_shortcut": "⌘K",
   "card_unpin_source": "Lösen",
   "card_pinned": "Angeheftet",
-  "summary_label": "KI-Zusammenfassung",
   "source_manager_title": "Quellen",
   "source_manager_count": "{shown} von {total} sichtbar",
   "card_show_source": "Quelle anzeigen",
@@ -202,5 +201,7 @@
   "display_original_title": "Originaltitel",
   "card_hot_list": "Beliebt",
   "feed_count": "{count} Einträge",
-  "feed_seo_description": "Ein Feed mit dem Neuen und Heißen aus deinen Quellen."
+  "feed_seo_description": "Ein Feed mit dem Neuen und Heißen aus deinen Quellen.",
+  "view_sources": "Quellen",
+  "source_manager_button": "Quellen verwalten"
 }

@@ -127,6 +127,27 @@ export function DisplaySettingsMenuContent({
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="bg-card">
 				<DropdownMenuGroup>
+					<DropdownMenuLabel>{t("display.layout")}</DropdownMenuLabel>
+					<DropdownMenuRadioGroup
+						onValueChange={(value) => {
+							const nextLayout = LAYOUTS.find(
+								(layout) => layout.value === value
+							)?.value;
+							if (nextLayout) {
+								setDisplayLayout(nextLayout, storeOptions);
+							}
+						}}
+						value={settings.layout}
+					>
+						{LAYOUTS.map((layout) => (
+							<DropdownMenuRadioItem key={layout.value} value={layout.value}>
+								{t(layout.labelKey)}
+							</DropdownMenuRadioItem>
+						))}
+					</DropdownMenuRadioGroup>
+				</DropdownMenuGroup>
+				<DropdownMenuSeparator />
+				<DropdownMenuGroup>
 					<DropdownMenuLabel>{t("display.showOnEachItem")}</DropdownMenuLabel>
 					<DropdownMenuSeparator />
 					{TOGGLES.map((toggle) => (

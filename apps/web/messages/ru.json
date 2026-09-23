@@ -190,7 +190,6 @@
   "search_shortcut": "⌘K",
   "card_unpin_source": "Открепить",
   "card_pinned": "Закреплено",
-  "summary_label": "ИИ-сводка",
   "source_manager_title": "Источники",
   "source_manager_count": "Показано {shown} из {total}",
   "card_show_source": "Показать источник",
@@ -202,5 +201,7 @@
   "display_original_title": "Оригинальный заголовок",
   "card_hot_list": "Топ",
   "feed_count": "{count} материалов",
-  "feed_seo_description": "Одна лента нового и популярного из ваших источников."
+  "feed_seo_description": "Одна лента нового и популярного из ваших источников.",
+  "view_sources": "Источники",
+  "source_manager_button": "Управление источниками"
 }

@@ -190,7 +190,6 @@
   "search_shortcut": "⌘K",
   "card_unpin_source": "Unpin",
   "card_pinned": "Pinned",
-  "summary_label": "AI digest",
   "source_manager_title": "Sources",
   "source_manager_count": "{shown} of {total} shown",
   "card_show_source": "Show source",
@@ -202,5 +201,7 @@
   "display_original_title": "Original title",
   "card_hot_list": "Hot",
   "feed_count": "{count} items",
-  "feed_seo_description": "A single feed of what is new and hot across your sources."
+  "feed_seo_description": "A single feed of what is new and hot across your sources.",
+  "view_sources": "Sources",
+  "source_manager_button": "Manage sources"
 }

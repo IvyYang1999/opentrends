@@ -190,7 +190,6 @@
   "search_shortcut": "⌘K",
   "card_unpin_source": "取消置頂",
   "card_pinned": "已置頂",
-  "summary_label": "AI 摘要",
   "source_manager_title": "來源",
   "source_manager_count": "顯示 {shown} / {total}",
   "card_show_source": "顯示來源",
@@ -202,5 +201,7 @@
   "display_original_title": "原文標題",
   "card_hot_list": "熱榜",
   "feed_count": "{count} 則",
-  "feed_seo_description": "把你關注的和正在熱的內容匯成一條瀑布流。"
+  "feed_seo_description": "把你關注的和正在熱的內容匯成一條瀑布流。",
+  "view_sources": "來源",
+  "source_manager_button": "管理來源"
 }
