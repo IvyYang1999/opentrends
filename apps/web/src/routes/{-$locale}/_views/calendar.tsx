@@ -14,6 +14,7 @@ import {
 	FOLLOWED_TOPIC_ID,
 	useFollowedSources,
 } from "@/components/trends/followed-sources";
+import { trendsPageQueryOptions } from "@/components/trends/trends-query";
 import { ViewSwitch } from "@/components/trends/view-switch";
 import {
 	type Locale,
@@ -122,6 +123,15 @@ function calendarQueryOptions(
 export const Route = createFileRoute("/{-$locale}/_views/calendar")({
 	component: CalendarRoute,
 	validateSearch,
+	loaderDeps: ({ search }) => ({ topic: search.topic ?? "ai" }),
+	loader: async ({ context, deps, params }) => {
+		if (import.meta.env.SSR || deps.topic === "mine") {
+			return;
+		}
+		await context.queryClient.ensureQueryData(
+			trendsPageQueryOptions(deps.topic, resolveLocale(params.locale))
+		);
+	},
 	head: ({ params }) => {
 		const locale = resolveLocale(params.locale);
 		return buildSeo({

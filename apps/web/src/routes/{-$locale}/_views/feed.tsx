@@ -2,6 +2,7 @@ import { createFileRoute } from "@tanstack/react-router";
 
 import { FeedPage } from "@/components/trends/feed-page";
 import { trendsPageUrl } from "@/components/trends/load-trends";
+import { trendsPageQueryOptions } from "@/components/trends/trends-query";
 import { resolveLocale, translate } from "@/lib/i18n";
 import { buildSeo } from "@/lib/seo";
 
@@ -18,6 +19,19 @@ function validateFeedSearch(search: Record<string, unknown>): FeedSearch {
 export const Route = createFileRoute("/{-$locale}/_views/feed")({
 	component: FeedComponent,
 	validateSearch: validateFeedSearch,
+	loaderDeps: ({ search }) => ({ topic: search.topic ?? "featured" }),
+	// On the client the topic's page is fetched before the navigation
+	// completes, so the digest bar and the feed change together. Server
+	// rendering skips this: the feed is drawn on the client and the head
+	// preloads the same request.
+	loader: async ({ context, deps, params }) => {
+		if (import.meta.env.SSR || deps.topic === "mine") {
+			return;
+		}
+		await context.queryClient.ensureQueryData(
+			trendsPageQueryOptions(deps.topic, resolveLocale(params.locale))
+		);
+	},
 	head: ({ params, match }) => {
 		const locale = resolveLocale(params.locale);
 		const seo = buildSeo({
