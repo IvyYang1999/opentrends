@@ -49,7 +49,7 @@ describe("trends summary prompt", () => {
 			},
 		]);
 
-		expect(prompt).toContain("Prompt version: top10-v2");
+		expect(prompt).toContain("Prompt version: top10-v3");
 		expect(prompt).toContain(
 			"[1] [OpenAI News] (published 2026-05-07) OpenAI ships a model update"
 		);
@@ -74,7 +74,7 @@ describe("trends summary prompt", () => {
 		);
 	});
 
-	test("gives the featured digest explicit cross-topic evidence and balance rules", async () => {
+	test("gives the featured digest a soft cross-topic editorial preference", async () => {
 		setServerEnv();
 		const { buildPrompt, buildSystemPrompt } = await import(
 			"../services/get-trends-summary"
@@ -94,48 +94,21 @@ describe("trends summary prompt", () => {
 		];
 
 		const prompt = buildPrompt(topic, cited, "zh", "today", "cross-topic");
-		expect(prompt).toContain("Selection mode: cross-topic-balanced-v1");
+		expect(prompt).toContain("Selection mode: cross-topic-editorial-v2");
 		expect(prompt).toContain("[Topic: ai]");
 		expect(buildSystemPrompt("zh", "today", "cross-topic")).toContain(
-			"first five entries must cover at least 3 different topics"
+			"Prefer cross-topic variety"
+		);
+		expect(buildSystemPrompt("zh", "today", "cross-topic")).toContain(
+			"Quality wins over quotas"
 		);
 	});
 
-	test("rejects a featured draft whose visible first five are all AI", async () => {
+	test("builds a bounded cross-topic fallback when the model is unavailable", async () => {
 		setServerEnv();
-		const { isCrossTopicDigestDiverse } = await import(
+		const { buildCrossTopicFallbackSummary } = await import(
 			"../services/get-trends-summary"
 		);
-		const citations = [
-			...Array.from({ length: 5 }, (_, index) => ({
-				n: index + 1,
-				topic: "ai",
-				url: `https://example.com/ai-${index}`,
-			})),
-			{ n: 6, topic: "hardware", url: "https://example.com/hardware" },
-			{ n: 7, topic: "programming", url: "https://example.com/code" },
-			{ n: 8, topic: "cn", url: "https://example.com/cn" },
-		];
-		const allAiFirst = Array.from(
-			{ length: 5 },
-			(_, index) => `${index + 1}. **AI ${index + 1}** — why [${index + 1}]`
-		).join("\n");
-		const balanced = [
-			"1. **AI** — why [1]",
-			"2. **Hardware** — why [6]",
-			"3. **Code** — why [7]",
-			"4. **AI 2** — why [2]",
-			"5. **China** — why [8]",
-		].join("\n");
-
-		expect(isCrossTopicDigestDiverse(allAiFirst, citations)).toBe(false);
-		expect(isCrossTopicDigestDiverse(balanced, citations)).toBe(true);
-	});
-
-	test("builds a bounded cross-topic fallback when the model ignores balance", async () => {
-		setServerEnv();
-		const { buildCrossTopicFallbackSummary, isCrossTopicDigestDiverse } =
-			await import("../services/get-trends-summary");
 		const sourceIds = [
 			"openai-news",
 			"ros-discourse",
@@ -156,16 +129,48 @@ describe("trends summary prompt", () => {
 			},
 		}));
 		const text = buildCrossTopicFallbackSummary(cited, "zh");
-		const citations = cited.map(({ item, n }) => ({
-			n,
-			topic: ["ai", "embodied", "hardware", "biotech", "programming", "cn"][
-				n - 1
-			],
-			url: item.url,
-		}));
 
 		expect(text.split("\n")).toHaveLength(6);
-		expect(isCrossTopicDigestDiverse(text, citations)).toBe(true);
+		expect(text).not.toContain("值得关注的最新动态");
+	});
+
+	test("fallback ranks substantive stories ahead of promotions and writes a concrete reason", async () => {
+		setServerEnv();
+		const { buildCrossTopicFallbackSummary } = await import(
+			"../services/get-trends-summary"
+		);
+		const now = Date.UTC(2026, 8, 23, 8);
+		const cited = [
+			{
+				n: 1,
+				source: "Conference",
+				item: {
+					fetchedAt: now,
+					id: "promo",
+					sourceId: "openai-news",
+					title: "Conference tickets: save $200 today",
+					url: "https://example.com/promo",
+				},
+			},
+			{
+				n: 2,
+				source: "Security Lab",
+				item: {
+					description: "新漏洞可绕过身份验证，维护者已经发布修复版本。",
+					fetchedAt: now - 2 * 60 * 60 * 1000,
+					id: "security",
+					sourceId: "github-trending",
+					title: "Critical authentication bypass fixed",
+					url: "https://example.com/security",
+				},
+			},
+		] as const;
+
+		const text = buildCrossTopicFallbackSummary([...cited], "zh");
+
+		expect(text).toContain("Critical authentication bypass fixed");
+		expect(text).toContain("新漏洞可绕过身份验证");
+		expect(text).not.toContain("Conference tickets");
 	});
 
 	test("takes items from every source before giving any source a second slot", async () => {

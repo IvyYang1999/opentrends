@@ -101,8 +101,8 @@ function summaryCacheTopicId(topicId: string, window: SummaryWindow): string {
 
 const SUMMARY_CACHE_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SUMMARY_HOT_CACHE_SCHEMA_VERSION = 2;
-const SUMMARY_PROMPT_VERSION = "top10-v2";
-const CROSS_TOPIC_SELECTION_MODE = "cross-topic-balanced-v1";
+const SUMMARY_PROMPT_VERSION = "top10-v3";
+const CROSS_TOPIC_SELECTION_MODE = "cross-topic-editorial-v2";
 const SUMMARY_HOT_CACHE_TTL_SECONDS = Math.ceil(
 	SUMMARY_CACHE_RETENTION_MS / 1000
 );
@@ -113,6 +113,10 @@ const SUMMARY_BACKGROUND_CACHE_TIMEOUT_MS = 10_000;
 const FALLBACK_ITEM_LIMIT = 6;
 const CACHED_CHUNK_SIZE = 128;
 const CACHED_CHUNK_DELAY_MS = 4;
+const PROMOTIONAL_TITLE_RE =
+	/\b(?:tickets?|sale|save \$|discount|coupon|sponsored|giveaway|hiring|jobs?)\b|门票|优惠|折扣|促销|招聘|报名|早鸟|抽奖/i;
+const HIGH_SIGNAL_TITLE_RE =
+	/\b(?:release|launch|open.?source|security|vulnerab|breach|regulat|funding|acqui|research|study|benchmark|model|chip|robot|clinical|approval)\b|发布|开源|安全|漏洞|泄露|监管|法规|融资|收购|研究|模型|芯片|机器人|临床|获批|突破/i;
 
 class SummaryGenerationTimeoutError extends Error {
 	constructor(timeoutMs: number) {
@@ -562,8 +566,8 @@ export function buildSystemPrompt(
 	const scopeRules =
 		scope === "cross-topic"
 			? [
-					"- This is the cross-topic Featured digest. When the numbered material permits it, the first five entries must cover at least 3 different topics, the full list must cover at least 4, and no topic may take more than 4 of 10 slots.",
-					"- Treat `[Topic: …]` as an editorial category. Do not spend the whole digest on AI merely because AI has more candidate items.",
+					"- This is the cross-topic Featured digest. Prefer cross-topic variety when stories have comparable editorial value; do not let AI dominate merely because it has more candidates.",
+					"- Quality wins over quotas: never include a weak story just to represent another `[Topic: …]`. Rank first by consequence, novelty, evidence, and likely reader impact.",
 				]
 			: [];
 	return [
@@ -581,111 +585,131 @@ export function buildSystemPrompt(
 	].join("\n");
 }
 
-const DIGEST_ENTRY_RE = /^\s*\d+[.)]\s+(.+)$/gm;
-const DIGEST_CITATION_RE = /\[(\d+)\]/g;
-
-function digestEntryTopics(
-	text: string,
-	citations: readonly Citation[]
-): { repeatedCitation: boolean; topics: (string | undefined)[] } {
-	const topicByCitation = new Map(
-		citations.map((citation) => [citation.n, citation.topic] as const)
-	);
-	const seenCitations = new Set<number>();
-	const topics: (string | undefined)[] = [];
-	let repeatedCitation = false;
-	for (const entry of text.matchAll(DIGEST_ENTRY_RE)) {
-		const citationNumbers = [...(entry[1] ?? "").matchAll(DIGEST_CITATION_RE)]
-			.map((match) => Number.parseInt(match[1] ?? "", 10))
-			.filter(Number.isFinite);
-		for (const n of citationNumbers) {
-			if (seenCitations.has(n)) {
-				repeatedCitation = true;
-			}
-			seenCitations.add(n);
-		}
-		const topic = citationNumbers
-			.map((n) => topicByCitation.get(n))
-			.find((value): value is string => Boolean(value));
-		topics.push(topic);
-	}
-	return { repeatedCitation, topics };
-}
-
-export function isCrossTopicDigestDiverse(
-	text: string,
-	citations: readonly Citation[]
-): boolean {
-	const availableTopics = new Set(
-		citations.flatMap((citation) => (citation.topic ? [citation.topic] : []))
-	);
-	const { repeatedCitation, topics } = digestEntryTopics(text, citations);
-	const knownTopics = topics.filter((topic): topic is string => Boolean(topic));
-	if (repeatedCitation || knownTopics.length === 0 || availableTopics.size < 2) {
-		return availableTopics.size < 2 && !repeatedCitation;
-	}
-	const firstFive = topics
-		.slice(0, 5)
-		.filter((topic): topic is string => Boolean(topic));
-	const firstFiveTarget = Math.min(3, availableTopics.size, topics.length);
-	const totalTarget = Math.min(4, availableTopics.size, topics.length);
-	const counts = new Map<string, number>();
-	for (const topicId of knownTopics) {
-		counts.set(topicId, (counts.get(topicId) ?? 0) + 1);
-	}
-	const maxTopicCount = Math.max(...counts.values());
-	const maxAllowed = Math.max(3, Math.ceil(topics.length * 0.4));
-	return (
-		new Set(firstFive).size >= firstFiveTarget &&
-		new Set(knownTopics).size >= totalTarget &&
-		maxTopicCount <= maxAllowed
-	);
-}
-
 export function buildCrossTopicFallbackSummary(
 	cited: CitedItem[],
 	lang: TranslationLanguage
 ): string {
-	const groups = new Map<string, CitedItem[]>();
+	const selected = selectCrossTopicFallbackItems(cited);
+	return selected
+		.map(({ item, n }, index) => {
+			const title = item.title.replace(/\s+/g, " ").replaceAll("**", "").trim();
+			return `${index + 1}. **${title}** — ${fallbackEditorialReason(item, lang)} [${n}]`;
+		})
+		.join("\n");
+}
+
+interface ScoredFallbackCandidate {
+	entry: CitedItem;
+	score: number;
+}
+
+function fallbackCandidates(cited: CitedItem[]): CitedItem[] {
+	const normalized: CitedItem[] = [];
 	const seenUrls = new Set<string>();
 	for (const entry of cited) {
 		if (seenUrls.has(entry.item.url)) {
 			continue;
 		}
 		seenUrls.add(entry.item.url);
-		const topicId = topicForSource(entry.item.sourceId) ?? "other";
-		groups.set(topicId, [...(groups.get(topicId) ?? []), entry]);
+		normalized.push(entry);
 	}
-	const buckets = [...groups.values()];
+	const withoutPromotions = normalized.filter(
+		(entry) => !PROMOTIONAL_TITLE_RE.test(entry.item.title)
+	);
+	return withoutPromotions.length > 0 ? withoutPromotions : normalized;
+}
+
+function scoreFallbackCandidates(
+	candidates: CitedItem[]
+): ScoredFallbackCandidate[] {
+	const now = Math.max(
+		Date.now(),
+		...candidates.map(({ item }) => itemTime(item))
+	);
+	return candidates.map((entry) => {
+		const ageHours = Math.max(0, (now - itemTime(entry.item)) / HOUR_MS);
+		const description = entry.item.description?.trim();
+		const rankBonus = entry.item.rank ? Math.max(0, 12 - entry.item.rank) : 0;
+		return {
+			entry,
+			score:
+				Math.max(0, 24 - ageHours) / 4 +
+				rankBonus +
+				(description && !isDescriptionRedundant(entry.item.title, description)
+					? 10
+					: 0) +
+				(HIGH_SIGNAL_TITLE_RE.test(entry.item.title) ? 8 : 0),
+		};
+	});
+}
+
+function selectCrossTopicFallbackItems(cited: CitedItem[]): CitedItem[] {
+	const scored = scoreFallbackCandidates(fallbackCandidates(cited));
 	const selected: CitedItem[] = [];
-	for (let depth = 0; selected.length < 10; depth += 1) {
-		let added = false;
-		for (const bucket of buckets) {
-			const entry = bucket[depth];
-			if (entry) {
-				selected.push(entry);
-				added = true;
-				if (selected.length === 10) {
-					break;
-				}
+	const selectedEntries = new Set<CitedItem>();
+	const topicCounts = new Map<string, number>();
+	const sourceCounts = new Map<string, number>();
+	while (selected.length < Math.min(10, scored.length)) {
+		let bestIndex = -1;
+		let bestScore = Number.NEGATIVE_INFINITY;
+		for (const [index, candidate] of scored.entries()) {
+			if (selectedEntries.has(candidate.entry)) {
+				continue;
+			}
+			const topicId = topicForSource(candidate.entry.item.sourceId) ?? "other";
+			const topicCount = topicCounts.get(topicId) ?? 0;
+			const sourceCount = sourceCounts.get(candidate.entry.source) ?? 0;
+			// Diversity is a small editorial tie-breaker, never a quota. A much
+			// stronger story can still win another slot from the same field.
+			const adjustedScore =
+				candidate.score +
+				(topicCount === 0 ? 5 : 0) -
+				topicCount * 2 -
+				sourceCount * 3;
+			if (adjustedScore > bestScore) {
+				bestIndex = index;
+				bestScore = adjustedScore;
 			}
 		}
-		if (!added) {
+		const best = scored[bestIndex]?.entry;
+		if (!best) {
 			break;
 		}
+		selected.push(best);
+		selectedEntries.add(best);
+		const topicId = topicForSource(best.item.sourceId) ?? "other";
+		topicCounts.set(topicId, (topicCounts.get(topicId) ?? 0) + 1);
+		sourceCounts.set(best.source, (sourceCounts.get(best.source) ?? 0) + 1);
 	}
-	let reason = "A recent development worth watching";
+	return selected;
+}
+
+function fallbackEditorialReason(
+	item: NewsItem,
+	lang: TranslationLanguage
+): string {
+	const description = item.description
+		?.replace(/<[^>]+>/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+	if (
+		description &&
+		!isDescriptionRedundant(item.title, description) &&
+		isWrittenInTargetLanguage(description, lang)
+	) {
+		const limit = lang === "zh" || lang === "zh-Hant" ? 44 : 120;
+		const characters = Array.from(description);
+		return characters.length > limit
+			? `${characters.slice(0, limit).join("")}…`
+			: description;
+	}
 	if (lang === "zh") {
-		reason = "值得关注的最新动态";
-	} else if (lang === "zh-Hant") {
-		reason = "值得關注的最新動態";
+		return "涉及产品、研究或行业格局的新变化";
 	}
-	return selected
-		.map(({ item, n }, index) => {
-			const title = item.title.replace(/\s+/g, " ").replaceAll("**", "").trim();
-			return `${index + 1}. **${title}** — ${reason} [${n}]`;
-		})
-		.join("\n");
+	if (lang === "zh-Hant") {
+		return "涉及產品、研究或產業格局的新變化";
+	}
+	return "A concrete change in products, research, or the industry";
 }
 
 const CJK_CHAR_RE = /[\u3400-\u9fff]/g;
@@ -1104,15 +1128,6 @@ async function cacheGeneratedSummary(
 	if (!isWrittenInTargetLanguage(text, params.lang)) {
 		console.warn(
 			`[trends-summary] discarded ${params.cacheTopicId} summary not written in ${params.lang}`
-		);
-		return;
-	}
-	if (
-		params.scope === "cross-topic" &&
-		!isCrossTopicDigestDiverse(text, params.citations)
-	) {
-		console.warn(
-			`[trends-summary] discarded ${params.cacheTopicId} summary without enough topic diversity`
 		);
 		return;
 	}

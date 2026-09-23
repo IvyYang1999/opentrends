@@ -2,8 +2,14 @@ import { describe, expect, test } from "bun:test";
 
 import {
 	isDecorativeBadgeImage,
+	SOURCE_CARD_GRID_CLASSES,
 	sourceCardViewportClasses,
 } from "./source-card-model";
+
+test("source cards stretch to the tallest card in their grid row", () => {
+	expect(SOURCE_CARD_GRID_CLASSES).toContain("items-stretch");
+	expect(SOURCE_CARD_GRID_CLASSES).not.toContain("items-start");
+});
 
 describe("sourceCardViewportClasses", () => {
 	test("does not reserve a 480px offscreen box for an empty source", () => {

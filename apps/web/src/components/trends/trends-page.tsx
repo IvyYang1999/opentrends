@@ -65,7 +65,11 @@ import {
 import { formatRelativeTime } from "./relative-time";
 
 import { revealSourceCard, sourceCardElementId } from "./reveal-source-card";
-import { coverKind, sourceCardViewportClasses } from "./source-card-model";
+import {
+	coverKind,
+	SOURCE_CARD_GRID_CLASSES,
+	sourceCardViewportClasses,
+} from "./source-card-model";
 import { SourceFavicon } from "./source-favicon";
 import { SourceManagerDialog } from "./source-manager-dialog";
 import { useSourcePreferences } from "./source-preferences";
@@ -628,7 +632,7 @@ function SourceGridLayout({
 	const { hasMore, sentinelRef, visibleSources } =
 		useProgressiveSources(sources);
 	return (
-		<div className="grid grid-cols-1 items-start sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+		<div className={SOURCE_CARD_GRID_CLASSES}>
 			{visibleSources.map(({ sectionId, source }) => (
 				<SourceCard
 					dragHandleProps={dragHandleProps(source.sourceId)}

@@ -1,3 +1,6 @@
+export const SOURCE_CARD_GRID_CLASSES =
+	"grid grid-cols-1 items-stretch sm:grid-cols-2 lg:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4";
+
 export function sourceCardViewportClasses(
 	hasItems: boolean,
 	expanded = false
