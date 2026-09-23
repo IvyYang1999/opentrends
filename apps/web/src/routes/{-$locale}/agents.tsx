@@ -599,7 +599,7 @@ function Snippet({
 					{copied ? strings.copied : strings.copy}
 				</button>
 			</div>
-			<pre className="overflow-x-auto p-3 text-[13px] text-[var(--text-primary)] leading-6">
+			<pre className="whitespace-pre-wrap break-words p-3 text-[13px] text-[var(--text-primary)] leading-6">
 				<code>{value}</code>
 			</pre>
 		</div>
