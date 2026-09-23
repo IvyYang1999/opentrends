@@ -57,6 +57,7 @@ import {
 } from "./display-settings";
 import { DisplaySettingsMenuContent } from "./display-settings-menu";
 import {
+	FOLLOWED_TOPIC_ID,
 	FollowedSourcesContext,
 	useFollowedSources,
 	useFollowedSourcesContext,
@@ -174,11 +175,19 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	const userVisibleSources = orderedSources.filter(
 		({ source }) => !hiddenSourceIdSet.has(source.sourceId)
 	);
-	const visibleSources = userVisibleSources.filter(
+	const pageVisibleSources = userVisibleSources.filter(
 		({ source }) => source.items.length > 0 || source.status !== "error"
 	);
 	const [sourceManagerOpen, setSourceManagerOpen] = useState(false);
 	const followed = useFollowedSources();
+	// On the followed page the list is the follow list itself: unfollowing
+	// from a card menu removes the card at once, before the page refetches.
+	const visibleSources =
+		page.id === FOLLOWED_TOPIC_ID
+			? pageVisibleSources.filter(({ source }) =>
+					followed.isFollowed(source.sourceId)
+				)
+			: pageVisibleSources;
 	const followedContext = useMemo(
 		() => ({
 			isFollowed: followed.isFollowed,

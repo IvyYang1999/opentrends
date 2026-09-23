@@ -4,9 +4,7 @@ import { Flame, Rss } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { toolButtonClassName } from "@/components/chrome-styles";
-import Loader from "@/components/loader";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
-
 import { CONTENT_KINDS, type ContentKind, contentKind } from "./content-kind";
 import { setDisplaySetting, useDisplaySettings } from "./display-settings";
 import {
@@ -18,6 +16,7 @@ import {
 import {
 	type FeedBlock,
 	type FeedEntry,
+	parseHeat,
 	rankFeed,
 	withListCards,
 } from "./feed-model";
@@ -39,6 +38,7 @@ import {
 import { useSourcePreferences } from "./source-preferences";
 import { orderWithPinned } from "./source-preferences-model";
 import { trendsPageQueryOptions } from "./trends-query";
+import { FeedSkeleton } from "./trends-skeleton";
 import { TrendsSummary } from "./trends-summary";
 import type { NewsItem, SourceCardData, TrendsPageData } from "./types";
 import { ViewSwitch } from "./view-switch";
@@ -287,7 +287,7 @@ export function FeedPage({ topicId }: FeedPageProps) {
 				/>
 			) : null}
 			{pending && blocks.length === 0 ? (
-				<Loader />
+				<FeedSkeleton />
 			) : (
 				<Masonry blocks={shown.slice(0, limit)} t={t} />
 			)}
@@ -421,10 +421,19 @@ function FeedCard({
 							<SourceFavicon homeUrl={source.homeUrl} />
 							<span className="max-w-[9rem] truncate">{source.title}</span>
 						</span>
-						<span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/75 via-black/40 to-transparent px-3 pt-10 pb-3">
-							<span className="line-clamp-3 font-semibold text-[14px] text-white leading-snug tracking-tight [text-shadow:0_1px_2px_rgba(0,0,0,0.4)]">
+						{/* Resting on the card darkens the picture and lets the summary
+						    rise under the title, which floats up to make room; the card
+						    itself keeps its size. */}
+						<span className="absolute inset-0 bg-gradient-to-t from-black/75 via-black/40 to-transparent transition-colors duration-300 group-hover:from-black/85 group-hover:via-black/75 group-hover:to-black/40" />
+						<span className="absolute inset-x-0 bottom-0 flex max-h-full flex-col px-3 pb-3">
+							<span className="line-clamp-3 font-semibold text-[14px] text-white leading-snug tracking-tight transition-[font-size] duration-300 [text-shadow:0_1px_2px_rgba(0,0,0,0.4)] group-hover:line-clamp-none group-hover:text-[13px]">
 								<Emphasized text={item.title} />
 							</span>
+							{item.description ? (
+								<span className="max-h-0 overflow-y-auto text-[12px] text-white/85 leading-relaxed opacity-0 transition-[max-height,opacity,margin] duration-300 group-hover:mt-1.5 group-hover:max-h-40 group-hover:opacity-100">
+									{item.description}
+								</span>
+							) : null}
 						</span>
 					</span>
 				) : (
@@ -435,7 +444,6 @@ function FeedCard({
 						thumbnail={thumbnail}
 					/>
 				)}
-				<HoverDetail item={item} />
 			</span>
 			<span className="flex flex-col gap-1.5 px-3 py-2">
 				<span className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
@@ -463,35 +471,6 @@ function FeedCard({
 	);
 }
 
-// Resting the pointer on a card shows the whole title and the summary over
-// the picture or poster, in the card's own footprint, so nothing around it
-// moves. Skipped when there is nothing more to show than the card already
-// does.
-const SHORT_TITLE = 28;
-
-function HoverDetail({ item }: { item: NewsItem }) {
-	const description = item.description?.trim();
-	if (!description && item.title.length <= SHORT_TITLE) {
-		return null;
-	}
-	return (
-		<span
-			aria-hidden
-			className="pointer-events-none absolute inset-0 flex flex-col gap-1.5 overflow-hidden bg-[var(--surface-card)]/95 p-3 opacity-0 backdrop-blur-sm transition-opacity duration-200 group-hover:opacity-100 group-hover:delay-300"
-		>
-			<span className="font-semibold text-[13px] text-[var(--text-heading)] leading-snug tracking-tight">
-				{item.title}
-			</span>
-			{description ? (
-				<span className="text-[12px] text-[var(--text-secondary)] leading-relaxed">
-					{description}
-				</span>
-			) : null}
-			<span className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-[var(--surface-card)] to-transparent" />
-		</span>
-	);
-}
-
 function KindChip({
 	active,
 	children,
@@ -514,6 +493,11 @@ function KindChip({
 }
 
 const LIST_PREVIEW = 5;
+
+function heatOf(item: NewsItem): string | undefined {
+	const heat = parseHeat(item.hotValue);
+	return heat === undefined ? undefined : formatHeat(heat);
+}
 
 // A whole ranking as one card: the top five, expandable to the full list,
 // each row a link. Gives the stream a second rhythm besides single stories.
@@ -567,6 +551,12 @@ function ListCard({
 							<span className="line-clamp-2 min-w-0 flex-1 leading-[1.45]">
 								{item.title}
 							</span>
+							{heatOf(item) ? (
+								<span className="inline-flex shrink-0 items-center gap-0.5 text-[11px] text-[var(--accent-orange)] tabular-nums">
+									<Flame aria-hidden className="size-3" />
+									{heatOf(item)}
+								</span>
+							) : null}
 						</a>
 					</li>
 				))}

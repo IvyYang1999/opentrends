@@ -7,8 +7,6 @@ import {
 	redirect,
 } from "@tanstack/react-router";
 import { Star } from "lucide-react";
-
-import Loader from "@/components/loader";
 import {
 	FOLLOWED_TOPIC_ID,
 	useFollowedSources,
@@ -17,6 +15,7 @@ import { TrendsTopicNotFoundError } from "@/components/trends/load-trends";
 import { loadTrendsForSsr } from "@/components/trends/load-trends-ssr";
 import { TrendsPage } from "@/components/trends/trends-page";
 import { trendsPageQueryOptions } from "@/components/trends/trends-query";
+import { SourceGridSkeleton } from "@/components/trends/trends-skeleton";
 import type { TrendsPageData } from "@/components/trends/types";
 import {
 	isLocale,
@@ -190,7 +189,7 @@ function FollowedTopicComponent({ locale }: { locale: Locale }) {
 		return <FollowedEmptyState />;
 	}
 	if (trends.isPending) {
-		return <Loader />;
+		return <SourceGridSkeleton />;
 	}
 	if (trends.error) {
 		throw trends.error;
@@ -210,7 +209,7 @@ function TopicComponent({ locale, topic }: { locale: Locale; topic: string }) {
 	});
 
 	if (trends.isPending) {
-		return <Loader />;
+		return <SourceGridSkeleton />;
 	}
 
 	if (trends.error) {

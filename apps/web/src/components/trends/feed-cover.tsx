@@ -340,7 +340,7 @@ export function GeneratedCover({
 	return (
 		<span
 			aria-hidden
-			className={`relative flex w-full flex-col justify-between overflow-hidden p-4 ${coverRatio(item)}`}
+			className={`relative flex w-full flex-col gap-2 overflow-hidden p-4 ${coverRatio(item)}`}
 			style={{
 				backgroundColor: `hsl(${hue} 60% 93%)`,
 				color: `hsl(${hue} 45% 22%)`,
@@ -352,19 +352,28 @@ export function GeneratedCover({
 				<span className="truncate">{source.title}</span>
 			</span>
 			{/* A thumbnail sits beside the text, large enough to read, so the
-			    poster stays balanced instead of carrying a stamp in a corner. */}
-			<span className="relative flex items-center gap-3">
-				<span className="min-w-0 flex-1">
-					<PosterText template={template} title={item.title} />
+			    poster stays balanced instead of carrying a stamp in a corner.
+			    Resting on the card shrinks the text toward the top and lets the
+			    summary rise beneath it; the poster keeps its size. */}
+			<span className="relative flex min-h-0 flex-1 flex-col justify-center">
+				<span className="flex items-center gap-3 transition-transform duration-300 group-hover:scale-[0.82] group-hover:[transform-origin:top_left]">
+					<span className="min-w-0 flex-1">
+						<PosterText template={template} title={item.title} />
+					</span>
+					{thumbnail ? (
+						<img
+							alt=""
+							className="size-24 shrink-0 rounded-sm border border-white/70 object-cover shadow-sm"
+							height={96}
+							src={thumbnail}
+							width={96}
+						/>
+					) : null}
 				</span>
-				{thumbnail ? (
-					<img
-						alt=""
-						className="size-24 shrink-0 rounded-sm border border-white/70 object-cover shadow-sm"
-						height={96}
-						src={thumbnail}
-						width={96}
-					/>
+				{item.description ? (
+					<span className="max-h-0 overflow-y-auto text-[12px] leading-relaxed opacity-0 transition-[max-height,opacity,margin] duration-300 group-hover:mt-1 group-hover:max-h-32 group-hover:opacity-100">
+						{item.description}
+					</span>
 				) : null}
 			</span>
 			<span className="relative flex justify-end text-[12px] tabular-nums opacity-70">

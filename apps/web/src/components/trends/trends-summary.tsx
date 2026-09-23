@@ -657,6 +657,10 @@ export function TrendsSummary({
 			let retryTimer: number | undefined;
 
 			const memo = DIGEST_MEMO.get(memoKey);
+			// A memoised digest stays on screen while a newer one streams in
+			// behind it and replaces it whole when done; watching the list
+			// shrink to one line and grow back is the jump readers noticed.
+			const holdMemo = Boolean(memo);
 			if (memo) {
 				setText(memo.text);
 				setCitations(memo.citations);
@@ -685,6 +689,9 @@ export function TrendsSummary({
 					signal: controller.signal,
 					isCancelled: () => cancelled,
 					onStreamingStart: (origin) => {
+						if (holdMemo) {
+							return;
+						}
 						setStatus("streaming");
 						if (shouldExpandGeneratedSummary(origin)) {
 							setExpanded(true);
@@ -693,12 +700,16 @@ export function TrendsSummary({
 					onChunk: (full) => {
 						if (full.trim()) {
 							latestText = full;
-							setText(full);
+							if (!holdMemo) {
+								setText(full);
+							}
 						}
 					},
 					onCitations: (next) => {
 						latestCitations = next;
-						setCitations(next);
+						if (!holdMemo) {
+							setCitations(next);
+						}
 					},
 					onUnavailable: () => setStatus("unavailable"),
 					onEmpty: () => setStatus("empty"),
@@ -711,6 +722,10 @@ export function TrendsSummary({
 					},
 					onDone: () => {
 						setStatus("done");
+						if (holdMemo && latestText.trim()) {
+							setText(latestText);
+							setCitations(latestCitations);
+						}
 						if (latestText.trim()) {
 							DIGEST_MEMO.set(memoKey, {
 								at: Date.now(),

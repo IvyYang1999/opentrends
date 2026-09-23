@@ -91,7 +91,7 @@ const HEAT_UNITS: Record<string, number> = {
 	亿: 1e8,
 };
 
-function parseHeat(value: NewsItem["hotValue"]): number | undefined {
+export function parseHeat(value: NewsItem["hotValue"]): number | undefined {
 	if (typeof value === "number") {
 		return value;
 	}
