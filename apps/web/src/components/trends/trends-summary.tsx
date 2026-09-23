@@ -452,7 +452,7 @@ function SummaryBody({
 										<span className="w-4 shrink-0 text-right text-[var(--text-muted)] tabular-nums">
 											{line.n}.
 										</span>
-										<span className="min-w-0 flex-1 [&_p]:inline">
+										<span className="min-w-0 flex-1 [&>div]:inline [&_p]:inline">
 											{line.topic ? (
 												<a
 													className={`mr-1.5 inline-block rounded-[4px] px-1.5 align-[1px] font-medium text-[10px] leading-[1.6] no-underline ${TOPIC_TAG_CLASS[line.topic] ?? DEFAULT_TAG_CLASS}`}
