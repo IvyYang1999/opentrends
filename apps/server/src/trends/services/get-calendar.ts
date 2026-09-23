@@ -1,7 +1,7 @@
 import { type CacheEnvelope, hotCache } from "../cache/hot-cache";
 import { readSourceItemHistory } from "../cache/source-cache";
+import { FOLLOWED_TOPIC_ID, resolveTopic } from "../config/followed-topic";
 import { getSourcePreset } from "../config/sources";
-import { getTopicPreset } from "../config/topics";
 import type { NewsItem, SourceId, TopicPreset } from "../types";
 import { archiveDayFor, readArchivedDigest } from "./digest-archive";
 import { type DigestJsonEntry, parseDigestEntries } from "./digest-json";
@@ -138,14 +138,21 @@ export async function getCalendarMonth(
 	topicId: string,
 	month: string,
 	lang: TranslationLanguage,
-	tzOffsetMinutes: number
+	tzOffsetMinutes: number,
+	sourceIds?: readonly SourceId[]
 ): Promise<CalendarMonth> {
 	const parsed = parseMonth(month);
-	const topic = getTopicPreset(topicId);
-	if (!(parsed && topic)) {
+	const resolved = resolveTopic(topicId, sourceIds);
+	if (!(parsed && resolved)) {
 		throw new TopicNotFoundError(topicId);
 	}
-	const key = cacheKey(topicId, parsed.month, lang, tzOffsetMinutes);
+	const topic = resolved.preset;
+	const key = cacheKey(
+		resolved.cacheTopicId,
+		parsed.month,
+		lang,
+		tzOffsetMinutes
+	);
 	const cached = await hotCache.get<CalendarMonth>(key).catch(() => null);
 	if (
 		cached &&
@@ -201,13 +208,17 @@ export async function getCalendarMonth(
 			url: item.url,
 		}));
 	}
-	const digests = await readMonthDigests(
-		topicId,
-		lang,
-		parsed.year,
-		parsed.monthIndex,
-		tzOffsetMinutes
-	);
+	// A followed list's digest is not archived; only real topics have days.
+	const digests =
+		topicId === FOLLOWED_TOPIC_ID
+			? {}
+			: await readMonthDigests(
+					topicId,
+					lang,
+					parsed.year,
+					parsed.monthIndex,
+					tzOffsetMinutes
+				);
 	const value: CalendarMonth = {
 		days,
 		digests,

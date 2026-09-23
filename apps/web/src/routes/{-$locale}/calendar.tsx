@@ -5,11 +5,22 @@ import { createFileRoute } from "@tanstack/react-router";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 
+import { segmentClassName } from "@/components/chrome-styles";
 import {
 	CONTENT_KINDS,
 	type ContentKind,
 	classifyTitle,
 } from "@/components/trends/content-kind";
+import {
+	setDisplaySetting,
+	useDisplaySettings,
+} from "@/components/trends/display-settings";
+import {
+	FOLLOWED_TOPIC_ID,
+	useFollowedSources,
+} from "@/components/trends/followed-sources";
+import { trendsPageQueryOptions } from "@/components/trends/trends-query";
+import { TrendsSummary } from "@/components/trends/trends-summary";
 import { ViewSwitch } from "@/components/trends/view-switch";
 import {
 	type Locale,
@@ -21,10 +32,9 @@ import {
 } from "@/lib/i18n";
 import { buildSeo } from "@/lib/seo";
 
-// A month of a topic, day by day: what led each source on that day. A
-// filter row narrows it to one kind of thing, so "releases in September"
-// or "policy this month" is one click. Data comes from the item history
-// the API keeps; nothing here calls a model.
+// A month of a topic, day by day: the day's ten lines where one was kept,
+// and what led each source. The same digest bar and kind filter as the
+// feed sit above it, so switching views moves nothing else.
 
 const CELL_ITEMS = 3;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -82,16 +92,27 @@ function calendarQueryOptions(
 	topic: string,
 	month: string,
 	locale: Locale,
-	tzOffset: number
+	tzOffset: number,
+	sourceIds: readonly string[] | undefined
 ) {
 	return queryOptions<CalendarMonth, Error>({
-		queryKey: ["calendar", topic, month, locale, tzOffset],
+		queryKey: [
+			"calendar",
+			topic,
+			month,
+			locale,
+			tzOffset,
+			sourceIds?.join(","),
+		],
 		queryFn: async () => {
 			const search = new URLSearchParams({
 				lang: locale,
 				month,
 				tz: String(tzOffset),
 			});
+			if (sourceIds) {
+				search.set("sources", sourceIds.join(","));
+			}
 			const response = await fetch(
 				`${env.VITE_SERVER_URL}/api/trends/${encodeURIComponent(topic)}/calendar?${search}`,
 				{ credentials: "same-origin" }
@@ -132,6 +153,53 @@ function monthCells(month: string): (string | null)[] {
 	return cells;
 }
 
+function DigestPanel({
+	day,
+	entries,
+	t,
+}: {
+	day: string;
+	entries: DigestEntry[];
+	t: ReturnType<typeof useT>;
+}) {
+	return (
+		<section className="mt-4 border border-[var(--accent-blue)] bg-[var(--surface-card)]">
+			<h2 className="border-[var(--border-default)] border-b px-4 py-2 font-semibold text-[13px] text-[var(--text-heading)]">
+				{day} · {t("summary.windowToday")} {entries.length}
+			</h2>
+			<ol className="space-y-1.5 px-4 py-3 text-[13px]">
+				{entries.map((entry) => (
+					<li className="flex gap-2" key={entry.n}>
+						<span className="w-4 shrink-0 text-right text-[var(--text-muted)] tabular-nums">
+							{entry.n}.
+						</span>
+						<span>
+							<strong className="font-semibold">{entry.takeaway}</strong>
+							{entry.reason ? (
+								<span className="text-[var(--text-secondary)]">
+									{" — "}
+									{entry.reason}
+								</span>
+							) : null}{" "}
+							{entry.citations.map((citation, index) => (
+								<a
+									className="mx-0.5 inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-[4px] bg-[var(--accent-blue-bg)] px-[5px] align-[-4px] text-[10px] text-[var(--accent-blue)]"
+									href={citation.url}
+									key={citation.url}
+									rel="noopener noreferrer"
+									target="_blank"
+								>
+									{index + 1}
+								</a>
+							))}
+						</span>
+					</li>
+				))}
+			</ol>
+		</section>
+	);
+}
+
 function CalendarRoute() {
 	const search = Route.useSearch();
 	const navigate = Route.useNavigate();
@@ -139,10 +207,22 @@ function CalendarRoute() {
 	const locale = useLocale();
 	const localeParam = localePathParam(resolveLocale(params.locale));
 	const t = useT();
+	const settings = useDisplaySettings();
+	const { followedIds } = useFollowedSources();
 	const topic = search.topic ?? "ai";
 	const month = search.month ?? thisMonth();
 	const tzOffset = -new Date().getTimezoneOffset();
-	const query = useQuery(calendarQueryOptions(topic, month, locale, tzOffset));
+	const isFollowed = topic === FOLLOWED_TOPIC_ID;
+	const sourceIds = isFollowed ? followedIds : undefined;
+	const enabled = !isFollowed || followedIds.length > 0;
+	const query = useQuery({
+		...calendarQueryOptions(topic, month, locale, tzOffset, sourceIds),
+		enabled,
+	});
+	const page = useQuery({
+		...trendsPageQueryOptions(topic, locale, sourceIds),
+		enabled,
+	});
 	const [kind, setKind] = useState<ContentKind | null>(null);
 	const [openDay, setOpenDay] = useState<string | null>(null);
 
@@ -185,24 +265,35 @@ function CalendarRoute() {
 
 	return (
 		<ScrollArea className="min-w-0 flex-1 bg-[var(--surface-app)] text-[var(--text-primary)]">
-			<div className="flex flex-wrap items-center gap-2 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-2 sm:px-4">
+			{page.data ? (
+				<TrendsSummary
+					collapsed={settings.summaryCollapsed}
+					onCollapsedChange={(collapsed) =>
+						setDisplaySetting("summaryCollapsed", collapsed)
+					}
+					page={page.data}
+					topicId={topic}
+				/>
+			) : (
+				<div className="h-10 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)]" />
+			)}
+			<div className="flex h-10 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
 				<ViewSwitch localeParam={localeParam} topicId={topic} view="calendar" />
-				<span className="mx-1 h-4 w-px bg-[var(--border-default)]" />
 				<div className="flex items-center gap-1">
 					<button
 						aria-label={t("calendar.previousMonth")}
-						className="inline-flex size-7 items-center justify-center rounded text-[var(--text-secondary)] hover:bg-[var(--state-hover-subtle)]"
+						className="inline-flex size-7 items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
 						onClick={() => go({ month: shiftMonth(month, -1) })}
 						type="button"
 					>
 						<ChevronLeft className="size-4" />
 					</button>
-					<span className="min-w-[8rem] text-center font-semibold text-[13px] text-[var(--text-heading)]">
+					<span className="min-w-[7rem] text-center font-semibold text-[12px] text-[var(--text-heading)] tabular-nums">
 						{monthLabel}
 					</span>
 					<button
 						aria-label={t("calendar.nextMonth")}
-						className="inline-flex size-7 items-center justify-center rounded text-[var(--text-secondary)] hover:bg-[var(--state-hover-subtle)] disabled:opacity-30"
+						className="inline-flex size-7 items-center justify-center text-[var(--text-secondary)] hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] disabled:opacity-30"
 						disabled={month >= thisMonth()}
 						onClick={() => go({ month: shiftMonth(month, 1) })}
 						type="button"
@@ -210,24 +301,31 @@ function CalendarRoute() {
 						<ChevronRight className="size-4" />
 					</button>
 				</div>
-				<div className="ml-auto flex flex-wrap gap-1">
-					<KindChip active={kind === null} onClick={() => setKind(null)}>
-						{t("kind.all")}
-					</KindChip>
-					{CONTENT_KINDS.map((value) => (
-						<KindChip
-							active={kind === value}
-							key={value}
-							onClick={() => setKind(kind === value ? null : value)}
-						>
-							{t(`kind.${value}`)}
-						</KindChip>
-					))}
-				</div>
+			</div>
+			<div className="flex flex-wrap gap-1 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-1.5 sm:px-4">
+				<button
+					aria-pressed={kind === null}
+					className={segmentClassName}
+					onClick={() => setKind(null)}
+					type="button"
+				>
+					{t("kind.all")}
+				</button>
+				{CONTENT_KINDS.map((value) => (
+					<button
+						aria-pressed={kind === value}
+						className={segmentClassName}
+						key={value}
+						onClick={() => setKind(kind === value ? null : value)}
+						type="button"
+					>
+						{t(`kind.${value}`)}
+					</button>
+				))}
 			</div>
 
 			<div className="p-3 sm:p-4">
-				<div className="grid grid-cols-7 gap-px overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--border-subtle)]">
+				<div className="grid grid-cols-7 gap-px border border-[var(--border-default)] bg-[var(--border-subtle)]">
 					{weekdays.map((label) => (
 						<div
 							className="bg-[var(--surface-sidebar)] px-2 py-1 text-[11px] text-[var(--text-muted)]"
@@ -247,6 +345,7 @@ function CalendarRoute() {
 							);
 						}
 						const items = days[day] ?? [];
+						const digestCount = query.data?.digests?.[day]?.length;
 						return (
 							<button
 								aria-pressed={openDay === day}
@@ -257,9 +356,9 @@ function CalendarRoute() {
 							>
 								<span className="flex items-center justify-between text-[11px] text-[var(--text-muted)] tabular-nums">
 									{Number(day.slice(-2))}
-									{query.data?.digests?.[day] ? (
-										<span className="rounded-sm bg-[var(--accent-blue-bg)] px-1 text-[10px] text-[var(--accent-blue)]">
-											{query.data.digests[day]?.length}
+									{digestCount ? (
+										<span className="bg-[var(--accent-blue-bg)] px-1 text-[10px] text-[var(--accent-blue)]">
+											{digestCount}
 										</span>
 									) : null}
 								</span>
@@ -281,49 +380,16 @@ function CalendarRoute() {
 						);
 					})}
 				</div>
-				{query.isPending ? (
+				{query.isPending && enabled ? (
 					<p className="mt-3 text-[12px] text-[var(--text-muted)]">
 						{t("summary.reading")}
 					</p>
 				) : null}
 				{openDay && openDigest && openDigest.length > 0 ? (
-					<section className="mt-4 overflow-hidden rounded-md border border-[var(--accent-blue)] bg-[var(--surface-card)]">
-						<h2 className="border-[var(--border-default)] border-b px-4 py-2 font-semibold text-[13px] text-[var(--text-heading)]">
-							{openDay} · {t("summary.windowToday")} {openDigest.length}
-						</h2>
-						<ol className="space-y-1.5 px-4 py-3 text-[13px]">
-							{openDigest.map((entry) => (
-								<li className="flex gap-2" key={entry.n}>
-									<span className="w-4 shrink-0 text-right text-[var(--text-muted)] tabular-nums">
-										{entry.n}.
-									</span>
-									<span>
-										<strong className="font-semibold">{entry.takeaway}</strong>
-										{entry.reason ? (
-											<span className="text-[var(--text-secondary)]">
-												{" — "}
-												{entry.reason}
-											</span>
-										) : null}{" "}
-										{entry.citations.map((citation, index) => (
-											<a
-												className="mx-0.5 inline-flex h-[1.125rem] min-w-[1.125rem] items-center justify-center rounded-[4px] bg-[var(--accent-blue-bg)] px-[5px] text-[10px] text-[var(--accent-blue)]"
-												href={citation.url}
-												key={citation.url}
-												rel="noopener noreferrer"
-												target="_blank"
-											>
-												{index + 1}
-											</a>
-										))}
-									</span>
-								</li>
-							))}
-						</ol>
-					</section>
+					<DigestPanel day={openDay} entries={openDigest} t={t} />
 				) : null}
 				{open && openDay ? (
-					<section className="mt-4 overflow-hidden rounded-md border border-[var(--border-default)] bg-[var(--surface-card)]">
+					<section className="mt-4 border border-[var(--border-default)] bg-[var(--surface-card)]">
 						<h2 className="border-[var(--border-default)] border-b px-4 py-2 font-semibold text-[13px] text-[var(--text-heading)]">
 							{openDay} · {open.length}
 						</h2>
@@ -350,26 +416,5 @@ function CalendarRoute() {
 				) : null}
 			</div>
 		</ScrollArea>
-	);
-}
-
-function KindChip({
-	active,
-	children,
-	onClick,
-}: {
-	active: boolean;
-	children: React.ReactNode;
-	onClick: () => void;
-}) {
-	return (
-		<button
-			aria-pressed={active}
-			className="rounded-full px-2.5 py-0.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:font-medium aria-pressed:text-[var(--accent-blue)]"
-			onClick={onClick}
-			type="button"
-		>
-			{children}
-		</button>
 	);
 }

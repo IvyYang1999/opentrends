@@ -317,7 +317,7 @@ function Delivery({
 				{strings.deliverBody}
 			</span>
 			<input
-				className="w-56 rounded-md border border-[var(--border-default)] bg-[var(--surface-app)] px-2.5 py-1 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-blue)]"
+				className="w-56 border border-[var(--border-default)] bg-[var(--surface-app)] px-2.5 py-1 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-blue)]"
 				onChange={(event) => setEmail(event.target.value)}
 				placeholder={strings.emailPlaceholder}
 				required
@@ -360,11 +360,11 @@ export const Route = createFileRoute("/{-$locale}/briefings")({
 });
 
 const INPUT_CLASS =
-	"w-full rounded-md border border-[var(--border-default)] bg-[var(--surface-app)] px-3 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-blue)]";
+	"w-full border border-[var(--border-default)] bg-[var(--surface-app)] px-3 py-1.5 text-[13px] text-[var(--text-primary)] outline-none focus:border-[var(--accent-blue)]";
 const BUTTON_CLASS =
-	"inline-flex items-center gap-1.5 rounded-md bg-[var(--accent-blue)] px-3 py-1.5 font-medium text-[13px] text-white transition-opacity hover:opacity-90 disabled:opacity-40";
+	"inline-flex h-7 items-center gap-1.5 bg-[var(--accent-blue)] px-3 font-medium text-[12px] text-white transition-opacity hover:opacity-90 disabled:opacity-40";
 const GHOST_BUTTON_CLASS =
-	"inline-flex items-center gap-1.5 rounded-md border border-[var(--border-default)] px-3 py-1.5 text-[13px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-blue)] hover:text-[var(--accent-blue)]";
+	"inline-flex h-7 items-center gap-1.5 border border-[var(--border-default)] bg-[var(--surface-card)] px-2.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]";
 
 function topicLabel(topic: TopicSummary, t: ReturnType<typeof useT>): string {
 	const key = `topic.${topic.id}` as TranslationKey;
@@ -420,7 +420,7 @@ function BriefingForm({
 
 	return (
 		<form
-			className="space-y-4 rounded-md border border-[var(--border-default)] bg-[var(--surface-card)] p-4"
+			className="space-y-4 border border-[var(--border-default)] bg-[var(--surface-card)] p-4"
 			onSubmit={(event) => {
 				event.preventDefault();
 				save();
@@ -443,7 +443,7 @@ function BriefingForm({
 					{topics.map((topic) => (
 						<button
 							aria-pressed={topicIds.includes(topic.id)}
-							className="rounded-full border border-[var(--border-default)] px-2.5 py-0.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-blue)] aria-pressed:border-[var(--accent-blue)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:text-[var(--accent-blue)]"
+							className="border border-[var(--border-default)] px-2.5 py-0.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-blue)] aria-pressed:border-[var(--accent-blue)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:text-[var(--accent-blue)]"
 							key={topic.id}
 							onClick={() => toggleTopic(topic.id)}
 							type="button"
@@ -469,7 +469,7 @@ function BriefingForm({
 			<label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
 				<span>{strings.everyDay}</span>
 				<select
-					className="rounded-md border border-[var(--border-default)] bg-[var(--surface-app)] px-2 py-1 text-[13px] text-[var(--text-primary)]"
+					className="border border-[var(--border-default)] bg-[var(--surface-app)] px-2 py-1 text-[13px] text-[var(--text-primary)]"
 					onChange={(event) => setHour(Number(event.target.value))}
 					value={hour}
 				>
@@ -537,7 +537,7 @@ function BriefingView({
 		);
 	}
 	return (
-		<div className="overflow-hidden rounded-md border border-[var(--border-default)]">
+		<div className="overflow-hidden border border-[var(--border-default)]">
 			<TrendsSummary
 				collapsed={false}
 				keywords={briefing.keywords}
@@ -654,7 +654,7 @@ function BriefingsRoute() {
 								<span className="inline-flex items-center" key={briefing.id}>
 									<button
 										aria-pressed={open?.id === briefing.id}
-										className="rounded-l-full border border-[var(--border-default)] px-3 py-1 text-[13px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] aria-pressed:border-[var(--accent-blue)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:text-[var(--accent-blue)]"
+										className="border border-[var(--border-default)] px-3 py-1 text-[13px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] aria-pressed:border-[var(--accent-blue)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:text-[var(--accent-blue)]"
 										onClick={() => setOpenId(briefing.id)}
 										type="button"
 									>
@@ -662,7 +662,7 @@ function BriefingsRoute() {
 									</button>
 									<button
 										aria-label={strings.delete}
-										className="rounded-r-full border border-[var(--border-default)] border-l-0 px-2 py-1 text-[var(--text-muted)] transition-colors hover:text-[var(--accent-red)]"
+										className="border border-[var(--border-default)] border-l-0 px-2 py-1 text-[var(--text-muted)] transition-colors hover:text-[var(--accent-red)]"
 										onClick={() => remove(briefing.id)}
 										title={strings.delete}
 										type="button"
@@ -699,25 +699,27 @@ function BriefingsRoute() {
 					<p className="text-[13px] text-[var(--text-secondary)]">
 						{strings.officialBody}
 					</p>
-					<ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+					<ul className="grid grid-cols-1 gap-px border border-[var(--border-default)] bg-[var(--border-subtle)] sm:grid-cols-2 lg:grid-cols-3">
 						{(topics.data?.topics ?? []).map((topic) => {
 							const done = subscribedTopics.has(topic.id);
 							return (
 								<li
-									className="flex flex-col gap-2 rounded-md border border-[var(--border-subtle)] bg-[var(--surface-card)] p-4"
+									className="flex items-center gap-3 bg-[var(--surface-card)] px-4 py-3"
 									key={topic.id}
 								>
-									<span className="font-semibold text-[14px] text-[var(--text-heading)]">
-										{topicLabel(topic, t)}
-									</span>
-									{locale === "en" && topic.description ? (
-										<span className="text-[12px] text-[var(--text-secondary)]">
-											{topic.description}
+									<span className="min-w-0 flex-1 space-y-0.5">
+										<span className="block font-semibold text-[13px] text-[var(--text-heading)]">
+											{topicLabel(topic, t)}
 										</span>
-									) : null}
-									<span className="text-[11px] text-[var(--text-muted)]">
-										{topic.sourceIds.length} {strings.sources} ·{" "}
-										{strings.everyDay} 08:00
+										{locale === "en" && topic.description ? (
+											<span className="block text-[12px] text-[var(--text-secondary)]">
+												{topic.description}
+											</span>
+										) : null}
+										<span className="block text-[11px] text-[var(--text-muted)]">
+											{topic.sourceIds.length} {strings.sources} ·{" "}
+											{strings.everyDay} 08:00
+										</span>
 									</span>
 									<button
 										className={done ? GHOST_BUTTON_CLASS : BUTTON_CLASS}

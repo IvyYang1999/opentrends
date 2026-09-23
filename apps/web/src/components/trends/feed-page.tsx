@@ -3,7 +3,10 @@ import { useQueries } from "@tanstack/react-query";
 import { Flame, Rss } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { toolButtonClassName } from "@/components/chrome-styles";
+import {
+	segmentClassName,
+	toolButtonClassName,
+} from "@/components/chrome-styles";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
 import { CONTENT_KINDS, type ContentKind, contentKind } from "./content-kind";
 import { setDisplaySetting, useDisplaySettings } from "./display-settings";
@@ -430,7 +433,7 @@ function FeedCard({
 								<Emphasized text={item.title} />
 							</span>
 							{item.description ? (
-								<span className="max-h-0 overflow-y-auto text-[12px] text-white/85 leading-relaxed opacity-0 transition-[max-height,opacity,margin] duration-300 group-hover:mt-1.5 group-hover:max-h-40 group-hover:opacity-100">
+								<span className="block max-h-0 overflow-y-auto text-[12px] text-white/85 leading-relaxed opacity-0 transition-[max-height,opacity,margin] duration-300 group-hover:mt-1.5 group-hover:max-h-40 group-hover:opacity-100">
 									{item.description}
 								</span>
 							) : null}
@@ -483,7 +486,7 @@ function KindChip({
 	return (
 		<button
 			aria-pressed={active}
-			className="rounded-full px-2.5 py-0.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:font-medium aria-pressed:text-[var(--accent-blue)]"
+			className={segmentClassName}
 			onClick={onClick}
 			type="button"
 		>

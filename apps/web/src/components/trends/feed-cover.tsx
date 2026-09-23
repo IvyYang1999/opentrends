@@ -371,7 +371,7 @@ export function GeneratedCover({
 					) : null}
 				</span>
 				{item.description ? (
-					<span className="max-h-0 overflow-y-auto text-[12px] leading-relaxed opacity-0 transition-[max-height,opacity,margin] duration-300 group-hover:mt-1 group-hover:max-h-32 group-hover:opacity-100">
+					<span className="block max-h-0 overflow-y-auto text-[12px] leading-relaxed opacity-0 transition-[max-height,opacity,margin] duration-300 group-hover:mt-1 group-hover:max-h-32 group-hover:opacity-100">
 						{item.description}
 					</span>
 				) : null}

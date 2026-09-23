@@ -157,7 +157,7 @@ function TopicLink({
 	// Switching topic keeps the current view (feed or events), except that
 	// the followed list has no events view.
 	const onEvents = location.pathname.includes("/events") && id !== "mine";
-	const onCalendar = location.pathname.includes("/calendar") && id !== "mine";
+	const onCalendar = location.pathname.includes("/calendar");
 	const onFeed = location.pathname.includes("/feed");
 	const className = cn(
 		segmentClassName,

@@ -1,6 +1,11 @@
 import { Hono } from "hono";
 
 import {
+	FOLLOWED_TOPIC_ID,
+	parseFollowedSourceIds,
+} from "../trends/config/followed-topic";
+
+import {
 	getCalendarMonth,
 	parseMonth,
 	parseTzOffset,
@@ -24,7 +29,17 @@ export const calendarRoutes = new Hono().get("/:topic/calendar", async (c) => {
 	}
 	const tzOffset = parseTzOffset(c.req.query("tz"));
 	try {
-		const calendar = await getCalendarMonth(topic, month.month, lang, tzOffset);
+		const sourceIds =
+			topic === FOLLOWED_TOPIC_ID
+				? parseFollowedSourceIds(c.req.query("sources"))
+				: undefined;
+		const calendar = await getCalendarMonth(
+			topic,
+			month.month,
+			lang,
+			tzOffset,
+			sourceIds
+		);
 		return c.json(calendar, 200, { "Cache-Control": CALENDAR_CACHE_CONTROL });
 	} catch (error) {
 		if (error instanceof TopicNotFoundError) {

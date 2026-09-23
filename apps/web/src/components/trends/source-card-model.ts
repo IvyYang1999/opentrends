@@ -31,7 +31,8 @@ const LOGO_IMAGE_RE =
 	/\/(?:logo|brand|icon|favicon)[^/]*\.(?:png|jpe?g|svg|gif|webp)(?:\?|$)/i;
 // GitHub org avatars are the only picture a trending repo has; they work as
 // a small mark inside a poster, not as a full-width cover.
-const GITHUB_AVATAR_RE = /^https:\/\/github\.com\/[^/]+\.png/;
+const GITHUB_AVATAR_RE =
+	/^https:\/\/(?:github\.com\/[^/]+\.png|avatars\.githubusercontent\.com\/)/;
 
 export type CoverKind = "cover" | "thumb" | "none";
 
