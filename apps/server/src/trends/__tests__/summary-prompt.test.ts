@@ -49,7 +49,7 @@ describe("trends summary prompt", () => {
 			},
 		]);
 
-		expect(prompt).toContain("Prompt version: top10-v1");
+		expect(prompt).toContain("Prompt version: top10-v2");
 		expect(prompt).toContain(
 			"[1] [OpenAI News] (published 2026-05-07) OpenAI ships a model update"
 		);
@@ -69,6 +69,9 @@ describe("trends summary prompt", () => {
 		expect(prompt.trimEnd().endsWith("模型名保留原文。")).toBe(true);
 		expect(buildSystemPrompt("zh")).toContain("Simplified Chinese");
 		expect(buildSystemPrompt("zh")).toContain("at most 10 entries");
+		expect(buildSystemPrompt("zh")).toContain(
+			"Never include the same real-world event twice"
+		);
 	});
 
 	test("takes items from every source before giving any source a second slot", async () => {

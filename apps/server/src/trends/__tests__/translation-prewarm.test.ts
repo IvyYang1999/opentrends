@@ -1,11 +1,15 @@
 import { describe, expect, test } from "bun:test";
 
+import { runWithWorkerBindings, type WorkerBindings } from "../../runtime";
 import type { NewsItem } from "../types";
 
 function setServerEnv(): void {
 	process.env.BETTER_AUTH_SECRET = "x".repeat(32);
 	process.env.BETTER_AUTH_URL = "http://localhost:3000";
 	process.env.CORS_ORIGIN = "http://localhost:3001";
+	process.env.LLM_API_KEY = "test-key";
+	process.env.LLM_BASE_URL = "https://example.com/v1";
+	process.env.LLM_MODEL = "test-model";
 	process.env.TRENDS_REFRESH_SCHEDULER = "disabled";
 }
 
@@ -132,5 +136,106 @@ describe("translation prewarm", () => {
 				)
 			)
 		).toHaveLength(deduplicated.length);
+	});
+
+	test("does not regenerate fresh summaries when a source changes", async () => {
+		setServerEnv();
+		const { reconcileMissingSummaryPrewarms } = await import(
+			"../services/summary-prewarm-jobs"
+		);
+		const requested: string[] = [];
+
+		await reconcileMissingSummaryPrewarms(["openai-news"], {
+			hasFreshHotSummaryCache: () => Promise.resolve(true),
+			isConfigured: () => true,
+			requestJob: (message) => {
+				requested.push(`${message.topicId}:${message.lang}:${message.window}`);
+				return Promise.resolve(true);
+			},
+		});
+
+		expect(requested).toEqual([]);
+	});
+
+	test("routes missing summaries through the request gate without duplicate jobs", async () => {
+		setServerEnv();
+		const { reconcileMissingSummaryPrewarms } = await import(
+			"../services/summary-prewarm-jobs"
+		);
+		const requested = new Set<string>();
+		const requestAttempts: string[] = [];
+		const dependencies = {
+			hasFreshHotSummaryCache: (topicId: string) =>
+				Promise.resolve(!topicId.startsWith("ai")),
+			isConfigured: () => true,
+			requestJob: (message: {
+				lang: string;
+				topicId: string;
+				window?: string;
+			}) => {
+				const key = `${message.topicId}:${message.lang}:${message.window}`;
+				requestAttempts.push(key);
+				if (requested.has(key)) {
+					return Promise.resolve(false);
+				}
+				requested.add(key);
+				return Promise.resolve(true);
+			},
+		};
+
+		await reconcileMissingSummaryPrewarms(["openai-news"], dependencies);
+		await reconcileMissingSummaryPrewarms(["openai-news"], dependencies);
+
+		expect(requested).toHaveLength(6);
+		expect(new Set(requestAttempts)).toHaveLength(6);
+	});
+
+	test("treats an expired hot summary as due even while its stale copy remains", async () => {
+		setServerEnv();
+		const { buildPrompt, hasFreshHotSummaryCache } = await import(
+			"../services/get-trends-summary"
+		);
+		const now = Date.now();
+		const queue = { send: () => Promise.resolve() } as Queue;
+		const bindings = {
+			BETTER_AUTH_SECRET: "test".repeat(8),
+			BETTER_AUTH_URL: "http://localhost:3000",
+			CORS_ORIGIN: "http://localhost:3001",
+			DB: {} as D1Database,
+			EVENT_MERGE_QUEUE: queue,
+			HOT_CACHE: {
+				get: () =>
+					Promise.resolve({
+						createdAt: now - 60_000,
+						freshUntil: now - 1,
+						schemaVersion: 2,
+						staleUntil: now + 60_000,
+						value: {
+							citations: [],
+							expiresAt: now - 1,
+							prompt: buildPrompt(
+								{ description: "AI", sections: [], title: "AI" },
+								[]
+							),
+							staleUntil: now + 60_000,
+							text: "1. **摘要** — 说明 [1]",
+						},
+					}),
+			} as unknown as KVNamespace,
+			IMAGES: {} as ImagesBinding,
+			LLM_API_KEY: "test-key",
+			LLM_BASE_URL: "https://example.com/v1",
+			LLM_MODEL: "test-model",
+			NODE_ENV: "test",
+			SILICONFLOW_EMBEDDING_MODEL: "test-embedding-model",
+			SUMMARY_PREWARM_QUEUE: queue,
+			TRENDS_REFRESH_SCHEDULER: "disabled",
+		} satisfies WorkerBindings;
+
+		const fresh = await runWithWorkerBindings(bindings, () =>
+			hasFreshHotSummaryCache("ai", "zh")
+		);
+
+		expect(fresh).toBe(false);
 	});
 });

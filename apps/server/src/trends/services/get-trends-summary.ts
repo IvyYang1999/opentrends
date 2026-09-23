@@ -101,7 +101,7 @@ function summaryCacheTopicId(topicId: string, window: SummaryWindow): string {
 
 const SUMMARY_CACHE_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SUMMARY_HOT_CACHE_SCHEMA_VERSION = 2;
-const SUMMARY_PROMPT_VERSION = "top10-v1";
+const SUMMARY_PROMPT_VERSION = "top10-v2";
 const SUMMARY_HOT_CACHE_TTL_SECONDS = Math.ceil(
 	SUMMARY_CACHE_RETENTION_MS / 1000
 );
@@ -532,6 +532,7 @@ export function buildSystemPrompt(
 		`From the numbered items the user gives you, pick the 10 things most worth knowing ${period}.`,
 		"Rules:",
 		"- Merge items that report the same story into one entry and cite all of them. A story covered by several sources matters more.",
+		"- Never include the same real-world event twice, even when different headlines emphasize different angles. Before writing, compare all selected entries and remove semantic duplicates.",
 		recencyRule,
 		"- Output only a Markdown ordered list numbered `1.`, `2.`, `3.` … with at most 10 entries (fewer when the material is thin). No heading, no preamble, no closing remarks, no blank lines between entries.",
 		`- Each entry is one line: \`1. **Takeaway in one sentence (${profile.takeawayLimit})** — why it is worth reading (${profile.reasonLimit}) [N][M]\`.`,
@@ -648,6 +649,26 @@ export async function hasCurrentHotSummaryCache(
 	lang: TranslationLanguage
 ): Promise<boolean> {
 	return Boolean(await readHotSummaryCache(topicId, lang));
+}
+
+export async function hasFreshHotSummaryCache(
+	topicId: string,
+	lang: TranslationLanguage
+): Promise<boolean> {
+	const envelope = await hotCache.get<CachedSummaryEntry>(
+		makeSummaryHotCacheKey(topicId, lang)
+	);
+	if (
+		!envelope ||
+		envelope.schemaVersion !== SUMMARY_HOT_CACHE_SCHEMA_VERSION ||
+		envelope.freshUntil <= Date.now()
+	) {
+		return false;
+	}
+	return (
+		Boolean(envelope.value.text.trim()) &&
+		hasCurrentSummaryPromptVersion(envelope.value.prompt)
+	);
 }
 
 async function readSummaryWithTimeout(

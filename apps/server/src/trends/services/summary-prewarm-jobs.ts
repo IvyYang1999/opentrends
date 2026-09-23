@@ -7,7 +7,7 @@ import {
 import { topicPresets } from "../config/topics";
 import type { SourceId, TopicId } from "../types";
 import {
-	hasCurrentHotSummaryCache,
+	hasFreshHotSummaryCache,
 	isTrendsSummaryConfigured,
 	refreshTrendsSummaryCache,
 	type SummaryWindow,
@@ -35,6 +35,12 @@ export interface SummaryPrewarmMessage {
 
 const SUMMARY_RECONCILE_DISPATCH_LIMIT = 6;
 const SUMMARY_REQUEST_COOLDOWN_MS = 15 * 60_000;
+
+interface SummaryPrewarmReconcileDependencies {
+	hasFreshHotSummaryCache: typeof hasFreshHotSummaryCache;
+	isConfigured: typeof isTrendsSummaryConfigured;
+	requestJob: typeof requestSummaryPrewarmJob;
+}
 
 function messagesForTopic(topicId: TopicId): SummaryPrewarmMessage[] {
 	const messages: SummaryPrewarmMessage[] = [];
@@ -172,34 +178,40 @@ function summaryCacheTopicId(message: SummaryPrewarmMessage): string {
 }
 
 export async function reconcileMissingSummaryPrewarms(
-	changedSourceIds: readonly SourceId[] = []
+	changedSourceIds: readonly SourceId[] = [],
+	dependencies: SummaryPrewarmReconcileDependencies = {
+		hasFreshHotSummaryCache,
+		isConfigured: isTrendsSummaryConfigured,
+		requestJob: requestSummaryPrewarmJob,
+	}
 ): Promise<void> {
-	if (!isTrendsSummaryConfigured()) {
+	if (!dependencies.isConfigured()) {
 		return;
 	}
 	const changed = summaryPrewarmMessagesForSources(changedSourceIds);
-	const changedKeys = new Set(changed.map(summaryPrewarmMessageKey));
-	const missing = await Promise.all(
-		summaryPrewarmMessagesForAllTopics().map(async (message) => {
-			if (changedKeys.has(summaryPrewarmMessageKey(message))) {
-				return null;
-			}
-			const cached = await hasCurrentHotSummaryCache(
-				summaryCacheTopicId(message),
-				message.lang
-			);
-			return cached ? null : message;
-		})
-	);
-	const missingLimit = Math.max(
-		0,
-		SUMMARY_RECONCILE_DISPATCH_LIMIT - changed.length
-	);
-	const messages = [
-		...changed,
-		...missing.filter((message) => message !== null).slice(0, missingLimit),
-	];
-	for (const message of messages) {
-		await dispatchSummaryPrewarmJob(message);
+	const candidates = new Map<string, SummaryPrewarmMessage>();
+	for (const message of [...changed, ...summaryPrewarmMessagesForAllTopics()]) {
+		candidates.set(summaryPrewarmMessageKey(message), message);
+	}
+	const missing = (
+		await Promise.all(
+			[...candidates.values()].map(async (message) => {
+				const cached = await dependencies.hasFreshHotSummaryCache(
+					summaryCacheTopicId(message),
+					message.lang
+				);
+				return cached ? null : message;
+			})
+		)
+	).filter((message) => message !== null);
+
+	let dispatched = 0;
+	for (const message of missing) {
+		if (await dependencies.requestJob(message)) {
+			dispatched += 1;
+		}
+		if (dispatched >= SUMMARY_RECONCILE_DISPATCH_LIMIT) {
+			break;
+		}
 	}
 }
