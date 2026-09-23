@@ -219,5 +219,6 @@
   "nav_calendar": "Kalender",
   "calendar_seo_description": "Was jede Quelle Tag für Tag anführte, je Thema und Monat.",
   "calendar_previous_month": "Vormonat",
-  "calendar_next_month": "Nächster Monat"
+  "calendar_next_month": "Nächster Monat",
+  "nav_history": "Verlauf"
 }

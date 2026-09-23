@@ -12,8 +12,18 @@ export interface FeedSignal {
 	attributes?: string[];
 	kind: "click";
 	sourceId: string;
+	/** The source's display name at the time, for the history page. */
+	sourceTitle?: string;
 	title: string;
 	url: string;
+}
+
+export function clearFeedSignals(): void {
+	try {
+		window.localStorage.removeItem(STORAGE_KEY);
+	} catch {
+		/* Nothing to clear when storage is unavailable. */
+	}
 }
 
 export function readFeedSignals(): FeedSignal[] {
@@ -45,7 +55,8 @@ export function recordFeedClick(
 			attributes: attributes ? [...attributes] : undefined,
 			kind: "click",
 			sourceId: source.sourceId,
-			title: item.original?.title ?? item.title,
+			sourceTitle: source.title,
+			title: item.title,
 			url: item.url,
 		});
 		window.localStorage.setItem(

@@ -219,5 +219,6 @@
   "nav_calendar": "Calendar",
   "calendar_seo_description": "What led each source, day by day, for a topic and a month.",
   "calendar_previous_month": "Previous month",
-  "calendar_next_month": "Next month"
+  "calendar_next_month": "Next month",
+  "nav_history": "History"
 }

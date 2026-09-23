@@ -219,5 +219,6 @@
   "nav_calendar": "日曆",
   "calendar_seo_description": "一個主題一個月裡，每天各來源的頭條。",
   "calendar_previous_month": "上一月",
-  "calendar_next_month": "下一月"
+  "calendar_next_month": "下一月",
+  "nav_history": "記錄"
 }

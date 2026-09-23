@@ -60,6 +60,7 @@ const MESSAGE_IDS = {
 	"nav.sources": "nav_sources",
 	"nav.skills": "nav_skills",
 	"nav.briefings": "nav_briefings",
+	"nav.history": "nav_history",
 	"nav.calendar": "nav_calendar",
 	"calendar.seoDescription": "calendar_seo_description",
 	"calendar.previousMonth": "calendar_previous_month",

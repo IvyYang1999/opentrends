@@ -12,6 +12,7 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as Char123LocaleChar125IndexRouteImport } from './routes/{-$locale}/index'
 import { Route as Char123LocaleChar125SourcesRouteImport } from './routes/{-$locale}/sources'
 import { Route as Char123LocaleChar125LoginRouteImport } from './routes/{-$locale}/login'
+import { Route as Char123LocaleChar125HistoryRouteImport } from './routes/{-$locale}/history'
 import { Route as Char123LocaleChar125DashboardRouteImport } from './routes/{-$locale}/dashboard'
 import { Route as Char123LocaleChar125BriefingsRouteImport } from './routes/{-$locale}/briefings'
 import { Route as Char123LocaleChar125AgentsRouteImport } from './routes/{-$locale}/agents'
@@ -42,6 +43,12 @@ const Char123LocaleChar125LoginRoute =
   Char123LocaleChar125LoginRouteImport.update({
     id: '/{-$locale}/login',
     path: '/{-$locale}/login',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const Char123LocaleChar125HistoryRoute =
+  Char123LocaleChar125HistoryRouteImport.update({
+    id: '/{-$locale}/history',
+    path: '/{-$locale}/history',
     getParentRoute: () => rootRouteImport,
   } as any)
 const Char123LocaleChar125DashboardRoute =
@@ -128,6 +135,7 @@ export interface FileRoutesByFullPath {
   '/{-$locale}/agents': typeof Char123LocaleChar125AgentsRoute
   '/{-$locale}/briefings': typeof Char123LocaleChar125BriefingsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
+  '/{-$locale}/history': typeof Char123LocaleChar125HistoryRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
   '/{-$locale}/sources': typeof Char123LocaleChar125SourcesRoute
   '/{-$locale}/': typeof Char123LocaleChar125IndexRoute
@@ -146,6 +154,7 @@ export interface FileRoutesByTo {
   '/{-$locale}/agents': typeof Char123LocaleChar125AgentsRoute
   '/{-$locale}/briefings': typeof Char123LocaleChar125BriefingsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
+  '/{-$locale}/history': typeof Char123LocaleChar125HistoryRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
   '/{-$locale}/sources': typeof Char123LocaleChar125SourcesRoute
   '/{-$locale}/calendar': typeof Char123LocaleChar125ViewsCalendarRoute
@@ -163,6 +172,7 @@ export interface FileRoutesById {
   '/{-$locale}/agents': typeof Char123LocaleChar125AgentsRoute
   '/{-$locale}/briefings': typeof Char123LocaleChar125BriefingsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
+  '/{-$locale}/history': typeof Char123LocaleChar125HistoryRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
   '/{-$locale}/sources': typeof Char123LocaleChar125SourcesRoute
   '/{-$locale}/': typeof Char123LocaleChar125IndexRoute
@@ -183,6 +193,7 @@ export interface FileRouteTypes {
     | '/{-$locale}/agents'
     | '/{-$locale}/briefings'
     | '/{-$locale}/dashboard'
+    | '/{-$locale}/history'
     | '/{-$locale}/login'
     | '/{-$locale}/sources'
     | '/{-$locale}/'
@@ -201,6 +212,7 @@ export interface FileRouteTypes {
     | '/{-$locale}/agents'
     | '/{-$locale}/briefings'
     | '/{-$locale}/dashboard'
+    | '/{-$locale}/history'
     | '/{-$locale}/login'
     | '/{-$locale}/sources'
     | '/{-$locale}/calendar'
@@ -217,6 +229,7 @@ export interface FileRouteTypes {
     | '/{-$locale}/agents'
     | '/{-$locale}/briefings'
     | '/{-$locale}/dashboard'
+    | '/{-$locale}/history'
     | '/{-$locale}/login'
     | '/{-$locale}/sources'
     | '/{-$locale}/'
@@ -236,6 +249,7 @@ export interface RootRouteChildren {
   Char123LocaleChar125AgentsRoute: typeof Char123LocaleChar125AgentsRoute
   Char123LocaleChar125BriefingsRoute: typeof Char123LocaleChar125BriefingsRoute
   Char123LocaleChar125DashboardRoute: typeof Char123LocaleChar125DashboardRoute
+  Char123LocaleChar125HistoryRoute: typeof Char123LocaleChar125HistoryRoute
   Char123LocaleChar125LoginRoute: typeof Char123LocaleChar125LoginRoute
   Char123LocaleChar125SourcesRoute: typeof Char123LocaleChar125SourcesRoute
   Char123LocaleChar125IndexRoute: typeof Char123LocaleChar125IndexRoute
@@ -264,6 +278,13 @@ declare module '@tanstack/react-router' {
       path: '/{-$locale}/login'
       fullPath: '/{-$locale}/login'
       preLoaderRoute: typeof Char123LocaleChar125LoginRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/{-$locale}/history': {
+      id: '/{-$locale}/history'
+      path: '/{-$locale}/history'
+      fullPath: '/{-$locale}/history'
+      preLoaderRoute: typeof Char123LocaleChar125HistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/{-$locale}/dashboard': {
@@ -406,6 +427,7 @@ const rootRouteChildren: RootRouteChildren = {
   Char123LocaleChar125AgentsRoute: Char123LocaleChar125AgentsRoute,
   Char123LocaleChar125BriefingsRoute: Char123LocaleChar125BriefingsRoute,
   Char123LocaleChar125DashboardRoute: Char123LocaleChar125DashboardRoute,
+  Char123LocaleChar125HistoryRoute: Char123LocaleChar125HistoryRoute,
   Char123LocaleChar125LoginRoute: Char123LocaleChar125LoginRoute,
   Char123LocaleChar125SourcesRoute: Char123LocaleChar125SourcesRoute,
   Char123LocaleChar125IndexRoute: Char123LocaleChar125IndexRoute,

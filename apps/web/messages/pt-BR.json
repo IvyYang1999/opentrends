@@ -219,5 +219,6 @@
   "nav_calendar": "Calendário",
   "calendar_seo_description": "O que liderou cada fonte, dia a dia, por tema e mês.",
   "calendar_previous_month": "Mês anterior",
-  "calendar_next_month": "Próximo mês"
+  "calendar_next_month": "Próximo mês",
+  "nav_history": "Histórico"
 }
