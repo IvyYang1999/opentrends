@@ -597,10 +597,8 @@ function McpTab({ strings }: { strings: Strings }) {
 		<div className="space-y-6">
 			<Intro>{strings.mcpIntro}</Intro>
 			<Snippet label={strings.mcpUrl} strings={strings} value={MCP_URL} />
-			<div className="grid gap-3 sm:grid-cols-2">
-				<Snippet label="Claude Code" strings={strings} value={MCP_CLAUDE} />
-				<Snippet label="Codex" strings={strings} value={MCP_CODEX} />
-			</div>
+			<Snippet label="Claude Code" strings={strings} value={MCP_CLAUDE} />
+			<Snippet label="Codex" strings={strings} value={MCP_CODEX} />
 			<Snippet label="Cursor / mcp.json" strings={strings} value={MCP_JSON} />
 			<section className="space-y-2">
 				<h3 className="font-semibold text-[13px] text-[var(--text-heading)]">
