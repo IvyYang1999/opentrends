@@ -190,6 +190,7 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 		undefined
 	);
 	const draggingSourceIdRef = useRef<string | undefined>(undefined);
+	const dragListenersRef = useRef<AbortController | null>(null);
 	const sourceOrderRef = useRef(sourcePreferences.preference.orderedSourceIds);
 	sourceOrderRef.current = sourcePreferences.preference.orderedSourceIds;
 	const committedSourceOrderRef = useRef(
@@ -247,13 +248,9 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 	}
 
 	function dragHandleProps(sourceId: string): SourceDragHandleProps {
-		const finishPointerDrag = (
-			event: ReactPointerEvent<HTMLButtonElement>,
-			commit: boolean
-		) => {
-			if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-				event.currentTarget.releasePointerCapture(event.pointerId);
-			}
+		const finishPointerDrag = (commit: boolean) => {
+			dragListenersRef.current?.abort();
+			dragListenersRef.current = null;
 			const finalOrder = pointerDragOrderRef.current;
 			if (
 				commit &&
@@ -274,6 +271,50 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 			draggingSourceIdRef.current = undefined;
 			setDraggingSourceId(undefined);
 			setDragPreview(undefined);
+		};
+		const movePointerDrag = (event: { clientX: number; clientY: number }) => {
+			const activeSourceId = draggingSourceIdRef.current;
+			if (!activeSourceId) {
+				return;
+			}
+			dragPreviewPositionRef.current = {
+				left: event.clientX - dragGrabOffsetRef.current.x,
+				top: event.clientY - dragGrabOffsetRef.current.y,
+			};
+			if (dragPreviewFrameRef.current === undefined) {
+				dragPreviewFrameRef.current = requestAnimationFrame(() => {
+					dragPreviewFrameRef.current = undefined;
+					const element = dragPreviewElementRef.current;
+					if (!element) {
+						return;
+					}
+					const position = dragPreviewPositionRef.current;
+					const origin = dragPreviewOriginRef.current;
+					element.style.transform = `translate3d(${position.left - origin.left}px, ${position.top - origin.top}px, 0)`;
+				});
+			}
+			const target = document
+				.elementFromPoint(event.clientX, event.clientY)
+				?.closest<HTMLElement>("[data-sortable-source-id]");
+			const overSourceId = target?.dataset.sortableSourceId;
+			// Reorder live: the card moves into place under the pointer and its
+			// neighbours shift, like icons on a home screen; the ghost only
+			// shows what is being carried.
+			if (overSourceId && overSourceId !== activeSourceId) {
+				const next = moveSource(
+					pointerDragOrderRef.current ?? sourceOrderRef.current,
+					activeSourceId,
+					overSourceId
+				);
+				if (
+					next.join("\u0000") !==
+					(pointerDragOrderRef.current ?? []).join("\u0000")
+				) {
+					pointerDragOrderRef.current = next;
+					sourceOrderRef.current = next;
+					sourcePreferences.setOrder(next);
+				}
+			}
 		};
 		return {
 			onKeyDown: (event) => {
@@ -309,7 +350,42 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 				if (!rect) {
 					return;
 				}
-				event.currentTarget.setPointerCapture(event.pointerId);
+				// The move and release events are listened for on the document, not
+				// captured on the handle: the live reorder moves the card's DOM node
+				// while it is being dragged, and a moved node loses its pointer
+				// capture, which left the drag stuck until a reload.
+				dragListenersRef.current?.abort();
+				const listeners = new AbortController();
+				dragListenersRef.current = listeners;
+				const { pointerId } = event;
+				const samePointer = (native: PointerEvent) =>
+					native.pointerId === pointerId;
+				document.addEventListener(
+					"pointermove",
+					(native) => {
+						if (samePointer(native)) {
+							movePointerDrag(native);
+						}
+					},
+					{ passive: true, signal: listeners.signal }
+				);
+				document.addEventListener(
+					"pointerup",
+					(native) => {
+						if (samePointer(native)) {
+							finishPointerDrag(true);
+						}
+					},
+					{ signal: listeners.signal }
+				);
+				document.addEventListener(
+					"pointercancel",
+					() => finishPointerDrag(false),
+					{ signal: listeners.signal }
+				);
+				window.addEventListener("blur", () => finishPointerDrag(false), {
+					signal: listeners.signal,
+				});
 				const source = sourceById.get(sourceId)?.source;
 				const initialOrder = [...sourceOrderRef.current];
 				pointerDragBaseOrderRef.current = initialOrder;
@@ -331,52 +407,6 @@ export function TrendsPage({ displaySettingsStore, page }: TrendsPageProps) {
 					width: rect.width,
 				});
 			},
-			onPointerMove: (event) => {
-				const activeSourceId = draggingSourceIdRef.current;
-				if (!activeSourceId) {
-					return;
-				}
-				dragPreviewPositionRef.current = {
-					left: event.clientX - dragGrabOffsetRef.current.x,
-					top: event.clientY - dragGrabOffsetRef.current.y,
-				};
-				if (dragPreviewFrameRef.current === undefined) {
-					dragPreviewFrameRef.current = requestAnimationFrame(() => {
-						dragPreviewFrameRef.current = undefined;
-						const element = dragPreviewElementRef.current;
-						if (!element) {
-							return;
-						}
-						const position = dragPreviewPositionRef.current;
-						const origin = dragPreviewOriginRef.current;
-						element.style.transform = `translate3d(${position.left - origin.left}px, ${position.top - origin.top}px, 0)`;
-					});
-				}
-				const target = document
-					.elementFromPoint(event.clientX, event.clientY)
-					?.closest<HTMLElement>("[data-sortable-source-id]");
-				const overSourceId = target?.dataset.sortableSourceId;
-				// Reorder live: the card moves into place under the pointer and its
-				// neighbours shift, like icons on a home screen; the ghost only
-				// shows what is being carried.
-				if (overSourceId && overSourceId !== activeSourceId) {
-					const next = moveSource(
-						pointerDragOrderRef.current ?? sourceOrderRef.current,
-						activeSourceId,
-						overSourceId
-					);
-					if (
-						next.join("\u0000") !==
-						(pointerDragOrderRef.current ?? []).join("\u0000")
-					) {
-						pointerDragOrderRef.current = next;
-						sourceOrderRef.current = next;
-						sourcePreferences.setOrder(next);
-					}
-				}
-			},
-			onPointerCancel: (event) => finishPointerDrag(event, false),
-			onPointerUp: (event) => finishPointerDrag(event, true),
 		};
 	}
 
@@ -553,10 +583,7 @@ function useProgressiveSources(sources: SourceWithSection[]) {
 
 interface SourceDragHandleProps {
 	onKeyDown: (event: ReactKeyboardEvent<HTMLButtonElement>) => void;
-	onPointerCancel: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 	onPointerDown: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-	onPointerMove: (event: ReactPointerEvent<HTMLButtonElement>) => void;
-	onPointerUp: (event: ReactPointerEvent<HTMLButtonElement>) => void;
 }
 
 const SOURCE_SECTION_GRID =
@@ -1125,10 +1152,7 @@ function SourceDragHandle({
 			aria-label={t("display.dragSource", { title: source.title })}
 			className="-ml-1 inline-flex size-6 shrink-0 cursor-grab touch-none items-center justify-center rounded text-[var(--text-muted)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] active:cursor-grabbing"
 			onKeyDown={dragHandleProps.onKeyDown}
-			onPointerCancel={dragHandleProps.onPointerCancel}
 			onPointerDown={dragHandleProps.onPointerDown}
-			onPointerMove={dragHandleProps.onPointerMove}
-			onPointerUp={dragHandleProps.onPointerUp}
 			title={t("display.dragSource", { title: source.title })}
 			type="button"
 		>

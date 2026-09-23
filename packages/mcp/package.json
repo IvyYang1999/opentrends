@@ -7,6 +7,9 @@
   "bin": {
     "opentrends-mcp": "./src/index.ts"
   },
+  "exports": {
+    ".": "./src/server.ts"
+  },
   "files": [
     "src"
   ],

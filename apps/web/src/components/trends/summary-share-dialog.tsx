@@ -41,7 +41,9 @@ const HEADING_KEYS = {
 	month: "share.headingMonth",
 } as const;
 
-const WWW_RE = /^www\./;
+// Printed under the code: the address people remember, whatever host
+// served the page (a preview deployment would otherwise print its own).
+const SITE_LABEL = "opentrends.io";
 const COPIED_FEEDBACK_MS = 2000;
 
 function buildShareUrl(topicId: string, locale: Locale): string {
@@ -104,9 +106,7 @@ export function SummaryShareDialog({
 						slogan,
 						topicLabel,
 						url: `${pageUrl}?utm_source=share_image&utm_medium=qr`,
-						// The code carries the full address; the printed one only needs to
-						// be the site people remember.
-						urlLabel: new URL(pageUrl).hostname.replace(WWW_RE, ""),
+						urlLabel: SITE_LABEL,
 					})
 				)
 				.then((blob) => {

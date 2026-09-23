@@ -9,7 +9,9 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 import { eventsRoutes } from "./routes/events";
+import { feedRoutes } from "./routes/feeds";
 import { imageRoutes } from "./routes/images";
+import { mcpRoutes } from "./routes/mcp";
 import { skillsRoutes } from "./routes/skills";
 import { sourcesRoutes } from "./routes/sources";
 import { trendsRoutes } from "./routes/trends";
@@ -30,8 +32,15 @@ app.use(logger());
 app.use("/*", async (context, next) =>
 	cors({
 		origin: (origin) => resolveAllowedOrigin(origin, context.env),
-		allowMethods: ["GET", "POST", "OPTIONS"],
-		allowHeaders: ["Content-Type", "Authorization"],
+		allowMethods: ["GET", "POST", "DELETE", "OPTIONS"],
+		allowHeaders: [
+			"Content-Type",
+			"Authorization",
+			"Accept",
+			"Mcp-Session-Id",
+			"Mcp-Protocol-Version",
+		],
+		exposeHeaders: ["Mcp-Session-Id"],
 		credentials: true,
 	})(context, next)
 );
@@ -88,6 +97,8 @@ app.route("/api/events", eventsRoutes);
 app.route("/api/skills", skillsRoutes);
 app.route("/api/trends", trendsRoutes);
 app.route("/api/sources", sourcesRoutes);
+app.route("/api/trends", feedRoutes);
+app.route("/mcp", mcpRoutes);
 
 export const apiHandler = new OpenAPIHandler(appRouter, {
 	plugins: [
