@@ -5,7 +5,7 @@ import {
 	DIGEST_FOLD,
 	foldDigest,
 	tagDigestLines,
-} from "./trends-summary";
+} from "./digest-fold";
 
 const TEN = Array.from(
 	{ length: 10 },

@@ -17,6 +17,7 @@ describe("normalizeTrendsSourcePreferences", () => {
 			topicId: "ai",
 			orderedSourceIds: ["b", "a", "c"],
 			hiddenSourceIds: ["a"],
+			pinnedSourceIds: [],
 		});
 	});
 
@@ -27,6 +28,7 @@ describe("normalizeTrendsSourcePreferences", () => {
 			topicId: "",
 			orderedSourceIds: ["a", "b"],
 			hiddenSourceIds: [],
+			pinnedSourceIds: [],
 		});
 	});
 });

@@ -28,6 +28,7 @@
       "!**/.source",
       "!**/convex/_generated",
       "!**/src/paraglide",
+      "!**/public/**/*.js",
       "!apps/server/src/trends/cache/bootstrap-page-cache.json",
       "!apps/fumadocs",
       "!**/test-results",
