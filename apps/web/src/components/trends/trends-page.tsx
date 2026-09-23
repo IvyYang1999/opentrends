@@ -751,7 +751,7 @@ function SourceCard({
 
 	return (
 		<article
-			className={`relative flex min-w-0 flex-col overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-opacity after:pointer-events-none after:absolute after:inset-0 after:z-40 after:content-[''] data-[drop-target=true]:after:border-2 data-[drop-target=true]:after:border-[var(--accent-blue)] sm:border-r ${sourceCardViewportClasses(hasItems)} ${isDragging ? "z-30 opacity-50 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
+			className={`relative flex min-w-0 flex-col overflow-hidden border-[var(--border-default)] border-b bg-[var(--surface-card)] transition-opacity after:pointer-events-none after:absolute after:inset-0 after:z-40 after:content-[''] data-[drop-target=true]:after:border-2 data-[drop-target=true]:after:border-[var(--accent-blue)] sm:border-r ${sourceCardViewportClasses(hasItems, expanded)} ${isDragging ? "z-30 opacity-50 shadow-[0_0_0_2px_var(--accent-blue)]" : ""}`}
 			data-sortable-source-id={source.sourceId}
 			id={sourceCardElementId(source.sourceId)}
 		>

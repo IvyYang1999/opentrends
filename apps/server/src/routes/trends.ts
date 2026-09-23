@@ -267,6 +267,8 @@ export const trendsRoutes = new Hono()
 					headers: {
 						"Content-Type": "text/plain; charset=utf-8",
 						"Cache-Control": "no-store",
+						"X-Trends-Summary-Origin": prepared.origin,
+						"Access-Control-Expose-Headers": "X-Trends-Summary-Origin",
 					},
 				}
 			);
@@ -279,9 +281,11 @@ export const trendsRoutes = new Hono()
 				"X-Trends-Citations": encodeURIComponent(
 					JSON.stringify(prepared.citations.slice(0, HEADER_CITATION_LIMIT))
 				),
+				"X-Trends-Summary-Origin": prepared.origin,
 				// Allow the cross-origin web client (different localhost port) to
 				// read the citations header off the response.
-				"Access-Control-Expose-Headers": "X-Trends-Citations",
+				"Access-Control-Expose-Headers":
+					"X-Trends-Citations, X-Trends-Summary-Origin",
 			},
 		});
 	})

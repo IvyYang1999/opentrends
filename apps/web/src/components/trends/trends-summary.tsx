@@ -23,6 +23,8 @@ import {
 	DIGEST_FOLD,
 	digestLines,
 	foldDigest,
+	shouldExpandGeneratedSummary,
+	shouldShowDigestTopicTags,
 } from "./digest-fold";
 import { FOLLOWED_TOPIC_ID } from "./followed-sources";
 import { parseDigest } from "./share-image";
@@ -69,12 +71,13 @@ interface StreamHandlers {
 	onDone: () => void;
 	onError: (message: string) => void;
 	onPending: () => void;
-	onStreamingStart: () => void;
+	onStreamingStart: (origin: string | null) => void;
 	onUnavailable: () => void;
 	signal: AbortSignal;
 }
 
 const CITATIONS_HEADER = "X-Trends-Citations";
+const SUMMARY_ORIGIN_HEADER = "X-Trends-Summary-Origin";
 const CITATION_RE = /\[(\d+)\]/g;
 const SUMMARY_PENDING_RETRY_MS = 10_000;
 
@@ -265,7 +268,7 @@ async function streamSummary(
 			response.headers.get(CITATIONS_HEADER)
 		);
 		handlers.onCitations(citations);
-		handlers.onStreamingStart();
+		handlers.onStreamingStart(response.headers.get(SUMMARY_ORIGIN_HEADER));
 		await readStream(response.body, handlers);
 		if (!handlers.isCancelled()) {
 			handlers.onDone();
@@ -330,6 +333,7 @@ interface SummaryBodyProps {
 	expanded: boolean;
 	metadata: CitationMetaMap;
 	onExpandedChange: (expanded: boolean) => void;
+	showTopicTags: boolean;
 	status: SummaryStatus;
 	t: Translator;
 	text: string;
@@ -343,6 +347,7 @@ function SummaryBody({
 	metadata,
 	onExpandedChange,
 	status,
+	showTopicTags,
 	t,
 	text,
 	topicHref,
@@ -453,7 +458,7 @@ function SummaryBody({
 											{line.n}.
 										</span>
 										<span className="min-w-0 flex-1 [&>div]:inline [&_p]:inline">
-											{line.topic ? (
+											{showTopicTags && line.topic ? (
 												<a
 													className={`mr-1.5 inline-block rounded-[4px] px-1.5 align-[1px] font-medium text-[10px] leading-[1.6] no-underline ${TOPIC_TAG_CLASS[line.topic] ?? DEFAULT_TAG_CLASS}`}
 													href={topicHref(line.topic)}
@@ -567,10 +572,12 @@ export function TrendsSummary({
 	const topicKey = `topic.${topicId}` as TranslationKey;
 	const translatedTopic = t(topicKey);
 	const digestTitle = `${translatedTopic === topicKey ? page.title : translatedTopic} · ${t(WINDOW_HEADING_KEYS[summaryWindow])}`;
+	const showTopicTags = shouldShowDigestTopicTags(topicId);
 	const [shareOpen, setShareOpen] = useState(false);
 	// Five lines are a glance; the rest are a click away, and the choice
 	// resets with the topic so a new digest starts folded.
 	const [expanded, setExpanded] = useState(false);
+	// biome-ignore lint/correctness/useExhaustiveDependencies: memoKey is the digest identity that triggers this reset
 	useEffect(() => {
 		setExpanded(false);
 	}, [memoKey]);
@@ -617,7 +624,12 @@ export function TrendsSummary({
 			streamSummary(topicId, locale, summaryWindow, retryNonce, followedIds, {
 				signal: controller.signal,
 				isCancelled: () => cancelled,
-				onStreamingStart: () => setStatus("streaming"),
+				onStreamingStart: (origin) => {
+					setStatus("streaming");
+					if (shouldExpandGeneratedSummary(origin)) {
+						setExpanded(true);
+					}
+				},
 				onChunk: (full) => {
 					if (full.trim()) {
 						latestText = full;
@@ -781,6 +793,7 @@ export function TrendsSummary({
 							expanded={expanded}
 							metadata={metadata}
 							onExpandedChange={setExpanded}
+							showTopicTags={showTopicTags}
 							status={status}
 							t={t}
 							text={text}

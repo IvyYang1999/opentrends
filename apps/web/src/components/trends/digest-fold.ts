@@ -8,6 +8,14 @@ const LIST_LINE_RE = /^\s*\d+[.)]\s+/;
 // Lines shown before the digest folds; the rest wait behind "show more".
 export const DIGEST_FOLD = 5;
 
+export function shouldShowDigestTopicTags(topicId: string): boolean {
+	return topicId === "featured" || topicId === "mine";
+}
+
+export function shouldExpandGeneratedSummary(origin: string | null): boolean {
+	return origin === "generated";
+}
+
 export type DigestLine =
 	| { body: string; kind: "entry"; n: number; topic?: string }
 	| { kind: "text"; text: string };

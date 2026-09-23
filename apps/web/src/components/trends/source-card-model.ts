@@ -1,8 +1,14 @@
-const POPULATED_SOURCE_CARD_CLASSES =
-	"h-[480px] max-sm:h-auto max-sm:max-h-none [content-visibility:auto] [contain-intrinsic-size:auto_480px]";
-
-export function sourceCardViewportClasses(hasItems: boolean): string {
-	return hasItems ? POPULATED_SOURCE_CARD_CLASSES : "h-auto";
+export function sourceCardViewportClasses(
+	hasItems: boolean,
+	expanded = false
+): string {
+	// Source batches are already mounted progressively near the viewport. A
+	// second fixed-height/content-visibility layer only leaves a large blank
+	// tail when the preview intentionally renders fewer rows than the source's
+	// total item count.
+	return hasItems && expanded
+		? "h-[480px] max-sm:h-auto max-sm:max-h-none"
+		: "h-auto";
 }
 
 const DECORATIVE_BADGE_IMAGE_PATTERNS = [

@@ -74,6 +74,100 @@ describe("trends summary prompt", () => {
 		);
 	});
 
+	test("gives the featured digest explicit cross-topic evidence and balance rules", async () => {
+		setServerEnv();
+		const { buildPrompt, buildSystemPrompt } = await import(
+			"../services/get-trends-summary"
+		);
+		const cited = [
+			{
+				n: 1,
+				source: "OpenAI News",
+				item: {
+					fetchedAt: Date.UTC(2026, 8, 23, 8),
+					id: "ai-1",
+					sourceId: "openai-news",
+					title: "AI story",
+					url: "https://example.com/ai",
+				},
+			},
+		];
+
+		const prompt = buildPrompt(topic, cited, "zh", "today", "cross-topic");
+		expect(prompt).toContain("Selection mode: cross-topic-balanced-v1");
+		expect(prompt).toContain("[Topic: ai]");
+		expect(buildSystemPrompt("zh", "today", "cross-topic")).toContain(
+			"first five entries must cover at least 3 different topics"
+		);
+	});
+
+	test("rejects a featured draft whose visible first five are all AI", async () => {
+		setServerEnv();
+		const { isCrossTopicDigestDiverse } = await import(
+			"../services/get-trends-summary"
+		);
+		const citations = [
+			...Array.from({ length: 5 }, (_, index) => ({
+				n: index + 1,
+				topic: "ai",
+				url: `https://example.com/ai-${index}`,
+			})),
+			{ n: 6, topic: "hardware", url: "https://example.com/hardware" },
+			{ n: 7, topic: "programming", url: "https://example.com/code" },
+			{ n: 8, topic: "cn", url: "https://example.com/cn" },
+		];
+		const allAiFirst = Array.from(
+			{ length: 5 },
+			(_, index) => `${index + 1}. **AI ${index + 1}** — why [${index + 1}]`
+		).join("\n");
+		const balanced = [
+			"1. **AI** — why [1]",
+			"2. **Hardware** — why [6]",
+			"3. **Code** — why [7]",
+			"4. **AI 2** — why [2]",
+			"5. **China** — why [8]",
+		].join("\n");
+
+		expect(isCrossTopicDigestDiverse(allAiFirst, citations)).toBe(false);
+		expect(isCrossTopicDigestDiverse(balanced, citations)).toBe(true);
+	});
+
+	test("builds a bounded cross-topic fallback when the model ignores balance", async () => {
+		setServerEnv();
+		const { buildCrossTopicFallbackSummary, isCrossTopicDigestDiverse } =
+			await import("../services/get-trends-summary");
+		const sourceIds = [
+			"openai-news",
+			"ros-discourse",
+			"toms-hardware",
+			"nature-bmi",
+			"github-trending",
+			"weibo",
+		] as const;
+		const cited = sourceIds.map((sourceId, index) => ({
+			n: index + 1,
+			source: sourceId,
+			item: {
+				fetchedAt: Date.UTC(2026, 8, 23, 8 - index),
+				id: `${sourceId}-1`,
+				sourceId,
+				title: `Story ${index + 1}`,
+				url: `https://example.com/${sourceId}`,
+			},
+		}));
+		const text = buildCrossTopicFallbackSummary(cited, "zh");
+		const citations = cited.map(({ item, n }) => ({
+			n,
+			topic: ["ai", "embodied", "hardware", "biotech", "programming", "cn"][
+				n - 1
+			],
+			url: item.url,
+		}));
+
+		expect(text.split("\n")).toHaveLength(6);
+		expect(isCrossTopicDigestDiverse(text, citations)).toBe(true);
+	});
+
 	test("takes items from every source before giving any source a second slot", async () => {
 		setServerEnv();
 		const { collectCitedItems } = await import(

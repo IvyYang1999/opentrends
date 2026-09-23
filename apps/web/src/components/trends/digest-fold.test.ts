@@ -5,6 +5,8 @@ import {
 	DIGEST_FOLD,
 	digestLines,
 	foldDigest,
+	shouldExpandGeneratedSummary,
+	shouldShowDigestTopicTags,
 } from "./digest-fold";
 
 const TEN = Array.from(
@@ -38,5 +40,20 @@ describe("digestLines", () => {
 			{ body: "**B** — why [2]", kind: "entry", n: 2, topic: undefined },
 			{ kind: "text", text: "not a list line" },
 		]);
+	});
+});
+
+describe("digest presentation", () => {
+	test("shows topic tags only when a digest combines several topics", () => {
+		expect(shouldShowDigestTopicTags("featured")).toBe(true);
+		expect(shouldShowDigestTopicTags("mine")).toBe(true);
+		expect(shouldShowDigestTopicTags("ai")).toBe(false);
+		expect(shouldShowDigestTopicTags("embodied")).toBe(false);
+	});
+
+	test("keeps a summary expanded only when this response generated it live", () => {
+		expect(shouldExpandGeneratedSummary("generated")).toBe(true);
+		expect(shouldExpandGeneratedSummary("cache")).toBe(false);
+		expect(shouldExpandGeneratedSummary(null)).toBe(false);
 	});
 });

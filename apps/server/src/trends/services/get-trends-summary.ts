@@ -102,6 +102,7 @@ function summaryCacheTopicId(topicId: string, window: SummaryWindow): string {
 const SUMMARY_CACHE_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SUMMARY_HOT_CACHE_SCHEMA_VERSION = 2;
 const SUMMARY_PROMPT_VERSION = "top10-v2";
+const CROSS_TOPIC_SELECTION_MODE = "cross-topic-balanced-v1";
 const SUMMARY_HOT_CACHE_TTL_SECONDS = Math.ceil(
 	SUMMARY_CACHE_RETENTION_MS / 1000
 );
@@ -135,6 +136,8 @@ export interface Citation {
 	url: string;
 }
 
+export type SummaryScope = "topic" | "cross-topic";
+
 function toCitation({ n, item }: CitedItem): Citation {
 	const topic = topicForSource(item.sourceId);
 	return topic ? { n, topic, url: item.url } : { n, url: item.url };
@@ -142,6 +145,7 @@ function toCitation({ n, item }: CitedItem): Citation {
 
 export interface PreparedSummary {
 	citations: Citation[];
+	origin: "cache" | "generated";
 	stream: (abortSignal: AbortSignal) => AsyncGenerator<string, void, void>;
 }
 
@@ -408,8 +412,28 @@ function formatSourceItemDate(item: NewsItem): string {
 	return item.publishedAt ? `published ${day}` : `fetched ${day}`;
 }
 
-export function hasCurrentSummaryPromptVersion(prompt: string): boolean {
-	return prompt.includes(`Prompt version: ${SUMMARY_PROMPT_VERSION}`);
+function summaryScope(topicId: string): SummaryScope {
+	return topicId === FEATURED_TOPIC_ID ? "cross-topic" : "topic";
+}
+
+function isFeaturedCacheTopic(topicId: string): boolean {
+	return (
+		topicId === FEATURED_TOPIC_ID || topicId.startsWith(`${FEATURED_TOPIC_ID}#`)
+	);
+}
+
+export function hasCurrentSummaryPromptVersion(
+	prompt: string,
+	topicId?: string
+): boolean {
+	if (!prompt.includes(`Prompt version: ${SUMMARY_PROMPT_VERSION}`)) {
+		return false;
+	}
+	return !(
+		topicId &&
+		isFeaturedCacheTopic(topicId) &&
+		!prompt.includes(`Selection mode: ${CROSS_TOPIC_SELECTION_MODE}`)
+	);
 }
 
 interface SummaryLanguageProfile {
@@ -486,12 +510,16 @@ export function buildPrompt(
 	topic: TopicPreset,
 	cited: CitedItem[],
 	lang: TranslationLanguage = "en",
-	window: SummaryWindow = "today"
+	window: SummaryWindow = "today",
+	scope: SummaryScope = "topic"
 ): string {
 	const lines: string[] = [];
 	lines.push(`Prompt version: ${SUMMARY_PROMPT_VERSION}`);
 	lines.push(`Window: ${window}`);
 	lines.push(`Topic: ${topic.title}`);
+	if (scope === "cross-topic") {
+		lines.push(`Selection mode: ${CROSS_TOPIC_SELECTION_MODE}`);
+	}
 	if (topic.description) {
 		lines.push(`Description: ${topic.description}`);
 	}
@@ -506,8 +534,11 @@ export function buildPrompt(
 		const includeDesc =
 			description && !isDescriptionRedundant(item.title, description);
 		const suffix = includeDesc ? ` — ${description}` : "";
+		const itemTopic =
+			scope === "cross-topic" ? topicForSource(item.sourceId) : undefined;
+		const topicLabel = itemTopic ? ` [Topic: ${itemTopic}]` : "";
 		lines.push(
-			`[${n}] [${source}] (${formatSourceItemDate(item)}) ${item.title}${suffix}`
+			`[${n}] [${source}]${topicLabel} (${formatSourceItemDate(item)}) ${item.title}${suffix}`
 		);
 	}
 
@@ -519,7 +550,8 @@ export function buildPrompt(
 
 export function buildSystemPrompt(
 	lang: TranslationLanguage,
-	window: SummaryWindow = "today"
+	window: SummaryWindow = "today",
+	scope: SummaryScope = "topic"
 ): string {
 	const profile = SUMMARY_LANGUAGE_PROFILES[lang];
 	const period = SUMMARY_WINDOW_PROFILES[window].editorialPeriod;
@@ -527,18 +559,133 @@ export function buildSystemPrompt(
 		window === "today"
 			? "- Prefer the newest items. Skip promotions, ticket sales, job posts, and pure opinion pieces."
 			: "- Judge importance over the whole period, not recency: a major story from early in the period beats a minor one from today. Skip promotions, ticket sales, job posts, and pure opinion pieces.";
+	const scopeRules =
+		scope === "cross-topic"
+			? [
+					"- This is the cross-topic Featured digest. When the numbered material permits it, the first five entries must cover at least 3 different topics, the full list must cover at least 4, and no topic may take more than 4 of 10 slots.",
+					"- Treat `[Topic: …]` as an editorial category. Do not spend the whole digest on AI merely because AI has more candidate items.",
+				]
+			: [];
 	return [
 		"You are the editor of OpenTrends, a dashboard of first-hand tech sources.",
 		`From the numbered items the user gives you, pick the 10 things most worth knowing ${period}.`,
 		"Rules:",
 		"- Merge items that report the same story into one entry and cite all of them. A story covered by several sources matters more.",
 		"- Never include the same real-world event twice, even when different headlines emphasize different angles. Before writing, compare all selected entries and remove semantic duplicates.",
+		...scopeRules,
 		recencyRule,
 		"- Output only a Markdown ordered list numbered `1.`, `2.`, `3.` … with at most 10 entries (fewer when the material is thin). No heading, no preamble, no closing remarks, no blank lines between entries.",
 		`- Each entry is one line: \`1. **Takeaway in one sentence (${profile.takeawayLimit})** — why it is worth reading (${profile.reasonLimit}) [N][M]\`.`,
 		`- Write everything in ${profile.name}, whatever language the items are in. Keep company, product, and model names in their original form.`,
 		"- End each entry with citation tags in the form `[N]`, where N is the item number. Cite several items adjacent like `[3][7]`, never `[3, 7]`. Only cite numbers that appear in the list.",
 	].join("\n");
+}
+
+const DIGEST_ENTRY_RE = /^\s*\d+[.)]\s+(.+)$/gm;
+const DIGEST_CITATION_RE = /\[(\d+)\]/g;
+
+function digestEntryTopics(
+	text: string,
+	citations: readonly Citation[]
+): { repeatedCitation: boolean; topics: (string | undefined)[] } {
+	const topicByCitation = new Map(
+		citations.map((citation) => [citation.n, citation.topic] as const)
+	);
+	const seenCitations = new Set<number>();
+	const topics: (string | undefined)[] = [];
+	let repeatedCitation = false;
+	for (const entry of text.matchAll(DIGEST_ENTRY_RE)) {
+		const citationNumbers = [...(entry[1] ?? "").matchAll(DIGEST_CITATION_RE)]
+			.map((match) => Number.parseInt(match[1] ?? "", 10))
+			.filter(Number.isFinite);
+		for (const n of citationNumbers) {
+			if (seenCitations.has(n)) {
+				repeatedCitation = true;
+			}
+			seenCitations.add(n);
+		}
+		const topic = citationNumbers
+			.map((n) => topicByCitation.get(n))
+			.find((value): value is string => Boolean(value));
+		topics.push(topic);
+	}
+	return { repeatedCitation, topics };
+}
+
+export function isCrossTopicDigestDiverse(
+	text: string,
+	citations: readonly Citation[]
+): boolean {
+	const availableTopics = new Set(
+		citations.flatMap((citation) => (citation.topic ? [citation.topic] : []))
+	);
+	const { repeatedCitation, topics } = digestEntryTopics(text, citations);
+	const knownTopics = topics.filter((topic): topic is string => Boolean(topic));
+	if (repeatedCitation || knownTopics.length === 0 || availableTopics.size < 2) {
+		return availableTopics.size < 2 && !repeatedCitation;
+	}
+	const firstFive = topics
+		.slice(0, 5)
+		.filter((topic): topic is string => Boolean(topic));
+	const firstFiveTarget = Math.min(3, availableTopics.size, topics.length);
+	const totalTarget = Math.min(4, availableTopics.size, topics.length);
+	const counts = new Map<string, number>();
+	for (const topicId of knownTopics) {
+		counts.set(topicId, (counts.get(topicId) ?? 0) + 1);
+	}
+	const maxTopicCount = Math.max(...counts.values());
+	const maxAllowed = Math.max(3, Math.ceil(topics.length * 0.4));
+	return (
+		new Set(firstFive).size >= firstFiveTarget &&
+		new Set(knownTopics).size >= totalTarget &&
+		maxTopicCount <= maxAllowed
+	);
+}
+
+export function buildCrossTopicFallbackSummary(
+	cited: CitedItem[],
+	lang: TranslationLanguage
+): string {
+	const groups = new Map<string, CitedItem[]>();
+	const seenUrls = new Set<string>();
+	for (const entry of cited) {
+		if (seenUrls.has(entry.item.url)) {
+			continue;
+		}
+		seenUrls.add(entry.item.url);
+		const topicId = topicForSource(entry.item.sourceId) ?? "other";
+		groups.set(topicId, [...(groups.get(topicId) ?? []), entry]);
+	}
+	const buckets = [...groups.values()];
+	const selected: CitedItem[] = [];
+	for (let depth = 0; selected.length < 10; depth += 1) {
+		let added = false;
+		for (const bucket of buckets) {
+			const entry = bucket[depth];
+			if (entry) {
+				selected.push(entry);
+				added = true;
+				if (selected.length === 10) {
+					break;
+				}
+			}
+		}
+		if (!added) {
+			break;
+		}
+	}
+	let reason = "A recent development worth watching";
+	if (lang === "zh") {
+		reason = "值得关注的最新动态";
+	} else if (lang === "zh-Hant") {
+		reason = "值得關注的最新動態";
+	}
+	return selected
+		.map(({ item, n }, index) => {
+			const title = item.title.replace(/\s+/g, " ").replaceAll("**", "").trim();
+			return `${index + 1}. **${title}** — ${reason} [${n}]`;
+		})
+		.join("\n");
 }
 
 const CJK_CHAR_RE = /[\u3400-\u9fff]/g;
@@ -618,7 +765,7 @@ async function readHotSummaryCache(
 		return null;
 	}
 	const text = envelope.value.text.trim();
-	if (!hasCurrentSummaryPromptVersion(envelope.value.prompt)) {
+	if (!hasCurrentSummaryPromptVersion(envelope.value.prompt, topicId)) {
 		return null;
 	}
 	return text ? envelope.value : null;
@@ -667,7 +814,7 @@ export async function hasFreshHotSummaryCache(
 	}
 	return (
 		Boolean(envelope.value.text.trim()) &&
-		hasCurrentSummaryPromptVersion(envelope.value.prompt)
+		hasCurrentSummaryPromptVersion(envelope.value.prompt, topicId)
 	);
 }
 
@@ -696,7 +843,8 @@ async function readSummaryWithTimeout(
 
 function cachedSummaryToEntry(
 	cached: Awaited<ReturnType<typeof readSummary>>,
-	window: SummaryWindow
+	window: SummaryWindow,
+	topicId: string
 ): CachedSummaryEntry | null {
 	if (!cached) {
 		return null;
@@ -705,7 +853,7 @@ function cachedSummaryToEntry(
 	if (!text) {
 		return null;
 	}
-	if (!hasCurrentSummaryPromptVersion(cached.prompt)) {
+	if (!hasCurrentSummaryPromptVersion(cached.prompt, topicId)) {
 		return null;
 	}
 	return {
@@ -737,7 +885,7 @@ async function readAnyCachedSummary(
 	try {
 		const cached = await readSummaryWithTimeout(topicId, lang, readTimeoutMs);
 		if (cached) {
-			const entry = cachedSummaryToEntry(cached, window);
+			const entry = cachedSummaryToEntry(cached, window, topicId);
 			if (entry) {
 				hydrateMemorySummary(topicId, lang, entry);
 				await writeHotSummaryCache(topicId, lang, entry);
@@ -767,9 +915,10 @@ async function refreshSummaryCache(
 	}
 	const topic = resolved.preset;
 	const cacheTopicId = summaryCacheTopicId(resolved.cacheTopicId, window);
+	const scope = summaryScope(topicId);
 	const cited = await collectWindowCitedItems(topicId, topic, lang, window);
 	const citations: Citation[] = cited.map(toCitation);
-	const prompt = buildPrompt(topic, cited, lang, window);
+	const prompt = buildPrompt(topic, cited, lang, window, scope);
 	const cachedEntry = await readAnyCachedSummary(
 		cacheTopicId,
 		lang,
@@ -792,6 +941,7 @@ async function refreshSummaryCache(
 			cited,
 			lang,
 			prompt,
+			scope,
 			topic,
 			window,
 			abortSignal: controller.signal,
@@ -801,6 +951,20 @@ async function refreshSummaryCache(
 		// A summary in the wrong language is never cached, so a missing entry
 		// here means the attempt has to be repeated.
 		if (readMemorySummary(cacheTopicId, lang)?.prompt === prompt) {
+			return;
+		}
+	}
+	if (scope === "cross-topic") {
+		const text = buildCrossTopicFallbackSummary(cited, lang);
+		if (text) {
+			await writeCachedSummary({
+				citations,
+				lang,
+				prompt,
+				text,
+				topicId: cacheTopicId,
+				window,
+			});
 			return;
 		}
 	}
@@ -921,16 +1085,50 @@ async function readNextSummaryChunk(
 	}
 }
 
-async function* streamGeneratedSummary(params: {
+interface GeneratedSummaryParams {
+	abortSignal: AbortSignal;
 	cacheTopicId: string;
 	citations: Citation[];
 	cited: CitedItem[];
 	lang: TranslationLanguage;
 	prompt: string;
+	scope: SummaryScope;
 	topic: TopicPreset;
 	window: SummaryWindow;
-	abortSignal: AbortSignal;
-}): AsyncGenerator<string, void, void> {
+}
+
+async function cacheGeneratedSummary(
+	params: GeneratedSummaryParams,
+	text: string
+): Promise<void> {
+	if (!isWrittenInTargetLanguage(text, params.lang)) {
+		console.warn(
+			`[trends-summary] discarded ${params.cacheTopicId} summary not written in ${params.lang}`
+		);
+		return;
+	}
+	if (
+		params.scope === "cross-topic" &&
+		!isCrossTopicDigestDiverse(text, params.citations)
+	) {
+		console.warn(
+			`[trends-summary] discarded ${params.cacheTopicId} summary without enough topic diversity`
+		);
+		return;
+	}
+	await writeCachedSummary({
+		citations: params.citations,
+		lang: params.lang,
+		prompt: params.prompt,
+		text,
+		topicId: params.cacheTopicId,
+		window: params.window,
+	});
+}
+
+async function* streamGeneratedSummary(
+	params: GeneratedSummaryParams
+): AsyncGenerator<string, void, void> {
 	const provider = createOpenAICompatible({
 		name: "llm",
 		apiKey: env.LLM_API_KEY ?? "",
@@ -955,7 +1153,7 @@ async function* streamGeneratedSummary(params: {
 				providerError = error;
 			},
 			providerOptions: llmProviderOptions(),
-			system: buildSystemPrompt(params.lang, params.window),
+			system: buildSystemPrompt(params.lang, params.window, params.scope),
 			prompt: params.prompt,
 		});
 		iterator = result.textStream[Symbol.asyncIterator]();
@@ -977,20 +1175,7 @@ async function* streamGeneratedSummary(params: {
 		if (!text) {
 			throw providerError ?? new Error("The model returned an empty summary.");
 		}
-		if (isWrittenInTargetLanguage(text, params.lang)) {
-			await writeCachedSummary({
-				citations: params.citations,
-				lang: params.lang,
-				prompt: params.prompt,
-				text,
-				topicId: params.cacheTopicId,
-				window: params.window,
-			});
-		} else {
-			console.warn(
-				`[trends-summary] discarded ${params.cacheTopicId} summary not written in ${params.lang}`
-			);
-		}
+		await cacheGeneratedSummary(params, text);
 	} catch (error) {
 		try {
 			await Promise.race([
@@ -1133,6 +1318,7 @@ export async function prepareTrendsSummary(
 				lang,
 				window
 			),
+			origin: "cache",
 			stream: (abortSignal) =>
 				replayCachedSummary(cachedSummary.text, abortSignal),
 		};
@@ -1145,9 +1331,10 @@ export async function prepareTrendsSummary(
 		const topic = resolved.preset;
 		const cited = await collectWindowCitedItems(topicId, topic, lang, window);
 		const citations: Citation[] = cited.map(toCitation);
-		const prompt = buildPrompt(topic, cited, lang, window);
+		const prompt = buildPrompt(topic, cited, lang, window, "topic");
 		return {
 			citations,
+			origin: "generated",
 			stream: (abortSignal) =>
 				streamGeneratedSummary({
 					abortSignal,
@@ -1156,6 +1343,7 @@ export async function prepareTrendsSummary(
 					cited,
 					lang,
 					prompt,
+					scope: "topic",
 					topic,
 					window,
 				}),

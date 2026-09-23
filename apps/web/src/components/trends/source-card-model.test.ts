@@ -12,10 +12,18 @@ describe("sourceCardViewportClasses", () => {
 		expect(classes).not.toContain("contain-intrinsic-size");
 	});
 
-	test("keeps content visibility optimization for populated sources", () => {
+	test("lets a populated preview end after its rendered rows", () => {
 		const classes = sourceCardViewportClasses(true);
-		expect(classes).toContain("content-visibility:auto");
+		expect(classes).toContain("h-auto");
+		expect(classes).not.toContain("content-visibility:auto");
+		expect(classes).not.toContain("contain-intrinsic-size");
+		expect(classes).not.toContain("h-[480px]");
+	});
+
+	test("bounds only an explicitly expanded source so its full list can scroll", () => {
+		const classes = sourceCardViewportClasses(true, true);
 		expect(classes).toContain("h-[480px]");
+		expect(classes).not.toContain("content-visibility:auto");
 	});
 });
 
