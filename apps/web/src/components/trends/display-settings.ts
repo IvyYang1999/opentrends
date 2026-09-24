@@ -7,8 +7,10 @@ export interface DisplaySettings {
 	showCover: boolean;
 	showDescription: boolean;
 	showHotValue: boolean;
+	showOriginalTitle: boolean;
 	showRank: boolean;
 	showRelativeTime: boolean;
+	summaryCollapsed: boolean;
 }
 
 export interface DisplaySettingsStoreOptions {
@@ -18,20 +20,24 @@ export interface DisplaySettingsStoreOptions {
 
 export const DISPLAY_SETTINGS_DEFAULTS: DisplaySettings = {
 	layout: "sourceGrid",
+	summaryCollapsed: false,
 	showCover: true,
 	showDescription: false,
 	showHotValue: true,
 	showRank: true,
 	showRelativeTime: true,
+	showOriginalTitle: false,
 };
 
 export const SOURCE_SECTIONS_DISPLAY_SETTINGS: DisplaySettings = {
 	layout: "sourceSections",
+	summaryCollapsed: false,
 	showCover: true,
 	showDescription: true,
 	showHotValue: true,
 	showRank: true,
 	showRelativeTime: true,
+	showOriginalTitle: false,
 };
 
 const DISPLAY_SETTINGS_BY_LAYOUT: Record<DisplayLayout, DisplaySettings> = {
@@ -182,9 +188,13 @@ export function setDisplayLayout(
 		return;
 	}
 	const storageKey = getStoreKey(options);
+	const current = readFromStorage(options);
 	window.localStorage.setItem(
 		storageKey,
-		JSON.stringify(DISPLAY_SETTINGS_BY_LAYOUT[layout])
+		JSON.stringify({
+			...DISPLAY_SETTINGS_BY_LAYOUT[layout],
+			summaryCollapsed: current.summaryCollapsed,
+		})
 	);
 	window.dispatchEvent(new Event(CHANGE_EVENT));
 }

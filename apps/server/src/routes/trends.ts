@@ -1,9 +1,16 @@
 import { Hono } from "hono";
 import { captureWorkerContext } from "../runtime";
+import {
+	FOLLOWED_TOPIC_ID,
+	parseFollowedSourceIds,
+	parseKeywords,
+} from "../trends/config/followed-topic";
+import { parseDigestEntries } from "../trends/services/digest-json";
 import { EventEmbeddingNotConfiguredError } from "../trends/services/event-embedding";
 import { getEventDetail, getEventFeed } from "../trends/services/event-feed";
 import {
 	DEFAULT_TRENDS_ITEMS_PER_SOURCE,
+	getFollowedSourcesPage,
 	getTrendSourceCard,
 	getTrendsPageWithCacheInfo,
 	PREVIEW_TRENDS_ITEMS_PER_SOURCE,
@@ -12,15 +19,22 @@ import {
 	TrendsSnapshotsUnavailableError,
 } from "../trends/services/get-trends-page";
 import {
+	HEADER_CITATION_LIMIT,
+	normalizeSummaryWindow,
 	prepareTrendsSummary,
+	TrendsSummaryNoMatchesError,
 	TrendsSummaryNotConfiguredError,
+	TrendsSummaryPendingError,
+	withCitationPreamble,
 } from "../trends/services/get-trends-summary";
+import { slimTrendsPage } from "../trends/services/page-slim";
+import { requestSummaryPrewarmJob } from "../trends/services/summary-prewarm-jobs";
 import {
 	normalizeTranslationLanguage,
 	type TranslationMode,
-	translateTrendsPage,
 } from "../trends/services/translate-news-items";
-import type { TrendsPageData } from "../trends/types";
+import { requestTranslationPrewarmsForPage } from "../trends/services/translation-prewarm-jobs";
+import type { TopicId } from "../trends/types";
 
 interface WaitUntilContext {
 	executionCtx?: {
@@ -28,10 +42,8 @@ interface WaitUntilContext {
 	};
 }
 
-function parseTranslationMode(value: string | undefined): TranslationMode {
-	// The sync path is request-bound and internally time-boxed. It does not start
-	// request-external translation work, which is unsafe on Workers.
-	return value === "sync" ? "sync" : "background";
+function parseTranslationMode(_value: string | undefined): TranslationMode {
+	return "background";
 }
 
 function parseItemsPerSource(value: string | undefined): number {
@@ -119,29 +131,17 @@ function withTrendsCacheHeaders(
 	return response;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-	return typeof value === "object" && value !== null;
-}
-
-function isTrendsPagePayload(value: unknown): value is TrendsPageData {
-	return (
-		isRecord(value) &&
-		typeof value.id === "string" &&
-		typeof value.title === "string" &&
-		typeof value.updatedAt === "number" &&
-		Array.isArray(value.sections)
+function scheduleTranslationPrewarms(
+	page: Awaited<ReturnType<typeof getTrendsPageWithCacheInfo>>["page"],
+	lang: ReturnType<typeof normalizeTranslationLanguage>,
+	waitUntil: ReturnType<typeof getWaitUntil>
+): void {
+	const prewarm = requestTranslationPrewarmsForPage(page, lang).catch(
+		(error) => {
+			console.warn("[trends-translation] page reconciliation failed", error);
+		}
 	);
-}
-
-async function readTrendsPagePayload(request: {
-	json: () => Promise<unknown>;
-}): Promise<TrendsPageData | null> {
-	try {
-		const value = await request.json();
-		return isTrendsPagePayload(value) ? value : null;
-	} catch {
-		return null;
-	}
+	waitUntil?.(prewarm);
 }
 
 export const trendsRoutes = new Hono()
@@ -150,15 +150,17 @@ export const trendsRoutes = new Hono()
 		const translationMode = parseTranslationMode(c.req.query("translations"));
 		const itemsPerSource = parseItemsPerSource(c.req.query("items"));
 		try {
+			const waitUntil = getWaitUntil(c);
 			const { cacheStatus, page } = await getTrendsPageWithCacheInfo(
 				"ai",
 				lang,
 				translationMode,
 				itemsPerSource,
-				{ waitUntil: getWaitUntil(c) }
+				{ waitUntil }
 			);
+			scheduleTranslationPrewarms(page, lang, waitUntil);
 			const response = withTrendsCacheHeaders(
-				c.json(page),
+				c.json(slimTrendsPage(page)),
 				translationMode,
 				cacheStatus
 			);
@@ -172,16 +174,59 @@ export const trendsRoutes = new Hono()
 			throw error;
 		}
 	})
+	// Followed sources: the reader's list arrives with the request, so this
+	// page is built each time and skips the shared caches.
+	.get(`/${FOLLOWED_TOPIC_ID}`, async (c) => {
+		const lang = normalizeTranslationLanguage(c.req.query("lang"));
+		const translationMode = parseTranslationMode(c.req.query("translations"));
+		const itemsPerSource = parseItemsPerSource(c.req.query("items"));
+		const sourceIds = parseFollowedSourceIds(c.req.query("sources"));
+		try {
+			const page = await getFollowedSourcesPage(
+				sourceIds,
+				lang,
+				translationMode,
+				itemsPerSource
+			);
+			scheduleTranslationPrewarms(page, lang, getWaitUntil(c));
+			return withTrendsCacheHeaders(
+				c.json(slimTrendsPage(page)),
+				"sync",
+				"bypass"
+			);
+		} catch (error) {
+			if (error instanceof TrendsSnapshotsUnavailableError) {
+				return c.json({ error: "snapshots_unavailable" }, 503, {
+					"Retry-After": "1",
+				});
+			}
+			throw error;
+		}
+	})
 	.get("/:topic/summary", async (c) => {
 		const topic = c.req.param("topic");
 		const lang = normalizeTranslationLanguage(c.req.query("lang"));
+		const window = normalizeSummaryWindow(c.req.query("window"));
+		const sourceIds =
+			topic === FOLLOWED_TOPIC_ID
+				? parseFollowedSourceIds(c.req.query("sources"))
+				: undefined;
+		const keywords =
+			topic === FOLLOWED_TOPIC_ID
+				? parseKeywords(c.req.query("keywords"))
+				: undefined;
 
 		let prepared: Awaited<ReturnType<typeof prepareTrendsSummary>>;
 		try {
 			prepared = await prepareTrendsSummary(topic, lang, {
-				waitUntil: getWaitUntil(c),
+				keywords,
+				sourceIds,
+				window,
 			});
 		} catch (error) {
+			if (error instanceof TrendsSummaryNoMatchesError) {
+				return c.body(null, 204, { "Cache-Control": "no-store" });
+			}
 			if (error instanceof TopicNotFoundError) {
 				return c.json({ error: "topic_not_found", topic }, 404);
 			}
@@ -193,20 +238,69 @@ export const trendsRoutes = new Hono()
 			if (error instanceof TrendsSummaryNotConfiguredError) {
 				return c.json({ error: "summary_not_configured" }, 503);
 			}
+			if (error instanceof TrendsSummaryPendingError) {
+				const prewarm = requestSummaryPrewarmJob({
+					lang,
+					sourceIds: sourceIds ? [...sourceIds] : undefined,
+					topicId: topic as TopicId,
+					window,
+				});
+				getWaitUntil(c)?.(prewarm);
+				return c.json({ status: "pending" }, 202, {
+					"Cache-Control": "no-store",
+					"Retry-After": "30",
+				});
+			}
 			throw error;
 		}
 
-		const body = textStreamFromGenerator(prepared.stream(c.req.raw.signal));
-		return new Response(body, {
+		const stream = prepared.stream(c.req.raw.signal);
+		// Agents and scripts want the digest as data, not a Markdown stream.
+		if (c.req.query("format") === "json") {
+			let markdown = "";
+			for await (const chunk of stream) {
+				markdown += chunk;
+			}
+			return c.json(
+				{
+					entries: parseDigestEntries(markdown, prepared.citations),
+					lang,
+					markdown,
+					topic,
+					window,
+				},
+				200,
+				{ "Cache-Control": "public, max-age=300" }
+			);
+		}
+		if (c.req.query("citations") === "body") {
+			return new Response(
+				textStreamFromGenerator(
+					withCitationPreamble(prepared.citations, stream)
+				),
+				{
+					headers: {
+						"Content-Type": "text/plain; charset=utf-8",
+						"Cache-Control": "no-store",
+						"X-Trends-Summary-Origin": prepared.origin,
+						"Access-Control-Expose-Headers": "X-Trends-Summary-Origin",
+					},
+				}
+			);
+		}
+
+		return new Response(textStreamFromGenerator(stream), {
 			headers: {
 				"Content-Type": "text/plain; charset=utf-8",
 				"Cache-Control": "no-store",
 				"X-Trends-Citations": encodeURIComponent(
-					JSON.stringify(prepared.citations)
+					JSON.stringify(prepared.citations.slice(0, HEADER_CITATION_LIMIT))
 				),
+				"X-Trends-Summary-Origin": prepared.origin,
 				// Allow the cross-origin web client (different localhost port) to
 				// read the citations header off the response.
-				"Access-Control-Expose-Headers": "X-Trends-Citations",
+				"Access-Control-Expose-Headers":
+					"X-Trends-Citations, X-Trends-Summary-Origin",
 			},
 		});
 	})
@@ -274,22 +368,6 @@ export const trendsRoutes = new Hono()
 			throw error;
 		}
 	})
-	.post("/:topic/translations", async (c) => {
-		const topic = c.req.param("topic");
-		const lang = normalizeTranslationLanguage(c.req.query("lang"));
-		const page = await readTrendsPagePayload(c.req);
-		if (!page || page.id !== topic) {
-			return c.json({ error: "invalid_trends_page", topic }, 400);
-		}
-		let translatedPage: TrendsPageData;
-		try {
-			translatedPage = await translateTrendsPage(page, lang, "sync");
-		} catch (error) {
-			console.warn("[trends-translation] failed to translate page", error);
-			translatedPage = page;
-		}
-		return withTrendsCacheHeaders(c.json(translatedPage), "sync", "bypass");
-	})
 	.get("/:topic/sources/:sourceId", async (c) => {
 		const topic = c.req.param("topic");
 		const sourceId = c.req.param("sourceId");
@@ -302,7 +380,8 @@ export const trendsRoutes = new Hono()
 				sourceId,
 				lang,
 				translationMode,
-				itemsPerSource
+				itemsPerSource,
+				{ waitUntil: getWaitUntil(c) }
 			);
 			return withTrendsCacheHeaders(
 				c.json(source),
@@ -327,15 +406,17 @@ export const trendsRoutes = new Hono()
 		const translationMode = parseTranslationMode(c.req.query("translations"));
 		const itemsPerSource = parseItemsPerSource(c.req.query("items"));
 		try {
+			const waitUntil = getWaitUntil(c);
 			const { cacheStatus, page } = await getTrendsPageWithCacheInfo(
 				topic,
 				lang,
 				translationMode,
 				itemsPerSource,
-				{ waitUntil: getWaitUntil(c) }
+				{ waitUntil }
 			);
+			scheduleTranslationPrewarms(page, lang, waitUntil);
 			const response = withTrendsCacheHeaders(
-				c.json(page),
+				c.json(slimTrendsPage(page)),
 				translationMode,
 				cacheStatus
 			);

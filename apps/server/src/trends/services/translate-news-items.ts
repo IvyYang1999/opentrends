@@ -10,6 +10,8 @@ import {
 	writeItemTranslations,
 } from "../cache/item-translation-cache";
 import type { NewsItem, SourceCardData, TrendsPageData } from "../types";
+import { llmProviderOptions, translationModelId } from "./llm";
+import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
 
 export const TRANSLATION_LANGUAGES = [
 	"en",
@@ -24,7 +26,7 @@ export const TRANSLATION_LANGUAGES = [
 export type TranslationLanguage = (typeof TRANSLATION_LANGUAGES)[number];
 export type TranslationMode = "background" | "sync";
 
-interface TranslationCandidate {
+export interface TranslationCandidate {
 	cacheKey: string;
 	item: NewsItem;
 	sourceId: string;
@@ -37,9 +39,10 @@ type WritableTranslation = Omit<
 >;
 
 const BATCH_SIZE = 6;
-const BACKGROUND_TRANSLATION_CACHE_TIMEOUT_MS = 1200;
-const SYNC_TRANSLATION_CONCURRENCY = 2;
+const BACKGROUND_TRANSLATION_CACHE_TIMEOUT_MS = 3000;
+const SYNC_TRANSLATION_CONCURRENCY = 4;
 const SYNC_TRANSLATION_TIMEOUT_MS = 12_000;
+const SYNC_TRANSLATION_STRAGGLER_MS = 25_000;
 const MAX_SYNC_TRANSLATION_CANDIDATES = 48;
 const CJK_RE = /[\u3400-\u9fff]/;
 const CYRILLIC_RE = /\p{Script=Cyrillic}/u;
@@ -108,6 +111,17 @@ function shouldTranslateText(
 		return true;
 	}
 	return hasCjk(value) || hasCyrillic(value);
+}
+
+export function isTranslationConfigured(): boolean {
+	return Boolean(env.LLM_API_KEY);
+}
+
+export function needsTranslation(
+	item: NewsItem,
+	lang: TranslationLanguage
+): boolean {
+	return !item.original && shouldTranslateItem(item, lang);
 }
 
 function shouldTranslateItem(
@@ -207,8 +221,13 @@ function providerModel() {
 		name: "llm",
 		apiKey: env.LLM_API_KEY ?? "",
 		baseURL: env.LLM_BASE_URL,
+		includeUsage: isSiliconFlow(env.LLM_BASE_URL),
 	});
-	return provider(env.LLM_MODEL);
+	return trackSiliconFlowModel(
+		provider(translationModelId()),
+		"translation",
+		env.LLM_BASE_URL
+	);
 }
 
 function targetLanguageName(lang: TranslationLanguage): string {
@@ -261,6 +280,7 @@ async function translateBatch(
 	const { output } = await generateText({
 		abortSignal,
 		model: providerModel(),
+		providerOptions: llmProviderOptions(),
 		output: Output.object({
 			schema: TRANSLATED_BATCH_SCHEMA,
 		}),
@@ -286,7 +306,7 @@ async function translateBatch(
 			description: cleanDescription(row.description),
 			itemId: candidate.item.id,
 			lang,
-			model: env.LLM_MODEL,
+			model: translationModelId(),
 			sourceId: candidate.sourceId,
 			textHash: candidate.textHash,
 			title,
@@ -315,6 +335,9 @@ async function translateBatchResilient(
 		if (abortSignal?.aborted) {
 			throw error;
 		}
+		if (!shouldSplitTranslationFailure(error)) {
+			throw error;
+		}
 		if (candidates.length <= 1) {
 			console.warn("[trends-translation] failed to translate item", error);
 			return [];
@@ -328,57 +351,111 @@ async function translateBatchResilient(
 	}
 }
 
-async function translateMissingWithinTimeout(
+// Splitting is useful when a model returned malformed structured output: a
+// smaller payload often fixes that one item. It is actively harmful for auth,
+// billing, rate-limit, and network failures because one failed request becomes
+// a request tree. Those failures must stay a single queue retry.
+export function shouldSplitTranslationFailure(error: unknown): boolean {
+	if (!(error instanceof Error)) {
+		return false;
+	}
+	return (
+		error.name === "AI_NoObjectGeneratedError" ||
+		error.name === "AI_TypeValidationError" ||
+		error.name === "AI_JSONParseError"
+	);
+}
+
+export interface TranslationOptions {
+	// Queue prewarm jobs should be retried when the provider rejected every
+	// batch. Interactive requests keep their existing best-effort behavior.
+	throwOnTotalFailure?: boolean;
+	// Lets batches that outlive the response finish and reach the cache. Without
+	// it a slow model loses every batch it has not completed at the deadline,
+	// and each new request starts the same work again.
+	waitUntil?: (promise: Promise<unknown>) => void;
+}
+
+// Translates until `timeoutMs`, then returns what is finished. Batches still
+// in flight keep running for a grace period so their result is cached for the
+// next request instead of being thrown away.
+export async function translateMissingWithinTimeout(
 	lang: TranslationLanguage,
 	candidates: TranslationCandidate[],
-	timeoutMs: number
+	timeoutMs: number,
+	options: TranslationOptions = {},
+	translate: typeof translateBatchResilient = translateBatchResilient
 ): Promise<WritableTranslation[]> {
 	if (candidates.length === 0) {
 		return [];
 	}
 
-	const controller = new AbortController();
-	const timeout = setTimeout(() => {
-		controller.abort();
-	}, timeoutMs);
+	const stragglerLimit = new AbortController();
 	const batches = chunk(candidates, BATCH_SIZE);
 	const translations: WritableTranslation[] = [];
+	const failures: unknown[] = [];
+	let successfulBatches = 0;
 	let nextBatch = 0;
+	let deadlineReached = false;
 
 	async function worker(): Promise<void> {
-		while (!controller.signal.aborted && nextBatch < batches.length) {
+		while (!deadlineReached && nextBatch < batches.length) {
 			const batch = batches[nextBatch];
 			nextBatch += 1;
 			if (!batch) {
 				continue;
 			}
 			try {
-				translations.push(
-					...(await translateBatchResilient(lang, batch, controller.signal))
+				const batchTranslations = await translate(
+					lang,
+					batch,
+					stragglerLimit.signal
 				);
+				successfulBatches += 1;
+				translations.push(...batchTranslations);
 			} catch (error) {
-				if (!controller.signal.aborted) {
+				failures.push(error);
+				if (!stragglerLimit.signal.aborted) {
 					console.warn("[trends-translation] failed to translate batch", error);
 				}
 			}
 		}
 	}
 
-	try {
-		if (!controller.signal.aborted) {
-			await Promise.all(
-				Array.from(
-					{
-						length: Math.min(SYNC_TRANSLATION_CONCURRENCY, batches.length),
-					},
-					() => worker()
-				)
-			);
-		}
-	} finally {
-		clearTimeout(timeout);
+	const workers = Promise.all(
+		Array.from(
+			{ length: Math.min(SYNC_TRANSLATION_CONCURRENCY, batches.length) },
+			() => worker()
+		)
+	);
+	let deadline: ReturnType<typeof setTimeout> | undefined;
+	await Promise.race([
+		workers,
+		new Promise<void>((resolve) => {
+			deadline = setTimeout(() => {
+				deadlineReached = true;
+				resolve();
+			}, timeoutMs);
+		}),
+	]);
+	clearTimeout(deadline);
+
+	if (deadlineReached) {
+		const stragglerTimer = setTimeout(
+			() => stragglerLimit.abort(),
+			SYNC_TRANSLATION_STRAGGLER_MS
+		);
+		options.waitUntil?.(workers.finally(() => clearTimeout(stragglerTimer)));
 	}
-	return translations;
+	if (
+		!deadlineReached &&
+		options.throwOnTotalFailure &&
+		successfulBatches === 0 &&
+		failures.length > 0
+	) {
+		throw failures[0];
+	}
+	return [...translations];
 }
 
 function collectTranslationCandidates(
@@ -462,7 +539,8 @@ async function fillSyncTranslations(
 	missing: TranslationCandidate[],
 	translations: TranslationMap,
 	lang: TranslationLanguage,
-	mode: TranslationMode
+	mode: TranslationMode,
+	options: TranslationOptions
 ): Promise<void> {
 	if (mode !== "sync") {
 		return;
@@ -480,7 +558,8 @@ async function fillSyncTranslations(
 	const translatedRows = await translateMissingWithinTimeout(
 		lang,
 		missingWithinRequestBudget,
-		SYNC_TRANSLATION_TIMEOUT_MS
+		SYNC_TRANSLATION_TIMEOUT_MS,
+		options
 	);
 	for (const row of translatedRows) {
 		translations.set(`${row.sourceId}:${row.itemId}`, row);
@@ -490,7 +569,8 @@ async function fillSyncTranslations(
 export async function translateTrendsPage(
 	page: TrendsPageData,
 	lang: TranslationLanguage,
-	mode: TranslationMode = "background"
+	mode: TranslationMode = "background",
+	options: TranslationOptions = {}
 ): Promise<TrendsPageData> {
 	if (!env.LLM_API_KEY) {
 		return page;
@@ -516,7 +596,7 @@ export async function translateTrendsPage(
 		uniqueCandidates,
 		cachedRows
 	);
-	await fillSyncTranslations(missing, translations, lang, mode);
+	await fillSyncTranslations(missing, translations, lang, mode, options);
 
 	if (translations.size === 0) {
 		return page;
@@ -541,10 +621,54 @@ export async function translateTrendsPage(
 	};
 }
 
+const PREWARM_TRANSLATION_TIMEOUT_MS = 120_000;
+const MAX_PREWARM_TRANSLATION_CANDIDATES = 60;
+
+// Translates whatever a source's current items are still missing in `lang` and
+// stores it, without a reader waiting on the result. Returns how many items
+// were translated.
+export async function prewarmItemTranslations(
+	items: NewsItem[],
+	lang: TranslationLanguage,
+	options: { timeoutMs?: number } = {}
+): Promise<number> {
+	if (!env.LLM_API_KEY) {
+		return 0;
+	}
+	const candidates = items
+		.filter((item) => needsTranslation(item, lang))
+		.map((item): TranslationCandidate => {
+			const textHash = hashItemText(item);
+			return {
+				cacheKey: makeCacheKey(lang, item.sourceId, item.id, textHash),
+				item,
+				sourceId: item.sourceId,
+				textHash,
+			};
+		});
+	if (candidates.length === 0) {
+		return 0;
+	}
+	const cachedRows = await readItemTranslations({
+		itemIds: candidates.map((candidate) => candidate.item.id),
+		lang,
+		sourceIds: candidates.map((candidate) => candidate.sourceId),
+	});
+	const { missing } = buildTranslationMap(candidates, cachedRows);
+	const translated = await translateMissingWithinTimeout(
+		lang,
+		missing.slice(0, MAX_PREWARM_TRANSLATION_CANDIDATES),
+		options.timeoutMs ?? PREWARM_TRANSLATION_TIMEOUT_MS,
+		{ throwOnTotalFailure: true }
+	);
+	return translated.length;
+}
+
 export async function translateNewsItems(
 	items: NewsItem[],
 	lang: TranslationLanguage,
-	mode: TranslationMode = "background"
+	mode: TranslationMode = "background",
+	options: TranslationOptions = {}
 ): Promise<NewsItem[]> {
 	if (!env.LLM_API_KEY) {
 		return items;
@@ -584,7 +708,7 @@ export async function translateNewsItems(
 		uniqueCandidates,
 		cachedRows
 	);
-	await fillSyncTranslations(missing, translations, lang, mode);
+	await fillSyncTranslations(missing, translations, lang, mode, options);
 
 	if (translations.size === 0) {
 		return items;

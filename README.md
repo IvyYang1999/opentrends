@@ -25,6 +25,9 @@ languages.
   request caching
 - Native Cloudflare D1, KV, and Queues runtime
 - Alchemy-managed local Cloudflare development and deployment
+- Built for agents too: a public JSON API, the digest as structured data
+  (`/api/trends/:topic/summary?format=json`), `llms.txt`, an agent skill and an
+  MCP server (`packages/mcp`)
 
 ## Repository Layout
 
@@ -41,6 +44,7 @@ opentrends/
 │   ├── db/          # Drizzle schema, migrations, dev DB helpers
 │   ├── env/         # Shared env validation
 │   ├── infra/       # Cloudflare/Alchemy deployment entrypoint
+│   ├── mcp/         # MCP server over the public API (opentrends-mcp)
 │   └── ui/          # Shared shadcn/ui components and styles
 └── docs/            # Design and implementation notes
 ```
@@ -92,6 +96,8 @@ Optional trend and summary settings include:
 - `LLM_BASE_URL`
 - `LLM_API_KEY`
 - `LLM_MODEL`
+- `LLM_TRANSLATION_MODEL`
+- `LLM_ENABLE_THINKING`
 - `TRENDS_REFRESH_SCHEDULER`
 
 Alchemy injects `VITE_SERVER_URL` into the web app. Optionally configure:

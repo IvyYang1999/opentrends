@@ -1,183 +1,74 @@
-import { refreshPolicies } from "../config/refresh-policies";
+import { readSourceRefreshStates } from "../cache/source-cache";
 import { sourcePresets } from "../config/sources";
 import { topicPresets } from "../config/topics";
-import type { SourceId, TopicId } from "../types";
-import { clearTrendsPageCache } from "./get-trends-page";
-import { isTrendsSummaryConfigured } from "./get-trends-summary";
+import type { SourceId } from "../types";
+import {
+	clearTrendsPageCache,
+	DEFAULT_TRENDS_ITEMS_PER_SOURCE,
+	warmTrendsPage,
+} from "./get-trends-page";
 import { refreshSource } from "./refresh-source";
-import { dispatchSummaryPrewarmJob } from "./summary-prewarm-jobs";
+import { selectDueSourceIds } from "./source-refresh-priority";
+import { reconcileMissingSummaryPrewarms } from "./summary-prewarm-jobs";
 import type { TranslationLanguage } from "./translate-news-items";
 
 const SCHEDULER_TICK_MS = 60_000;
-const INITIAL_STAGGER_WINDOW_MS = 10 * 60_000;
 const MAX_REFRESHES_PER_TICK = 4;
-const MAX_SUMMARY_PREWARMS_PER_TICK = 1;
-const ERROR_BACKOFF_MS = 5 * 60_000;
-const SUMMARY_PREWARM_LANGUAGES: readonly TranslationLanguage[] = [
-	"zh",
-	"en",
-	"zh-Hant",
-	"ru",
-];
-
-interface ScheduledSource {
-	intervalMs: number;
-	nextRunAt: number;
-	sourceId: SourceId;
-}
-
-interface SummaryPrewarmJob {
-	key: string;
-	lang: TranslationLanguage;
-	topicId: TopicId;
-}
 
 interface SchedulerState {
 	running: boolean;
-	schedule: ScheduledSource[];
-	summaryQueue: SummaryPrewarmJob[];
-	summaryQueuedKeys: Set<string>;
 	timer?: ReturnType<typeof setInterval> & { unref?: () => void };
 }
 
 let state: SchedulerState | undefined;
 let nextRequestDrivenTickAt = 0;
 
-function getOrCreateSchedulerState(now: number): SchedulerState {
+function getOrCreateSchedulerState(): SchedulerState {
 	state ??= {
 		running: false,
-		schedule: buildSchedule(now),
-		summaryQueue: [],
-		summaryQueuedKeys: new Set(),
 	};
 	return state;
 }
 
-function buildSchedule(now: number): ScheduledSource[] {
-	const entries = Object.entries(sourcePresets) as [
-		SourceId,
-		(typeof sourcePresets)[keyof typeof sourcePresets],
-	][];
-	const staggerWindow = Math.min(
-		INITIAL_STAGGER_WINDOW_MS,
-		Math.max(SCHEDULER_TICK_MS, entries.length * 5000)
-	);
-
-	return entries.map(([sourceId, preset], index) => {
-		const policy = refreshPolicies[preset.refresh];
-		const offset = Math.floor(
-			(index / Math.max(entries.length, 1)) * staggerWindow
-		);
-		return {
-			intervalMs: policy.softTtlMs,
-			nextRunAt: now + offset,
-			sourceId,
-		};
-	});
-}
-
-function nextDelay(source: ScheduledSource, ok: boolean): number {
-	if (ok) {
-		return source.intervalMs;
-	}
-	return Math.min(source.intervalMs, ERROR_BACKOFF_MS);
-}
-
-function getTopicsForSource(sourceId: SourceId): TopicId[] {
-	const topics: TopicId[] = [];
-	const entries = Object.entries(topicPresets) as [
-		TopicId,
-		(typeof topicPresets)[keyof typeof topicPresets],
-	][];
-
-	for (const [topicId, topic] of entries) {
-		if (
-			topic.sections.some((section) => hasSource(section.sourceIds, sourceId))
-		) {
-			topics.push(topicId);
-		}
-	}
-	return topics;
-}
-
-function hasSource(
-	sourceIds: readonly SourceId[],
-	sourceId: SourceId
-): boolean {
-	return sourceIds.includes(sourceId);
-}
-
-function enqueueSummaryPrewarm(
+async function refreshDueSources(
 	current: SchedulerState,
-	topicId: TopicId,
-	lang: TranslationLanguage
-): void {
-	const key = `${topicId}:${lang}`;
-	if (current.summaryQueuedKeys.has(key)) {
-		return;
-	}
-	current.summaryQueuedKeys.add(key);
-	current.summaryQueue.push({ key, topicId, lang });
-}
-
-function enqueueSummaryPrewarmsForSource(
-	current: SchedulerState,
-	sourceId: SourceId
-): void {
-	if (!isTrendsSummaryConfigured()) {
-		return;
-	}
-	for (const topicId of getTopicsForSource(sourceId)) {
-		for (const lang of SUMMARY_PREWARM_LANGUAGES) {
-			enqueueSummaryPrewarm(current, topicId, lang);
-		}
-	}
-}
-
-async function processSummaryPrewarms(current: SchedulerState): Promise<void> {
-	for (let i = 0; i < MAX_SUMMARY_PREWARMS_PER_TICK; i += 1) {
-		const job = current.summaryQueue.shift();
-		if (!job) {
-			return;
-		}
-		current.summaryQueuedKeys.delete(job.key);
-		try {
-			await dispatchSummaryPrewarmJob({
-				lang: job.lang,
-				topicId: job.topicId,
-			});
-		} catch (error) {
-			console.warn("[trends-refresh-scheduler] summary prewarm failed", error);
-		}
-	}
-}
-
-async function refreshDueSources(current: SchedulerState): Promise<void> {
+	now = Date.now()
+): Promise<SourceId[]> {
 	if (current.running) {
-		return;
+		return [];
 	}
 
 	current.running = true;
 	try {
-		const now = Date.now();
-		const due = current.schedule
-			.filter((source) => source.nextRunAt <= now)
-			.sort((a, b) => a.nextRunAt - b.nextRunAt)
-			.slice(0, MAX_REFRESHES_PER_TICK);
+		const sourceIds = Object.keys(sourcePresets) as SourceId[];
+		const refreshStates = await readSourceRefreshStates(sourceIds);
+		const dueSourceIds = selectDueSourceIds(
+			sourceIds,
+			refreshStates,
+			now,
+			MAX_REFRESHES_PER_TICK
+		);
+		const outcomes = await Promise.all(
+			dueSourceIds.map(async (sourceId) => ({
+				outcome: await refreshSource(sourceId),
+				sourceId,
+			}))
+		);
 
-		for (const source of due) {
-			const outcome = await refreshSource(source.sourceId);
-			const ok = outcome.kind === "ok" || outcome.kind === "skipped";
-			source.nextRunAt = Date.now() + nextDelay(source, ok);
-
+		let clearPageCache = false;
+		const changedSourceIds: SourceId[] = [];
+		for (const { outcome, sourceId } of outcomes) {
 			if (outcome.kind === "ok" || outcome.kind === "error") {
-				clearTrendsPageCache();
+				clearPageCache = true;
 			}
-			if (outcome.kind === "ok") {
-				enqueueSummaryPrewarmsForSource(current, source.sourceId);
+			if (outcome.kind === "ok" && outcome.changed) {
+				changedSourceIds.push(sourceId);
 			}
 		}
-		await processSummaryPrewarms(current);
+		if (clearPageCache) {
+			clearTrendsPageCache();
+		}
+		return changedSourceIds;
 	} finally {
 		current.running = false;
 	}
@@ -190,14 +81,11 @@ export function startTrendsRefreshScheduler(): () => void {
 
 	state = {
 		running: false,
-		schedule: buildSchedule(Date.now()),
-		summaryQueue: [],
-		summaryQueuedKeys: new Set(),
 		timer: setInterval(() => {
 			if (!state) {
 				return;
 			}
-			refreshDueSources(state).catch((error) => {
+			runTrendsRefreshTick().catch((error) => {
 				console.error("[trends-refresh-scheduler]", error);
 			});
 		}, SCHEDULER_TICK_MS),
@@ -205,7 +93,7 @@ export function startTrendsRefreshScheduler(): () => void {
 	state.timer?.unref?.();
 
 	console.log(
-		`[trends-refresh-scheduler] enabled for ${state.schedule.length} sources`
+		`[trends-refresh-scheduler] enabled for ${Object.keys(sourcePresets).length} sources`
 	);
 	return stopTrendsRefreshScheduler;
 }
@@ -228,7 +116,55 @@ export function scheduleTrendsRefreshTick(
 }
 
 export async function runTrendsRefreshTick(now = Date.now()): Promise<void> {
-	await refreshDueSources(getOrCreateSchedulerState(now));
+	const changedSourceIds = await refreshDueSources(
+		getOrCreateSchedulerState(),
+		now
+	);
+	await reconcileMissingSummaryPrewarms(changedSourceIds);
+	await warmTopicPages();
+}
+
+// The pages readers open first, kept built ahead of them: every topic in
+// the two prewarmed languages, at the two item counts the web app asks for.
+// Fresh pages are skipped, so a quiet tick costs a few KV reads.
+const WARM_LANGUAGES: TranslationLanguage[] = ["zh", "en"];
+const WARM_ITEM_COUNTS = [DEFAULT_TRENDS_ITEMS_PER_SOURCE, 12];
+const WARM_CONCURRENCY = 2;
+
+async function warmTopicPages(): Promise<void> {
+	const jobs: (() => Promise<void>)[] = [];
+	for (const topicId of Object.keys(topicPresets)) {
+		for (const lang of WARM_LANGUAGES) {
+			for (const itemsPerSource of WARM_ITEM_COUNTS) {
+				jobs.push(async () => {
+					try {
+						const result = await warmTrendsPage(topicId, lang, itemsPerSource);
+						if (result === "rebuilt") {
+							console.info(
+								`[trends-refresh-scheduler] warmed ${topicId}/${lang}/${itemsPerSource}`
+							);
+						}
+					} catch (error) {
+						console.warn("[trends-refresh-scheduler] page warm failed", {
+							error,
+							itemsPerSource,
+							lang,
+							topicId,
+						});
+					}
+				});
+			}
+		}
+	}
+	const workers = Array.from({ length: WARM_CONCURRENCY }, async () => {
+		while (jobs.length > 0) {
+			const job = jobs.shift();
+			if (job) {
+				await job();
+			}
+		}
+	});
+	await Promise.all(workers);
 }
 
 export function stopTrendsRefreshScheduler(): void {

@@ -31,11 +31,14 @@ Topic endpoint: GET /api/trends/:topic
 Source endpoint: GET /api/trends/:topic/sources/:sourceId
 Summary endpoint: GET /api/trends/:topic/summary
 Sources endpoint: GET /api/sources
+RSS: GET /api/trends/:topic/feed.xml, GET /api/trends/:topic/summary.xml
+MCP (Streamable HTTP, no key): https://api.opentrends.io/mcp
 ```
 
 Supported topics:
 
 ```txt
+featured   (cross-topic landing digest)
 ai
 programming
 hardware
@@ -47,10 +50,20 @@ cn
 Useful query parameters:
 
 ```txt
-lang=zh | en | zh-Hant | ru
+lang=zh | en | zh-Hant | ru | fr-FR | es-ES | de-DE | pt-BR
 items=preview | number
 translations=background | sync
 ```
+
+Summary endpoint parameters:
+
+```txt
+format=json            entries[] with takeaway, reason, citations[] (url, topic)
+window=today|week|month
+```
+
+A summary that is still being generated answers `202 {"status":"pending"}`
+with a `Retry-After` header; wait that long and request it again.
 
 ## Workflow
 
@@ -64,8 +77,9 @@ translations=background | sync
    ```
 
 4. For one source, use `/api/trends/:topic/sources/:sourceId`.
-5. For an overall generated summary, use `/api/trends/:topic/summary`, then use
-   the topic JSON as citation/link context.
+5. For the day's digest, use `/api/trends/:topic/summary?format=json&lang=<lang>`.
+   Each entry already carries its citation URLs; use the topic JSON only when
+   you need titles, dates or more items.
 6. If the API returns `topic_not_found`, `404`, or parameter errors, fetch the
    manifest again and retry once with the latest contract.
 

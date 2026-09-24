@@ -13,6 +13,10 @@ import {
 	verification,
 } from "./schema/auth";
 import {
+	userTrendsPreference,
+	userTrendsPreferenceRelations,
+} from "./schema/preferences";
+import {
 	source,
 	sourceItem,
 	sourceItemEmbedding,
@@ -36,6 +40,8 @@ const schema = {
 	trendEventSourceItem,
 	trendEventTopic,
 	trendsSummary,
+	userTrendsPreference,
+	userTrendsPreferenceRelations,
 	user,
 	userRelations,
 	verification,

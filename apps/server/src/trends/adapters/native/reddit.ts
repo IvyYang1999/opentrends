@@ -1,4 +1,6 @@
 import type { FetchContext, NewsItem, SourceAdapter } from "../../types";
+import { createRssAdapter } from "../rss";
+import { createRssHubAdapter } from "../rsshub";
 import {
 	clampItems,
 	cleanDescription,
@@ -58,6 +60,52 @@ function resolveImage(post: RedditChild): string | undefined {
 
 const DEFAULT_LIMIT = 50;
 
+async function fetchRedditAtom(
+	ctx: FetchContext,
+	subreddit: string
+): Promise<NewsItem[]> {
+	const homeUrl = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/`;
+	return await createRssAdapter({
+		name: `r/${subreddit}`,
+		provider: "rss",
+		homeUrl,
+		feedUrl: `${homeUrl}.rss`,
+		refresh: "community",
+	}).fetch(ctx);
+}
+
+async function fetchRedditRssHub(
+	ctx: FetchContext,
+	subreddit: string,
+	baseUrls?: string[]
+): Promise<NewsItem[]> {
+	return await createRssHubAdapter(
+		{
+			homeUrl: `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/`,
+			name: `r/${subreddit}`,
+			provider: "rsshub",
+			refresh: "community",
+			route: `/reddit/subreddit/${encodeURIComponent(subreddit)}`,
+		},
+		{ baseUrls }
+	).fetch(ctx);
+}
+
+async function fetchRedditFallback(
+	ctx: FetchContext,
+	subreddit: string,
+	rssHubBaseUrls?: string[]
+): Promise<NewsItem[]> {
+	try {
+		return await fetchRedditAtom(ctx, subreddit);
+	} catch (error) {
+		if (ctx.signal.aborted) {
+			throw error;
+		}
+		return await fetchRedditRssHub(ctx, subreddit, rssHubBaseUrls);
+	}
+}
+
 function resolveLink(post: RedditChild): string | undefined {
 	const externalUrl = post.url;
 	const permalink = post.permalink
@@ -97,34 +145,56 @@ function toNewsItem(
 	};
 }
 
-export const redditAdapter: SourceAdapter = {
-	async fetch(ctx: FetchContext): Promise<NewsItem[]> {
-		const subreddit = String(ctx.params?.subreddit ?? "").trim();
-		if (!subreddit) {
-			throw new Error("reddit adapter requires params.subreddit");
-		}
-		const sort = String(ctx.params?.sort ?? "hot");
-		const limit = Number(ctx.params?.limit ?? DEFAULT_LIMIT);
-		const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/${sort}.json?limit=${limit}&raw_json=1`;
+interface RedditAdapterOptions {
+	rssHubBaseUrls?: string[];
+}
 
-		const data = await fetchJson<RedditListing>(url, { signal: ctx.signal });
-		const fetchedAt = Date.now();
-		const items: NewsItem[] = [];
-		const list = data.data?.children ?? [];
-
-		let rank = 0;
-		for (const child of list) {
-			const post = child.data;
-			if (!post || post.stickied) {
-				continue;
+export function createRedditAdapter(
+	options: RedditAdapterOptions = {}
+): SourceAdapter {
+	return {
+		async fetch(ctx: FetchContext): Promise<NewsItem[]> {
+			const subreddit = String(ctx.params?.subreddit ?? "").trim();
+			if (!subreddit) {
+				throw new Error("reddit adapter requires params.subreddit");
 			}
-			rank += 1;
-			const item = toNewsItem(post, rank, subreddit, ctx.sourceId, fetchedAt);
-			if (item) {
-				items.push(item);
-			}
-		}
+			const sort = String(ctx.params?.sort ?? "hot");
+			const limit = Number(ctx.params?.limit ?? DEFAULT_LIMIT);
+			const url = `https://www.reddit.com/r/${encodeURIComponent(subreddit)}/${sort}.json?limit=${limit}&raw_json=1`;
 
-		return clampItems(items);
-	},
-};
+			let data: RedditListing;
+			try {
+				data = await fetchJson<RedditListing>(url, { signal: ctx.signal });
+			} catch (error) {
+				if (ctx.signal.aborted) {
+					throw error;
+				}
+				return await fetchRedditFallback(
+					ctx,
+					subreddit,
+					options.rssHubBaseUrls
+				);
+			}
+			const fetchedAt = Date.now();
+			const items: NewsItem[] = [];
+			const list = data.data?.children ?? [];
+
+			let rank = 0;
+			for (const child of list) {
+				const post = child.data;
+				if (!post || post.stickied) {
+					continue;
+				}
+				rank += 1;
+				const item = toNewsItem(post, rank, subreddit, ctx.sourceId, fetchedAt);
+				if (item) {
+					items.push(item);
+				}
+			}
+
+			return clampItems(items);
+		},
+	};
+}
+
+export const redditAdapter = createRedditAdapter();

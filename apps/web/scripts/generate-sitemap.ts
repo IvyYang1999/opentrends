@@ -4,6 +4,7 @@ import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const TOPIC_IDS = [
+	"featured",
 	"ai",
 	"embodied",
 	"hardware",
@@ -12,7 +13,7 @@ const TOPIC_IDS = [
 	"cn",
 ] as const;
 
-const STATIC_PATHS = ["/trends", "/sources", "/skills/opentrends"] as const;
+const STATIC_PATHS = ["/sources", "/agents"] as const;
 
 const ALL_LOCALES = [
 	"en",
@@ -66,8 +67,6 @@ if (!rawSiteUrl) {
 	process.exit(0);
 }
 
-const today = new Date().toISOString().slice(0, 10);
-
 const basePaths = [
 	...STATIC_PATHS.map((path) => ({
 		path,
@@ -101,7 +100,7 @@ const body = urls
 					`    <xhtml:link rel="alternate" hreflang="${hreflang}" href="${href}"/>`
 			)
 			.join("\n");
-		return `  <url>\n    <loc>${rawSiteUrl}${path}</loc>\n    <lastmod>${today}</lastmod>\n    <changefreq>${changefreq}</changefreq>\n    <priority>${priority}</priority>\n${altTags}\n  </url>`;
+		return `  <url>\n    <loc>${rawSiteUrl}${path}</loc>\n    <changefreq>${changefreq}</changefreq>\n    <priority>${priority}</priority>\n${altTags}\n  </url>`;
 	})
 	.join("\n");
 

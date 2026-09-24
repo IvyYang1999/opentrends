@@ -9,7 +9,7 @@ import z from "zod";
 import { authClient } from "@/lib/auth-client";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
 
-import Loader from "./loader";
+import { SocialSignIn } from "./social-sign-in";
 
 export default function SignInForm({
 	onSwitchToSignUp,
@@ -20,8 +20,6 @@ export default function SignInForm({
 	const locale = useLocale();
 	const localeParam = localePathParam(locale);
 	const navigate = useNavigate();
-	const { isPending } = authClient.useSession();
-
 	const form = useForm({
 		defaultValues: {
 			email: "",
@@ -36,8 +34,8 @@ export default function SignInForm({
 				{
 					onSuccess: () => {
 						navigate({
-							to: "/{-$locale}/dashboard",
-							params: { locale: localeParam },
+							to: "/{-$locale}/trends/$topic",
+							params: { locale: localeParam, topic: "ai" },
 						});
 						toast.success(t("sign.successSignIn"));
 					},
@@ -55,18 +53,15 @@ export default function SignInForm({
 		},
 	});
 
-	if (isPending) {
-		return <Loader />;
-	}
-
 	return (
-		<div className="mx-auto mt-10 w-full max-w-md p-6">
+		<div className="mx-auto w-full max-w-md p-6">
 			<h1 className="mb-6 text-center font-bold text-3xl">
 				{t("sign.welcomeBack")}
 			</h1>
+			<SocialSignIn />
 
 			<form
-				className="space-y-4"
+				className="mt-4 space-y-4"
 				onSubmit={(e) => {
 					e.preventDefault();
 					e.stopPropagation();

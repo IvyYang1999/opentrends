@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 
-import type { TopicPreset } from "../types";
+import type { NewsItem, TopicPreset, TrendsPageData } from "../types";
 
 function setServerEnv(): void {
 	process.env.BETTER_AUTH_SECRET = "x".repeat(32);
@@ -49,8 +49,7 @@ describe("trends summary prompt", () => {
 			},
 		]);
 
-		expect(prompt).toContain("Prompt version: summary-date-v1");
-		expect(prompt).toContain("Prioritize newer dated items");
+		expect(prompt).toContain("Prompt version: top10-v4");
 		expect(prompt).toContain(
 			"[1] [OpenAI News] (published 2026-05-07) OpenAI ships a model update"
 		);
@@ -58,4 +57,294 @@ describe("trends summary prompt", () => {
 			"[2] [Example Feed] (fetched 2026-05-08) Feed item without a publish date"
 		);
 	});
+
+	test("ends the prompt with a reminder in the target language", async () => {
+		setServerEnv();
+		const { buildPrompt, buildSystemPrompt } = await import(
+			"../services/get-trends-summary"
+		);
+
+		const prompt = buildPrompt(topic, [], "zh");
+
+		expect(prompt.trimEnd().endsWith("模型名保留原文。")).toBe(true);
+		expect(buildSystemPrompt("zh")).toContain("Simplified Chinese");
+		expect(buildSystemPrompt("zh")).toContain("at most 10 entries");
+		expect(buildSystemPrompt("zh")).toContain(
+			"Never include the same real-world event twice"
+		);
+	});
+
+	test("gives the featured digest a soft cross-topic editorial preference", async () => {
+		setServerEnv();
+		const { buildPrompt, buildSystemPrompt } = await import(
+			"../services/get-trends-summary"
+		);
+		const cited = [
+			{
+				n: 1,
+				source: "OpenAI News",
+				item: {
+					fetchedAt: Date.UTC(2026, 8, 23, 8),
+					id: "ai-1",
+					sourceId: "openai-news",
+					title: "AI story",
+					url: "https://example.com/ai",
+				},
+			},
+		];
+
+		const prompt = buildPrompt(topic, cited, "zh", "today", "cross-topic");
+		expect(prompt).toContain("Selection mode: cross-topic-editorial-v3");
+		expect(prompt).toContain("[Topic: ai]");
+		expect(buildSystemPrompt("zh", "today", "cross-topic")).toContain(
+			"This is an editorial target, not a quota"
+		);
+		expect(buildSystemPrompt("zh", "today", "cross-topic")).toContain(
+			"Quality wins over quotas"
+		);
+	});
+
+	test("builds a bounded cross-topic fallback when the model is unavailable", async () => {
+		setServerEnv();
+		const { buildCrossTopicFallbackSummary } = await import(
+			"../services/get-trends-summary"
+		);
+		const sourceIds = [
+			"openai-news",
+			"ros-discourse",
+			"toms-hardware",
+			"nature-bmi",
+			"github-trending",
+			"weibo",
+		] as const;
+		const cited = sourceIds.map((sourceId, index) => ({
+			n: index + 1,
+			source: sourceId,
+			item: {
+				fetchedAt: Date.UTC(2026, 8, 23, 8 - index),
+				id: `${sourceId}-1`,
+				sourceId,
+				title: `Story ${index + 1}`,
+				url: `https://example.com/${sourceId}`,
+			},
+		}));
+		const text = buildCrossTopicFallbackSummary(cited, "zh");
+
+		expect(text.split("\n")).toHaveLength(6);
+		expect(text).not.toContain("值得关注的最新动态");
+	});
+
+	test("fallback ranks substantive stories ahead of promotions and writes a concrete reason", async () => {
+		setServerEnv();
+		const { buildCrossTopicFallbackSummary } = await import(
+			"../services/get-trends-summary"
+		);
+		const now = Date.UTC(2026, 8, 23, 8);
+		const cited = [
+			{
+				n: 1,
+				source: "Conference",
+				item: {
+					fetchedAt: now,
+					id: "promo",
+					sourceId: "openai-news",
+					title: "Conference tickets: save $200 today",
+					url: "https://example.com/promo",
+				},
+			},
+			{
+				n: 2,
+				source: "Security Lab",
+				item: {
+					description: "新漏洞可绕过身份验证，维护者已经发布修复版本。",
+					fetchedAt: now - 2 * 60 * 60 * 1000,
+					id: "security",
+					sourceId: "github-trending",
+					title: "Critical authentication bypass fixed",
+					url: "https://example.com/security",
+				},
+			},
+		] as const;
+
+		const text = buildCrossTopicFallbackSummary([...cited], "zh");
+
+		expect(text).toContain("Critical authentication bypass fixed");
+		expect(text).toContain("新漏洞可绕过身份验证");
+		expect(text).not.toContain("Conference tickets");
+	});
+
+	test("takes items from every source before giving any source a second slot", async () => {
+		setServerEnv();
+		const { collectCitedItems } = await import(
+			"../services/get-trends-summary"
+		);
+		const now = Date.UTC(2026, 8, 21, 12);
+		const page = makePage(
+			Array.from({ length: 40 }, (_, index) => ({
+				ageHours: [1, 2, 3, 4, 5, 6],
+				sourceId: `source-${index}`,
+			})),
+			now
+		);
+
+		const cited = collectCitedItems(page, now);
+		const sources = new Set(cited.map((entry) => entry.source));
+
+		expect(cited).toHaveLength(80);
+		expect(sources.size).toBe(40);
+		expect(cited.map((entry) => entry.n)).toEqual(
+			Array.from({ length: 80 }, (_, index) => index + 1)
+		);
+	});
+
+	test("drops stale items and widens the window only for quiet topics", async () => {
+		setServerEnv();
+		const { collectCitedItems } = await import(
+			"../services/get-trends-summary"
+		);
+		const now = Date.UTC(2026, 8, 21, 12);
+		const busy = makePage(
+			[
+				...Array.from({ length: 14 }, (_, index) => ({
+					ageHours: [1, 2, 3],
+					sourceId: `fresh-${index}`,
+				})),
+				{ ageHours: [24 * 17, 24 * 30], sourceId: "stale" },
+			],
+			now
+		);
+		const quiet = makePage(
+			[
+				{ ageHours: [1], sourceId: "fresh" },
+				{ ageHours: [24 * 2, 24 * 30], sourceId: "weekly" },
+			],
+			now
+		);
+
+		const busySources = collectCitedItems(busy, now).map(
+			(entry) => entry.source
+		);
+		const quietIds = collectCitedItems(quiet, now).map(
+			(entry) => entry.item.id
+		);
+
+		expect(busySources).not.toContain("stale");
+		expect(quietIds).toEqual(["fresh-0", "weekly-0"]);
+	});
+
+	test("names the period and cache scope of each summary window", async () => {
+		setServerEnv();
+		const { buildPrompt, buildSystemPrompt, normalizeSummaryWindow } =
+			await import("../services/get-trends-summary");
+
+		expect(normalizeSummaryWindow("week")).toBe("week");
+		expect(normalizeSummaryWindow("hour")).toBe("today");
+		expect(normalizeSummaryWindow(undefined)).toBe("today");
+		expect(buildSystemPrompt("en", "today")).toContain("last 24 hours");
+		expect(buildSystemPrompt("en", "month")).toContain("last 30 days");
+		expect(buildSystemPrompt("en", "month")).toContain(
+			"Judge importance over the whole period"
+		);
+		expect(buildPrompt(topic, [], "en", "week")).toContain("Window: week");
+	});
+
+	test("spreads a source's history across days before going deeper into one day", async () => {
+		setServerEnv();
+		const { interleaveByDay } = await import("../services/get-trends-summary");
+		const now = Date.UTC(2026, 8, 21, 12);
+		const page = makePage(
+			[{ ageHours: [1, 2, 25, 26, 49], sourceId: "feed" }],
+			now
+		);
+		const items = page.sections[0]?.sources[0]?.items ?? [];
+
+		expect(interleaveByDay(items).map((item) => item.id)).toEqual([
+			"feed-0",
+			"feed-2",
+			"feed-4",
+			"feed-1",
+			"feed-3",
+		]);
+	});
+
+	test("sends every citation as a JSON line ahead of the Markdown", async () => {
+		setServerEnv();
+		const { withCitationPreamble } = await import(
+			"../services/get-trends-summary"
+		);
+		const citations = Array.from({ length: 150 }, (_, index) => ({
+			n: index + 1,
+			url: `https://example.com/${index + 1}`,
+		}));
+		async function* markdown() {
+			yield "1. **First** — why [1]\n";
+			yield await Promise.resolve("2. **Second** — why [150]");
+		}
+
+		let body = "";
+		for await (const chunk of withCitationPreamble(citations, markdown())) {
+			body += chunk;
+		}
+		const newline = body.indexOf("\n");
+
+		expect(JSON.parse(body.slice(0, newline))).toEqual({ citations });
+		expect(body.slice(newline + 1)).toBe(
+			"1. **First** — why [1]\n2. **Second** — why [150]"
+		);
+	});
+
+	test("detects summaries that ignored the target language", async () => {
+		setServerEnv();
+		const { isWrittenInTargetLanguage } = await import(
+			"../services/get-trends-summary"
+		);
+
+		expect(
+			isWrittenInTargetLanguage(
+				"AI's rapid advancement is triggering a global reckoning [1]",
+				"zh"
+			)
+		).toBe(false);
+		expect(
+			isWrittenInTargetLanguage(
+				"1. **Anthropic 推迟 IPO** — OpenAI 之后第二家头部实验室放缓上市 [7]",
+				"zh"
+			)
+		).toBe(true);
+		expect(isWrittenInTargetLanguage("Plain English text", "en")).toBe(true);
+	});
 });
+
+function makePage(
+	sources: { ageHours: number[]; sourceId: string }[],
+	now: number
+): TrendsPageData {
+	return {
+		description: "",
+		id: "ai",
+		sections: [
+			{
+				id: "news",
+				sources: sources.map(({ ageHours, sourceId }) => ({
+					homeUrl: "https://example.com",
+					items: ageHours.map(
+						(hours, index): NewsItem => ({
+							fetchedAt: now,
+							id: `${sourceId}-${index}`,
+							publishedAt: now - hours * 60 * 60 * 1000,
+							sourceId,
+							title: `${sourceId} item ${index}`,
+							url: `https://example.com/${sourceId}/${index}`,
+						})
+					),
+					sourceId,
+					status: "ok",
+					title: sourceId,
+				})),
+				title: "News",
+			},
+		],
+		title: "AI",
+		updatedAt: now,
+	} as unknown as TrendsPageData;
+}

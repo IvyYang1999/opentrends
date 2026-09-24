@@ -82,6 +82,8 @@ Alchemy 会在本地创建 D1、KV 和 Queues，并自动把全新的 D1 schema 
 - `LLM_BASE_URL`
 - `LLM_API_KEY`
 - `LLM_MODEL`
+- `LLM_TRANSLATION_MODEL`
+- `LLM_ENABLE_THINKING`
 - `TRENDS_REFRESH_SCHEDULER`
 
 Alchemy 会为 Web 注入 `VITE_SERVER_URL`。按需配置：

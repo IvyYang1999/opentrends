@@ -1,6 +1,9 @@
+import { normalizeKeywordForMatch } from "@opentrends/api/keyword-match";
 import { db, schema } from "@opentrends/db";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
+
+import { getSourceKind } from "../config/sources";
 
 import type {
 	NewsItem,
@@ -13,6 +16,8 @@ const { source, sourceItem } = schema;
 const SOURCE_SNAPSHOT_ITEM_READ_LIMIT = 30;
 const SNAPSHOT_READ_BATCH_SIZE = 24;
 const SNAPSHOT_WRITE_BATCH_SIZE = 6;
+const HISTORY_DESCRIPTION_MAX_CHARS = 280;
+const SECONDS_PER_DAY = 86_400;
 
 export interface SourceSnapshotSummary {
 	errorCount: number;
@@ -30,6 +35,19 @@ export interface SourceRefreshDelta {
 	newItems: Array<{ itemId: string; sourceId: SourceId }>;
 	sourceId: SourceId;
 	unchangedCount: number;
+}
+
+export interface SourceRefreshState {
+	expiresAt?: number;
+	sourceId: SourceId;
+	status: SourceStatus;
+}
+
+function escapeLikePattern(value: string): string {
+	return value
+		.replaceAll("\\", "\\\\")
+		.replaceAll("%", "\\%")
+		.replaceAll("_", "\\_");
 }
 
 interface SourceRow {
@@ -72,12 +90,19 @@ function isReadableSourceRow(row: SourceRow): row is SourceRow & {
 	);
 }
 
+// Feeds are newest first. Rankings keep the order the platform gave them:
+// a hot list sorted by publish time would show the newest low-scoring post
+// at the top.
 function compareSourceItems(a: SourceItemRow, b: SourceItemRow): number {
 	const aTime = a.publishedAt?.getTime() ?? a.fetchedAt.getTime();
 	const bTime = b.publishedAt?.getTime() ?? b.fetchedAt.getTime();
 	if (aTime !== bTime) {
 		return bTime - aTime;
 	}
+	return a.rank - b.rank;
+}
+
+function compareByRank(a: SourceItemRow, b: SourceItemRow): number {
 	return a.rank - b.rank;
 }
 
@@ -102,7 +127,11 @@ function toSourceSnapshot(
 	items: SourceItemRow[]
 ): SourceSnapshot {
 	const sortedItems = [...items]
-		.sort(compareSourceItems)
+		.sort(
+			getSourceKind(row.sourceId) === "ranking"
+				? compareByRank
+				: compareSourceItems
+		)
 		.slice(0, SOURCE_SNAPSHOT_ITEM_READ_LIMIT);
 	return {
 		sourceId: row.sourceId,
@@ -158,11 +187,17 @@ export async function readSnapshots(
 		return new Map();
 	}
 
+	// Batches are independent, and a topic page needs four of them with two
+	// D1 round trips each; reading them one after another made the uncached
+	// page wait for eight sequential round trips.
+	const batches = await Promise.all(
+		chunk(sourceIds, SNAPSHOT_READ_BATCH_SIZE).map((batch) =>
+			readSnapshotBatch(batch)
+		)
+	);
 	const snapshots = new Map<SourceId, SourceSnapshot>();
-	for (const batch of chunk(sourceIds, SNAPSHOT_READ_BATCH_SIZE)) {
-		for (const snapshot of await readSnapshotBatch(batch)) {
-			snapshots.set(snapshot.sourceId, snapshot);
-		}
+	for (const snapshot of batches.flat()) {
+		snapshots.set(snapshot.sourceId, snapshot);
 	}
 	return snapshots;
 }
@@ -271,6 +306,33 @@ export async function readSnapshotSummaries(
 		});
 	}
 	return snapshots;
+}
+
+// Unlike snapshot summaries, refresh state includes generation-0 rows. Those
+// rows record a failed first attempt and its retry deadline; ignoring them made
+// every cold Worker retry the same failing sources and starve the rest.
+export async function readSourceRefreshStates(
+	sourceIds: readonly SourceId[]
+): Promise<Map<SourceId, SourceRefreshState>> {
+	if (sourceIds.length === 0) {
+		return new Map();
+	}
+
+	const rows: SourceRow[] = [];
+	for (const batch of chunk(sourceIds, SNAPSHOT_READ_BATCH_SIZE)) {
+		rows.push(...(await readSnapshotSummaryBatch(batch)));
+	}
+
+	return new Map(
+		rows.map((row) => [
+			row.sourceId as SourceId,
+			{
+				expiresAt: row.expiresAt?.getTime(),
+				sourceId: row.sourceId as SourceId,
+				status: row.status as SourceStatus,
+			},
+		])
+	);
 }
 
 async function readSnapshotSummaryBatch(
@@ -495,4 +557,115 @@ export async function writeSnapshotError(params: {
 				updatedAt: fetchedAtDate,
 			},
 		});
+}
+
+interface SourceItemHistoryRow {
+	description: string | null;
+	fetched_at: number;
+	item_id: string;
+	original_title: string | null;
+	published_at: number | null;
+	rank: number;
+	source_id: string;
+	title: string;
+	url: string;
+}
+
+// Item timestamps are stored in seconds. Partitioning by source and day keeps a
+// long window from being filled by the newest day of a high-volume feed.
+export function buildSourceItemHistoryQuery(
+	sourceIds: readonly SourceId[],
+	sinceMs: number,
+	itemsPerSourcePerDay: number,
+	keywords: readonly string[] = []
+) {
+	const itemTime = sql`coalesce(${sourceItem.publishedAt}, ${sourceItem.fetchedAt})`;
+	const searchableText = sql`lower(
+		coalesce(${sourceItem.title}, '') || ' ' ||
+		coalesce(${sourceItem.description}, '') || ' ' ||
+		coalesce(json_extract(${sourceItem.original}, '$.title'), '')
+	)`;
+	const compactSearchableText = sql`replace(replace(replace(replace(replace(replace(
+		${searchableText}, '-', ''), '_', ''), ' ', ''), char(9), ''), char(10), ''), char(13), '')`;
+	const normalizedKeywords = [
+		...new Set(
+			keywords
+				.map(normalizeKeywordForMatch)
+				.filter((keyword) => keyword.length > 0)
+		),
+	];
+	let keywordPredicate =
+		normalizedKeywords.length > 0
+			? or(
+					...normalizedKeywords.map(
+						(keyword) =>
+							sql`${compactSearchableText} like ${`%${escapeLikePattern(keyword)}%`} escape '\\'`
+					)
+				)
+			: sql`0`;
+	if (keywords.length === 0) {
+		keywordPredicate = undefined;
+	}
+	return sql`
+		select source_id, item_id, url, title,
+			json_extract(original, '$.title') as original_title,
+			substr(description, 1, ${HISTORY_DESCRIPTION_MAX_CHARS}) as description,
+			rank, published_at, fetched_at
+		from (
+			select ${sourceItem}.*,
+				row_number() over (
+					partition by ${sourceItem.sourceId}, ${itemTime} / ${SECONDS_PER_DAY}
+					order by ${sourceItem.rank} asc, ${itemTime} desc
+				) as day_rank
+			from ${sourceItem}
+			where ${inArray(sourceItem.sourceId, [...sourceIds])}
+				and ${itemTime} >= ${Math.floor(sinceMs / 1000)}
+				${keywordPredicate ? sql`and ${keywordPredicate}` : sql``}
+		)
+		where day_rank <= ${itemsPerSourcePerDay}
+		order by source_id asc, coalesce(published_at, fetched_at) desc
+	`;
+}
+
+export function historyRowToNewsItem(row: SourceItemHistoryRow): NewsItem {
+	return {
+		id: row.item_id,
+		url: row.url,
+		rank: row.rank,
+		title: row.title,
+		sourceId: row.source_id,
+		fetchedAt: row.fetched_at * 1000,
+		description: row.description ?? undefined,
+		original: row.original_title ? { title: row.original_title } : undefined,
+		publishedAt:
+			row.published_at === null ? undefined : row.published_at * 1000,
+	};
+}
+
+// Reads items a source has carried since `sinceMs`, including ones that have
+// already dropped out of its current snapshot.
+export async function readSourceItemHistory(
+	sourceIds: readonly SourceId[],
+	sinceMs: number,
+	itemsPerSourcePerDay: number,
+	keywords: readonly string[] = []
+): Promise<Map<SourceId, NewsItem[]>> {
+	const history = new Map<SourceId, NewsItem[]>();
+	for (const batch of chunk(sourceIds, SNAPSHOT_READ_BATCH_SIZE)) {
+		const rows = await db.all<SourceItemHistoryRow>(
+			buildSourceItemHistoryQuery(
+				batch,
+				sinceMs,
+				itemsPerSourcePerDay,
+				keywords
+			)
+		);
+		for (const row of rows) {
+			const item = historyRowToNewsItem(row);
+			const items = history.get(item.sourceId as SourceId) ?? [];
+			items.push(item);
+			history.set(item.sourceId as SourceId, items);
+		}
+	}
+	return history;
 }

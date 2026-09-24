@@ -1,4 +1,5 @@
 import { env } from "@opentrends/env/server";
+import { recordEmbeddingUsage } from "./model-usage";
 
 const SILICONFLOW_EMBEDDINGS_URL = "https://api.siliconflow.cn/v1/embeddings";
 const SILICONFLOW_EMBEDDING_BATCH_SIZE = 8;
@@ -17,6 +18,7 @@ interface SiliconFlowEmbeddingResponse {
 		embedding?: number[];
 		index?: number;
 	}>;
+	usage?: unknown;
 }
 
 export class EventEmbeddingNotConfiguredError extends Error {
@@ -66,38 +68,55 @@ export function buildCanonicalEmbeddingText(
 }
 
 async function embedTextBatch(texts: string[]): Promise<number[][]> {
-	const response = await fetch(SILICONFLOW_EMBEDDINGS_URL, {
-		body: JSON.stringify({
-			input: texts,
-			model: env.SILICONFLOW_EMBEDDING_MODEL,
-			truncate: "right",
-			user: "opentrends-event-feed",
-		}),
-		headers: {
-			Authorization: `Bearer ${env.SILICONFLOW_API_KEY}`,
-			"Content-Type": "application/json",
-		},
-		method: "POST",
-	});
-	if (!response.ok) {
-		throw new Error(`SiliconFlow embedding failed (${response.status})`);
-	}
-	const payload = (await response.json()) as SiliconFlowEmbeddingResponse;
-	const vectors = new Array<number[]>(texts.length);
-	for (const item of payload.data ?? []) {
-		if (typeof item.index === "number" && item.embedding) {
-			vectors[item.index] = item.embedding;
+	const usageId = crypto.randomUUID();
+	const started = new Date().toISOString();
+	let usage: unknown = null;
+	let outcome: "ok" | "error" = "error";
+	try {
+		const response = await fetch(SILICONFLOW_EMBEDDINGS_URL, {
+			body: JSON.stringify({
+				input: texts,
+				model: env.SILICONFLOW_EMBEDDING_MODEL,
+				truncate: "right",
+				user: "opentrends-event-feed",
+			}),
+			headers: {
+				Authorization: `Bearer ${env.SILICONFLOW_API_KEY}`,
+				"Content-Type": "application/json",
+			},
+			method: "POST",
+		});
+		if (!response.ok) {
+			throw new Error(`SiliconFlow embedding failed (${response.status})`);
 		}
-	}
-	return texts.map((_, index) => {
-		const vector = vectors[index];
-		if (!vector) {
-			throw new Error(
-				`SiliconFlow embedding response missing vector at index ${index}`
-			);
+		const payload = (await response.json()) as SiliconFlowEmbeddingResponse;
+		usage = payload.usage;
+		const vectors = new Array<number[]>(texts.length);
+		for (const item of payload.data ?? []) {
+			if (typeof item.index === "number" && item.embedding) {
+				vectors[item.index] = item.embedding;
+			}
 		}
-		return vector;
-	});
+		const result = texts.map((_, index) => {
+			const vector = vectors[index];
+			if (!vector) {
+				throw new Error(
+					`SiliconFlow embedding response missing vector at index ${index}`
+				);
+			}
+			return vector;
+		});
+		outcome = "ok";
+		return result;
+	} finally {
+		await recordEmbeddingUsage(
+			usageId,
+			env.SILICONFLOW_EMBEDDING_MODEL,
+			started,
+			usage,
+			outcome
+		);
+	}
 }
 
 export async function embedTexts(texts: string[]): Promise<number[][]> {

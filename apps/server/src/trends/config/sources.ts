@@ -1,4 +1,9 @@
-import type { RefreshPolicyId, SourceId, SourcePreset } from "../types";
+import type {
+	RefreshPolicyId,
+	SourceId,
+	SourceKind,
+	SourcePreset,
+} from "../types";
 
 const EVENT_ELIGIBLE_SOURCE_ID_LIST = [
 	"9to5mac",
@@ -678,7 +683,9 @@ export const sourcePresets = {
 	"kimi-updates": googleNewsSource(
 		"Moonshot AI Kimi",
 		"https://kimi.moonshot.cn/",
-		"site:kimi.moonshot.cn OR site:kimi.com Kimi"
+		// kimi.com itself only yields product pages with one shared title, so
+		// this follows the coverage instead.
+		'"Moonshot AI" OR "Kimi K"'
 	),
 	"minimax-news": googleNewsSource(
 		"MiniMax",
@@ -786,13 +793,13 @@ export const sourcePresets = {
 	),
 	"runway-news": googleNewsSource(
 		"Runway News",
-		"https://runwayml.com/news/",
-		"site:runwayml.com/news Runway"
+		"https://runway.com/news/",
+		"site:runway.com/news Runway"
 	),
 	"runway-changelog": googleNewsSource(
 		"Runway Changelog",
-		"https://runwayml.com/changelog/",
-		"site:runwayml.com/changelog Runway"
+		"https://runway.com/changelog/",
+		"site:runway.com/changelog Runway"
 	),
 	"midjourney-updates": googleNewsSource(
 		"Midjourney Updates",
@@ -806,8 +813,8 @@ export const sourcePresets = {
 	),
 	"openrouter-announcements": googleNewsSource(
 		"OpenRouter Announcements",
-		"https://openrouter.ai/announcements",
-		"site:openrouter.ai/announcements OpenRouter"
+		"https://openrouter.ai/blog/announcements/",
+		"site:openrouter.ai/blog/announcements OpenRouter"
 	),
 	"lmsys-blog": googleNewsSource(
 		"LMSYS Blog",
@@ -1894,6 +1901,12 @@ export const sourceNotes = {
 	"zhipu-research": "Zhipu AI research and model updates.",
 	"zhihu-hot": "Trending Chinese Q&A topics from Zhihu.",
 } as const satisfies Record<SourcePresetId, string>;
+
+// Native adapters scrape ranked lists (front pages, hot lists, trending);
+// RSS and RSSHub deliver chronological feeds.
+export function getSourceKind(id: SourceId): SourceKind {
+	return getSourcePreset(id)?.provider === "native" ? "ranking" : "feed";
+}
 
 export function getSourcePreset(id: SourceId): SourcePreset | undefined {
 	const preset = (sourcePresets as Record<string, SourcePreset>)[id];

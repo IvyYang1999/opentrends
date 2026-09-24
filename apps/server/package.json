@@ -27,6 +27,7 @@
     "drizzle-orm": "^0.45.1",
     "hono": "catalog:",
     "jsdom": "^29.1.1",
+    "opentrends-mcp": "workspace:*",
     "rss-parser": "^3.13.0",
     "undici": "^7.16.0",
     "zod": "catalog:"

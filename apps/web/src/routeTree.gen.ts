@@ -10,27 +10,27 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as Char123LocaleChar125IndexRouteImport } from './routes/{-$locale}/index'
-import { Route as Char123LocaleChar125TrendsRouteImport } from './routes/{-$locale}/trends'
 import { Route as Char123LocaleChar125SourcesRouteImport } from './routes/{-$locale}/sources'
 import { Route as Char123LocaleChar125LoginRouteImport } from './routes/{-$locale}/login'
-import { Route as Char123LocaleChar125EventsRouteImport } from './routes/{-$locale}/events'
+import { Route as Char123LocaleChar125HistoryRouteImport } from './routes/{-$locale}/history'
 import { Route as Char123LocaleChar125DashboardRouteImport } from './routes/{-$locale}/dashboard'
+import { Route as Char123LocaleChar125BriefingsRouteImport } from './routes/{-$locale}/briefings'
+import { Route as Char123LocaleChar125AgentsRouteImport } from './routes/{-$locale}/agents'
+import { Route as Char123LocaleChar125ViewsRouteImport } from './routes/{-$locale}/_views'
 import { Route as DotwellKnownApiCatalogRouteImport } from './routes/[.]well-known.api-catalog'
-import { Route as Char123LocaleChar125TrendsIndexRouteImport } from './routes/{-$locale}/trends.index'
-import { Route as Char123LocaleChar125TrendsTopicRouteImport } from './routes/{-$locale}/trends.$topic'
 import { Route as Char123LocaleChar125SkillsOpentrendsRouteImport } from './routes/{-$locale}/skills.opentrends'
 import { Route as Char123LocaleChar125EventsFlowRouteImport } from './routes/{-$locale}/events_.flow'
+import { Route as Char123LocaleChar125ViewsTrendsRouteImport } from './routes/{-$locale}/_views/trends'
+import { Route as Char123LocaleChar125ViewsFeedRouteImport } from './routes/{-$locale}/_views/feed'
+import { Route as Char123LocaleChar125ViewsEventsRouteImport } from './routes/{-$locale}/_views/events'
+import { Route as Char123LocaleChar125ViewsCalendarRouteImport } from './routes/{-$locale}/_views/calendar'
+import { Route as Char123LocaleChar125ViewsTrendsIndexRouteImport } from './routes/{-$locale}/_views/trends.index'
+import { Route as Char123LocaleChar125ViewsTrendsTopicRouteImport } from './routes/{-$locale}/_views/trends.$topic'
 
 const Char123LocaleChar125IndexRoute =
   Char123LocaleChar125IndexRouteImport.update({
     id: '/{-$locale}/',
     path: '/{-$locale}/',
-    getParentRoute: () => rootRouteImport,
-  } as any)
-const Char123LocaleChar125TrendsRoute =
-  Char123LocaleChar125TrendsRouteImport.update({
-    id: '/{-$locale}/trends',
-    path: '/{-$locale}/trends',
     getParentRoute: () => rootRouteImport,
   } as any)
 const Char123LocaleChar125SourcesRoute =
@@ -45,10 +45,10 @@ const Char123LocaleChar125LoginRoute =
     path: '/{-$locale}/login',
     getParentRoute: () => rootRouteImport,
   } as any)
-const Char123LocaleChar125EventsRoute =
-  Char123LocaleChar125EventsRouteImport.update({
-    id: '/{-$locale}/events',
-    path: '/{-$locale}/events',
+const Char123LocaleChar125HistoryRoute =
+  Char123LocaleChar125HistoryRouteImport.update({
+    id: '/{-$locale}/history',
+    path: '/{-$locale}/history',
     getParentRoute: () => rootRouteImport,
   } as any)
 const Char123LocaleChar125DashboardRoute =
@@ -57,23 +57,29 @@ const Char123LocaleChar125DashboardRoute =
     path: '/{-$locale}/dashboard',
     getParentRoute: () => rootRouteImport,
   } as any)
+const Char123LocaleChar125BriefingsRoute =
+  Char123LocaleChar125BriefingsRouteImport.update({
+    id: '/{-$locale}/briefings',
+    path: '/{-$locale}/briefings',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const Char123LocaleChar125AgentsRoute =
+  Char123LocaleChar125AgentsRouteImport.update({
+    id: '/{-$locale}/agents',
+    path: '/{-$locale}/agents',
+    getParentRoute: () => rootRouteImport,
+  } as any)
+const Char123LocaleChar125ViewsRoute =
+  Char123LocaleChar125ViewsRouteImport.update({
+    id: '/{-$locale}/_views',
+    path: '/{-$locale}',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const DotwellKnownApiCatalogRoute = DotwellKnownApiCatalogRouteImport.update({
   id: '/.well-known/api-catalog',
   path: '/.well-known/api-catalog',
   getParentRoute: () => rootRouteImport,
 } as any)
-const Char123LocaleChar125TrendsIndexRoute =
-  Char123LocaleChar125TrendsIndexRouteImport.update({
-    id: '/',
-    path: '/',
-    getParentRoute: () => Char123LocaleChar125TrendsRoute,
-  } as any)
-const Char123LocaleChar125TrendsTopicRoute =
-  Char123LocaleChar125TrendsTopicRouteImport.update({
-    id: '/$topic',
-    path: '/$topic',
-    getParentRoute: () => Char123LocaleChar125TrendsRoute,
-  } as any)
 const Char123LocaleChar125SkillsOpentrendsRoute =
   Char123LocaleChar125SkillsOpentrendsRouteImport.update({
     id: '/{-$locale}/skills/opentrends',
@@ -86,56 +92,115 @@ const Char123LocaleChar125EventsFlowRoute =
     path: '/{-$locale}/events/flow',
     getParentRoute: () => rootRouteImport,
   } as any)
+const Char123LocaleChar125ViewsTrendsRoute =
+  Char123LocaleChar125ViewsTrendsRouteImport.update({
+    id: '/trends',
+    path: '/trends',
+    getParentRoute: () => Char123LocaleChar125ViewsRoute,
+  } as any)
+const Char123LocaleChar125ViewsFeedRoute =
+  Char123LocaleChar125ViewsFeedRouteImport.update({
+    id: '/feed',
+    path: '/feed',
+    getParentRoute: () => Char123LocaleChar125ViewsRoute,
+  } as any)
+const Char123LocaleChar125ViewsEventsRoute =
+  Char123LocaleChar125ViewsEventsRouteImport.update({
+    id: '/events',
+    path: '/events',
+    getParentRoute: () => Char123LocaleChar125ViewsRoute,
+  } as any)
+const Char123LocaleChar125ViewsCalendarRoute =
+  Char123LocaleChar125ViewsCalendarRouteImport.update({
+    id: '/calendar',
+    path: '/calendar',
+    getParentRoute: () => Char123LocaleChar125ViewsRoute,
+  } as any)
+const Char123LocaleChar125ViewsTrendsIndexRoute =
+  Char123LocaleChar125ViewsTrendsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => Char123LocaleChar125ViewsTrendsRoute,
+  } as any)
+const Char123LocaleChar125ViewsTrendsTopicRoute =
+  Char123LocaleChar125ViewsTrendsTopicRouteImport.update({
+    id: '/$topic',
+    path: '/$topic',
+    getParentRoute: () => Char123LocaleChar125ViewsTrendsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
+  '/{-$locale}': typeof Char123LocaleChar125ViewsRouteWithChildren
+  '/{-$locale}/agents': typeof Char123LocaleChar125AgentsRoute
+  '/{-$locale}/briefings': typeof Char123LocaleChar125BriefingsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
-  '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
+  '/{-$locale}/history': typeof Char123LocaleChar125HistoryRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
   '/{-$locale}/sources': typeof Char123LocaleChar125SourcesRoute
-  '/{-$locale}/trends': typeof Char123LocaleChar125TrendsRouteWithChildren
   '/{-$locale}/': typeof Char123LocaleChar125IndexRoute
+  '/{-$locale}/calendar': typeof Char123LocaleChar125ViewsCalendarRoute
+  '/{-$locale}/events': typeof Char123LocaleChar125ViewsEventsRoute
+  '/{-$locale}/feed': typeof Char123LocaleChar125ViewsFeedRoute
+  '/{-$locale}/trends': typeof Char123LocaleChar125ViewsTrendsRouteWithChildren
   '/{-$locale}/events/flow': typeof Char123LocaleChar125EventsFlowRoute
   '/{-$locale}/skills/opentrends': typeof Char123LocaleChar125SkillsOpentrendsRoute
-  '/{-$locale}/trends/$topic': typeof Char123LocaleChar125TrendsTopicRoute
-  '/{-$locale}/trends/': typeof Char123LocaleChar125TrendsIndexRoute
+  '/{-$locale}/trends/$topic': typeof Char123LocaleChar125ViewsTrendsTopicRoute
+  '/{-$locale}/trends/': typeof Char123LocaleChar125ViewsTrendsIndexRoute
 }
 export interface FileRoutesByTo {
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
+  '/{-$locale}': typeof Char123LocaleChar125IndexRoute
+  '/{-$locale}/agents': typeof Char123LocaleChar125AgentsRoute
+  '/{-$locale}/briefings': typeof Char123LocaleChar125BriefingsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
-  '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
+  '/{-$locale}/history': typeof Char123LocaleChar125HistoryRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
   '/{-$locale}/sources': typeof Char123LocaleChar125SourcesRoute
-  '/{-$locale}': typeof Char123LocaleChar125IndexRoute
+  '/{-$locale}/calendar': typeof Char123LocaleChar125ViewsCalendarRoute
+  '/{-$locale}/events': typeof Char123LocaleChar125ViewsEventsRoute
+  '/{-$locale}/feed': typeof Char123LocaleChar125ViewsFeedRoute
   '/{-$locale}/events/flow': typeof Char123LocaleChar125EventsFlowRoute
   '/{-$locale}/skills/opentrends': typeof Char123LocaleChar125SkillsOpentrendsRoute
-  '/{-$locale}/trends/$topic': typeof Char123LocaleChar125TrendsTopicRoute
-  '/{-$locale}/trends': typeof Char123LocaleChar125TrendsIndexRoute
+  '/{-$locale}/trends/$topic': typeof Char123LocaleChar125ViewsTrendsTopicRoute
+  '/{-$locale}/trends': typeof Char123LocaleChar125ViewsTrendsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/.well-known/api-catalog': typeof DotwellKnownApiCatalogRoute
+  '/{-$locale}/_views': typeof Char123LocaleChar125ViewsRouteWithChildren
+  '/{-$locale}/agents': typeof Char123LocaleChar125AgentsRoute
+  '/{-$locale}/briefings': typeof Char123LocaleChar125BriefingsRoute
   '/{-$locale}/dashboard': typeof Char123LocaleChar125DashboardRoute
-  '/{-$locale}/events': typeof Char123LocaleChar125EventsRoute
+  '/{-$locale}/history': typeof Char123LocaleChar125HistoryRoute
   '/{-$locale}/login': typeof Char123LocaleChar125LoginRoute
   '/{-$locale}/sources': typeof Char123LocaleChar125SourcesRoute
-  '/{-$locale}/trends': typeof Char123LocaleChar125TrendsRouteWithChildren
   '/{-$locale}/': typeof Char123LocaleChar125IndexRoute
+  '/{-$locale}/_views/calendar': typeof Char123LocaleChar125ViewsCalendarRoute
+  '/{-$locale}/_views/events': typeof Char123LocaleChar125ViewsEventsRoute
+  '/{-$locale}/_views/feed': typeof Char123LocaleChar125ViewsFeedRoute
+  '/{-$locale}/_views/trends': typeof Char123LocaleChar125ViewsTrendsRouteWithChildren
   '/{-$locale}/events_/flow': typeof Char123LocaleChar125EventsFlowRoute
   '/{-$locale}/skills/opentrends': typeof Char123LocaleChar125SkillsOpentrendsRoute
-  '/{-$locale}/trends/$topic': typeof Char123LocaleChar125TrendsTopicRoute
-  '/{-$locale}/trends/': typeof Char123LocaleChar125TrendsIndexRoute
+  '/{-$locale}/_views/trends/$topic': typeof Char123LocaleChar125ViewsTrendsTopicRoute
+  '/{-$locale}/_views/trends/': typeof Char123LocaleChar125ViewsTrendsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/.well-known/api-catalog'
+    | '/{-$locale}'
+    | '/{-$locale}/agents'
+    | '/{-$locale}/briefings'
     | '/{-$locale}/dashboard'
-    | '/{-$locale}/events'
+    | '/{-$locale}/history'
     | '/{-$locale}/login'
     | '/{-$locale}/sources'
-    | '/{-$locale}/trends'
     | '/{-$locale}/'
+    | '/{-$locale}/calendar'
+    | '/{-$locale}/events'
+    | '/{-$locale}/feed'
+    | '/{-$locale}/trends'
     | '/{-$locale}/events/flow'
     | '/{-$locale}/skills/opentrends'
     | '/{-$locale}/trends/$topic'
@@ -143,11 +208,16 @@ export interface FileRouteTypes {
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/.well-known/api-catalog'
+    | '/{-$locale}'
+    | '/{-$locale}/agents'
+    | '/{-$locale}/briefings'
     | '/{-$locale}/dashboard'
-    | '/{-$locale}/events'
+    | '/{-$locale}/history'
     | '/{-$locale}/login'
     | '/{-$locale}/sources'
-    | '/{-$locale}'
+    | '/{-$locale}/calendar'
+    | '/{-$locale}/events'
+    | '/{-$locale}/feed'
     | '/{-$locale}/events/flow'
     | '/{-$locale}/skills/opentrends'
     | '/{-$locale}/trends/$topic'
@@ -155,25 +225,33 @@ export interface FileRouteTypes {
   id:
     | '__root__'
     | '/.well-known/api-catalog'
+    | '/{-$locale}/_views'
+    | '/{-$locale}/agents'
+    | '/{-$locale}/briefings'
     | '/{-$locale}/dashboard'
-    | '/{-$locale}/events'
+    | '/{-$locale}/history'
     | '/{-$locale}/login'
     | '/{-$locale}/sources'
-    | '/{-$locale}/trends'
     | '/{-$locale}/'
+    | '/{-$locale}/_views/calendar'
+    | '/{-$locale}/_views/events'
+    | '/{-$locale}/_views/feed'
+    | '/{-$locale}/_views/trends'
     | '/{-$locale}/events_/flow'
     | '/{-$locale}/skills/opentrends'
-    | '/{-$locale}/trends/$topic'
-    | '/{-$locale}/trends/'
+    | '/{-$locale}/_views/trends/$topic'
+    | '/{-$locale}/_views/trends/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   DotwellKnownApiCatalogRoute: typeof DotwellKnownApiCatalogRoute
+  Char123LocaleChar125ViewsRoute: typeof Char123LocaleChar125ViewsRouteWithChildren
+  Char123LocaleChar125AgentsRoute: typeof Char123LocaleChar125AgentsRoute
+  Char123LocaleChar125BriefingsRoute: typeof Char123LocaleChar125BriefingsRoute
   Char123LocaleChar125DashboardRoute: typeof Char123LocaleChar125DashboardRoute
-  Char123LocaleChar125EventsRoute: typeof Char123LocaleChar125EventsRoute
+  Char123LocaleChar125HistoryRoute: typeof Char123LocaleChar125HistoryRoute
   Char123LocaleChar125LoginRoute: typeof Char123LocaleChar125LoginRoute
   Char123LocaleChar125SourcesRoute: typeof Char123LocaleChar125SourcesRoute
-  Char123LocaleChar125TrendsRoute: typeof Char123LocaleChar125TrendsRouteWithChildren
   Char123LocaleChar125IndexRoute: typeof Char123LocaleChar125IndexRoute
   Char123LocaleChar125EventsFlowRoute: typeof Char123LocaleChar125EventsFlowRoute
   Char123LocaleChar125SkillsOpentrendsRoute: typeof Char123LocaleChar125SkillsOpentrendsRoute
@@ -186,13 +264,6 @@ declare module '@tanstack/react-router' {
       path: '/{-$locale}'
       fullPath: '/{-$locale}/'
       preLoaderRoute: typeof Char123LocaleChar125IndexRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/{-$locale}/trends': {
-      id: '/{-$locale}/trends'
-      path: '/{-$locale}/trends'
-      fullPath: '/{-$locale}/trends'
-      preLoaderRoute: typeof Char123LocaleChar125TrendsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/{-$locale}/sources': {
@@ -209,11 +280,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof Char123LocaleChar125LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/{-$locale}/events': {
-      id: '/{-$locale}/events'
-      path: '/{-$locale}/events'
-      fullPath: '/{-$locale}/events'
-      preLoaderRoute: typeof Char123LocaleChar125EventsRouteImport
+    '/{-$locale}/history': {
+      id: '/{-$locale}/history'
+      path: '/{-$locale}/history'
+      fullPath: '/{-$locale}/history'
+      preLoaderRoute: typeof Char123LocaleChar125HistoryRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/{-$locale}/dashboard': {
@@ -223,26 +294,33 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof Char123LocaleChar125DashboardRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/{-$locale}/briefings': {
+      id: '/{-$locale}/briefings'
+      path: '/{-$locale}/briefings'
+      fullPath: '/{-$locale}/briefings'
+      preLoaderRoute: typeof Char123LocaleChar125BriefingsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/{-$locale}/agents': {
+      id: '/{-$locale}/agents'
+      path: '/{-$locale}/agents'
+      fullPath: '/{-$locale}/agents'
+      preLoaderRoute: typeof Char123LocaleChar125AgentsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/{-$locale}/_views': {
+      id: '/{-$locale}/_views'
+      path: '/{-$locale}'
+      fullPath: '/{-$locale}'
+      preLoaderRoute: typeof Char123LocaleChar125ViewsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/.well-known/api-catalog': {
       id: '/.well-known/api-catalog'
       path: '/.well-known/api-catalog'
       fullPath: '/.well-known/api-catalog'
       preLoaderRoute: typeof DotwellKnownApiCatalogRouteImport
       parentRoute: typeof rootRouteImport
-    }
-    '/{-$locale}/trends/': {
-      id: '/{-$locale}/trends/'
-      path: '/'
-      fullPath: '/{-$locale}/trends/'
-      preLoaderRoute: typeof Char123LocaleChar125TrendsIndexRouteImport
-      parentRoute: typeof Char123LocaleChar125TrendsRoute
-    }
-    '/{-$locale}/trends/$topic': {
-      id: '/{-$locale}/trends/$topic'
-      path: '/$topic'
-      fullPath: '/{-$locale}/trends/$topic'
-      preLoaderRoute: typeof Char123LocaleChar125TrendsTopicRouteImport
-      parentRoute: typeof Char123LocaleChar125TrendsRoute
     }
     '/{-$locale}/skills/opentrends': {
       id: '/{-$locale}/skills/opentrends'
@@ -258,32 +336,100 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof Char123LocaleChar125EventsFlowRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/{-$locale}/_views/trends': {
+      id: '/{-$locale}/_views/trends'
+      path: '/trends'
+      fullPath: '/{-$locale}/trends'
+      preLoaderRoute: typeof Char123LocaleChar125ViewsTrendsRouteImport
+      parentRoute: typeof Char123LocaleChar125ViewsRoute
+    }
+    '/{-$locale}/_views/feed': {
+      id: '/{-$locale}/_views/feed'
+      path: '/feed'
+      fullPath: '/{-$locale}/feed'
+      preLoaderRoute: typeof Char123LocaleChar125ViewsFeedRouteImport
+      parentRoute: typeof Char123LocaleChar125ViewsRoute
+    }
+    '/{-$locale}/_views/events': {
+      id: '/{-$locale}/_views/events'
+      path: '/events'
+      fullPath: '/{-$locale}/events'
+      preLoaderRoute: typeof Char123LocaleChar125ViewsEventsRouteImport
+      parentRoute: typeof Char123LocaleChar125ViewsRoute
+    }
+    '/{-$locale}/_views/calendar': {
+      id: '/{-$locale}/_views/calendar'
+      path: '/calendar'
+      fullPath: '/{-$locale}/calendar'
+      preLoaderRoute: typeof Char123LocaleChar125ViewsCalendarRouteImport
+      parentRoute: typeof Char123LocaleChar125ViewsRoute
+    }
+    '/{-$locale}/_views/trends/': {
+      id: '/{-$locale}/_views/trends/'
+      path: '/'
+      fullPath: '/{-$locale}/trends/'
+      preLoaderRoute: typeof Char123LocaleChar125ViewsTrendsIndexRouteImport
+      parentRoute: typeof Char123LocaleChar125ViewsTrendsRoute
+    }
+    '/{-$locale}/_views/trends/$topic': {
+      id: '/{-$locale}/_views/trends/$topic'
+      path: '/$topic'
+      fullPath: '/{-$locale}/trends/$topic'
+      preLoaderRoute: typeof Char123LocaleChar125ViewsTrendsTopicRouteImport
+      parentRoute: typeof Char123LocaleChar125ViewsTrendsRoute
+    }
   }
 }
 
-interface Char123LocaleChar125TrendsRouteChildren {
-  Char123LocaleChar125TrendsTopicRoute: typeof Char123LocaleChar125TrendsTopicRoute
-  Char123LocaleChar125TrendsIndexRoute: typeof Char123LocaleChar125TrendsIndexRoute
+interface Char123LocaleChar125ViewsTrendsRouteChildren {
+  Char123LocaleChar125ViewsTrendsTopicRoute: typeof Char123LocaleChar125ViewsTrendsTopicRoute
+  Char123LocaleChar125ViewsTrendsIndexRoute: typeof Char123LocaleChar125ViewsTrendsIndexRoute
 }
 
-const Char123LocaleChar125TrendsRouteChildren: Char123LocaleChar125TrendsRouteChildren =
+const Char123LocaleChar125ViewsTrendsRouteChildren: Char123LocaleChar125ViewsTrendsRouteChildren =
   {
-    Char123LocaleChar125TrendsTopicRoute: Char123LocaleChar125TrendsTopicRoute,
-    Char123LocaleChar125TrendsIndexRoute: Char123LocaleChar125TrendsIndexRoute,
+    Char123LocaleChar125ViewsTrendsTopicRoute:
+      Char123LocaleChar125ViewsTrendsTopicRoute,
+    Char123LocaleChar125ViewsTrendsIndexRoute:
+      Char123LocaleChar125ViewsTrendsIndexRoute,
   }
 
-const Char123LocaleChar125TrendsRouteWithChildren =
-  Char123LocaleChar125TrendsRoute._addFileChildren(
-    Char123LocaleChar125TrendsRouteChildren,
+const Char123LocaleChar125ViewsTrendsRouteWithChildren =
+  Char123LocaleChar125ViewsTrendsRoute._addFileChildren(
+    Char123LocaleChar125ViewsTrendsRouteChildren,
+  )
+
+interface Char123LocaleChar125ViewsRouteChildren {
+  Char123LocaleChar125ViewsCalendarRoute: typeof Char123LocaleChar125ViewsCalendarRoute
+  Char123LocaleChar125ViewsEventsRoute: typeof Char123LocaleChar125ViewsEventsRoute
+  Char123LocaleChar125ViewsFeedRoute: typeof Char123LocaleChar125ViewsFeedRoute
+  Char123LocaleChar125ViewsTrendsRoute: typeof Char123LocaleChar125ViewsTrendsRouteWithChildren
+}
+
+const Char123LocaleChar125ViewsRouteChildren: Char123LocaleChar125ViewsRouteChildren =
+  {
+    Char123LocaleChar125ViewsCalendarRoute:
+      Char123LocaleChar125ViewsCalendarRoute,
+    Char123LocaleChar125ViewsEventsRoute: Char123LocaleChar125ViewsEventsRoute,
+    Char123LocaleChar125ViewsFeedRoute: Char123LocaleChar125ViewsFeedRoute,
+    Char123LocaleChar125ViewsTrendsRoute:
+      Char123LocaleChar125ViewsTrendsRouteWithChildren,
+  }
+
+const Char123LocaleChar125ViewsRouteWithChildren =
+  Char123LocaleChar125ViewsRoute._addFileChildren(
+    Char123LocaleChar125ViewsRouteChildren,
   )
 
 const rootRouteChildren: RootRouteChildren = {
   DotwellKnownApiCatalogRoute: DotwellKnownApiCatalogRoute,
+  Char123LocaleChar125ViewsRoute: Char123LocaleChar125ViewsRouteWithChildren,
+  Char123LocaleChar125AgentsRoute: Char123LocaleChar125AgentsRoute,
+  Char123LocaleChar125BriefingsRoute: Char123LocaleChar125BriefingsRoute,
   Char123LocaleChar125DashboardRoute: Char123LocaleChar125DashboardRoute,
-  Char123LocaleChar125EventsRoute: Char123LocaleChar125EventsRoute,
+  Char123LocaleChar125HistoryRoute: Char123LocaleChar125HistoryRoute,
   Char123LocaleChar125LoginRoute: Char123LocaleChar125LoginRoute,
   Char123LocaleChar125SourcesRoute: Char123LocaleChar125SourcesRoute,
-  Char123LocaleChar125TrendsRoute: Char123LocaleChar125TrendsRouteWithChildren,
   Char123LocaleChar125IndexRoute: Char123LocaleChar125IndexRoute,
   Char123LocaleChar125EventsFlowRoute: Char123LocaleChar125EventsFlowRoute,
   Char123LocaleChar125SkillsOpentrendsRoute:

@@ -25,4 +25,7 @@ export const env = createEnv({
 	runtimeEnv:
 		(import.meta as { env?: Record<string, string | undefined> }).env ?? {},
 	emptyStringAsUndefined: true,
+	// Unit tests import modules that read env at load time; they never need a
+	// real server URL, so the check is skipped under `bun test`.
+	skipValidation: process.env.NODE_ENV === "test",
 });

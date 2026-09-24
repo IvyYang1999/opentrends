@@ -1,6 +1,7 @@
 import alchemy from "alchemy";
 import {
 	D1Database,
+	Images,
 	KVNamespace,
 	Queue,
 	TanStackStart,
@@ -18,8 +19,14 @@ const apiCustomDomain = process.env.API_CUSTOM_DOMAIN?.trim();
 const cloudflareZoneId = process.env.CLOUDFLARE_ZONE_ID?.trim();
 const webCustomDomain = process.env.WEB_CUSTOM_DOMAIN?.trim();
 const refreshCron = process.env.TRENDS_REFRESH_CRON;
+const emailApiKey = process.env.EMAIL_API_KEY?.trim();
+const emailFrom = process.env.EMAIL_FROM?.trim();
 const refreshCrons =
 	refreshCron === "disabled" ? [] : [refreshCron ?? "*/5 * * * *"];
+
+if (Boolean(emailApiKey) !== Boolean(emailFrom)) {
+	throw new Error("EMAIL_API_KEY and EMAIL_FROM must be configured together");
+}
 
 function required<T>(value: T | undefined, key: string): T {
 	if (!value) {
@@ -39,6 +46,7 @@ const database = await D1Database("database", {
 	primaryLocationHint: "apac",
 });
 const hotCache = await KVNamespace("hot-cache");
+const images = Images();
 const eventMergeDeadLetterQueue = await Queue("event-merge-dlq");
 const eventMergeQueue = await Queue("event-merge", {
 	dlq: eventMergeDeadLetterQueue,
@@ -74,6 +82,7 @@ export const api = await Worker("api", {
 	bindings: {
 		DB: database,
 		HOT_CACHE: hotCache,
+		IMAGES: images,
 		EVENT_MERGE_QUEUE: eventMergeQueue,
 		SUMMARY_PREWARM_QUEUE: summaryPrewarmQueue,
 		BETTER_AUTH_SECRET: required(
@@ -82,6 +91,28 @@ export const api = await Worker("api", {
 		),
 		BETTER_AUTH_URL: required(alchemy.env.BETTER_AUTH_URL, "BETTER_AUTH_URL"),
 		CORS_ORIGIN: required(alchemy.env.CORS_ORIGIN, "CORS_ORIGIN"),
+		...(emailApiKey && emailFrom
+			? {
+					EMAIL_API_KEY: alchemy.secret.env.EMAIL_API_KEY,
+					EMAIL_API_URL:
+						alchemy.env.EMAIL_API_URL ??
+						"https://api.forwardemail.net/v1/emails",
+					EMAIL_FROM: alchemy.env.EMAIL_FROM,
+					EMAIL_PROVIDER: process.env.EMAIL_PROVIDER ?? "forward-email",
+				}
+			: {}),
+		...(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_OAUTH_KEY
+			? {
+					GOOGLE_CLIENT_ID: alchemy.env.GOOGLE_CLIENT_ID,
+					GOOGLE_OAUTH_KEY: alchemy.secret.env.GOOGLE_OAUTH_KEY,
+				}
+			: {}),
+		...(process.env.GITHUB_CLIENT_ID && process.env.GITHUB_OAUTH_KEY
+			? {
+					GITHUB_CLIENT_ID: alchemy.env.GITHUB_CLIENT_ID,
+					GITHUB_OAUTH_KEY: alchemy.secret.env.GITHUB_OAUTH_KEY,
+				}
+			: {}),
 		...(process.env.RSSHUB_BASE_URLS
 			? { RSSHUB_BASE_URLS: alchemy.env.RSSHUB_BASE_URLS }
 			: {}),
@@ -92,6 +123,12 @@ export const api = await Worker("api", {
 		LLM_BASE_URL:
 			process.env.LLM_BASE_URL ?? "https://dashboard.thorbase.com/v1",
 		LLM_MODEL: process.env.LLM_MODEL ?? "deepseek/deepseek-v4-pro",
+		...(process.env.LLM_TRANSLATION_MODEL
+			? { LLM_TRANSLATION_MODEL: process.env.LLM_TRANSLATION_MODEL }
+			: {}),
+		...(process.env.LLM_ENABLE_THINKING
+			? { LLM_ENABLE_THINKING: process.env.LLM_ENABLE_THINKING }
+			: {}),
 		...(process.env.SILICONFLOW_API_KEY
 			? { SILICONFLOW_API_KEY: alchemy.secret.env.SILICONFLOW_API_KEY }
 			: {}),
@@ -116,6 +153,7 @@ export const api = await Worker("api", {
 			queue: summaryPrewarmQueue,
 			settings: {
 				batchSize: 2,
+				maxConcurrency: 1,
 				maxRetries: 3,
 				maxWaitTimeMs: 5000,
 				retryDelay: 60,

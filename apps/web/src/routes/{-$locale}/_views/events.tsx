@@ -14,7 +14,7 @@ function validateEventsSearch(search: Record<string, unknown>): EventsSearch {
 	};
 }
 
-export const Route = createFileRoute("/{-$locale}/events")({
+export const Route = createFileRoute("/{-$locale}/_views/events")({
 	component: EventsComponent,
 	validateSearch: validateEventsSearch,
 	head: ({ params }) => {

@@ -4,4 +4,4 @@ Disallow: /dashboard
 Disallow: /login
 Allow: /
 
-Sitemap: /sitemap.xml
+Sitemap: https://opentrends.io/sitemap.xml

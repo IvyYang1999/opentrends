@@ -1,44 +1,54 @@
 import type { TopicId, TopicPreset } from "../types";
 
 export const topicPresets = {
-	home: {
-		path: "/",
-		title: "OpenTrends",
-		description: "Curated technology, AI, developer and maker sources",
+	// The landing tab: a hand-picked set of the most-read general sources plus
+	// the Chinese hot lists, so a first visit is not narrowed to one field. Its
+	// digest is drawn from every topic, see digestTopics().
+	featured: {
+		path: "/trends/featured",
+		title: "Featured",
+		description:
+			"Top stories across technology, AI, developers and Chinese communities",
 		sections: [
 			{
-				id: "sources",
-				title: "Sources",
+				id: "news",
+				title: "News",
 				sourceIds: [
 					"hackernews",
 					"the-verge",
 					"techcrunch",
+					"ars-technica",
+					"reuters",
+					"bbc-news",
 					"economist",
 					"bloomberg",
-					"the-atlantic",
-					"bbc-news",
-					"ars-technica",
-					"producthunt",
-					"nytimes",
-					"yahoo-finance",
 					"the-guardian",
-					"lobsters",
-					"financial-times",
-					"hackernews-show",
-					"wsj",
-					"reuters",
 					"axios",
-					"business-insider",
-					"sky-news",
-					"google-news",
-					"politico",
-					"science-alert",
 					"nature",
-					"phys-org",
-					"big-think",
-					"hackernews-ask",
+					"science-alert",
+				],
+			},
+			{
+				id: "makers",
+				title: "Makers",
+				sourceIds: [
+					"github-trending",
+					"producthunt",
+					"hackernews-show",
+					"lobsters",
 					"devto",
-					"new-yorker",
+				],
+			},
+			{
+				id: "cn",
+				title: "中文",
+				sourceIds: [
+					"zhihu-hot",
+					"weibo",
+					"36kr-news",
+					"ithome-ranking-24h",
+					"juejin-hot",
+					"v2ex",
 				],
 			},
 		],
@@ -412,7 +422,8 @@ export const topicPresets = {
 	},
 } as const satisfies Record<TopicId, TopicPreset>;
 
-export const DEFAULT_TOPIC_ID: TopicId = "ai";
+export const DEFAULT_TOPIC_ID: TopicId = "featured";
+export const FEATURED_TOPIC_ID: TopicId = "featured";
 
 export function getTopicPreset(id: string): TopicPreset | undefined {
 	return (topicPresets as Record<string, TopicPreset>)[id];
@@ -420,4 +431,24 @@ export function getTopicPreset(id: string): TopicPreset | undefined {
 
 export function isTopicId(id: string): id is TopicId {
 	return id in topicPresets;
+}
+
+// The first topic, other than the featured one, that carries a source; used
+// to tag a cross-topic digest line with where its story came from.
+const SOURCE_TOPIC = new Map<string, string>();
+for (const [topicId, preset] of Object.entries(topicPresets)) {
+	if (topicId === FEATURED_TOPIC_ID) {
+		continue;
+	}
+	for (const section of preset.sections) {
+		for (const sourceId of section.sourceIds) {
+			if (!SOURCE_TOPIC.has(sourceId)) {
+				SOURCE_TOPIC.set(sourceId, topicId);
+			}
+		}
+	}
+}
+
+export function topicForSource(sourceId: string): string | undefined {
+	return SOURCE_TOPIC.get(sourceId);
 }

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { redditAdapter } from "../adapters/native/reddit";
+import { createRedditAdapter, redditAdapter } from "../adapters/native/reddit";
 
 const originalFetch = globalThis.fetch;
 const SUBREDDIT_ERROR_RE = /subreddit/;
@@ -112,5 +112,94 @@ describe("redditAdapter", () => {
 				signal: new AbortController().signal,
 			})
 		).rejects.toThrow(SUBREDDIT_ERROR_RE);
+	});
+
+	test("falls back to Reddit's Atom feed when the JSON endpoint is blocked", async () => {
+		const requestedUrls: string[] = [];
+		globalThis.fetch = ((input) => {
+			const url = String(input);
+			requestedUrls.push(url);
+			if (url.endsWith("raw_json=1")) {
+				return Promise.resolve(new Response("blocked", { status: 403 }));
+			}
+			return Promise.resolve(
+				new Response(
+					`<?xml version="1.0" encoding="UTF-8"?>
+				<feed xmlns="http://www.w3.org/2005/Atom">
+					<title>MachineLearning</title>
+					<entry>
+						<id>t3_fallback</id>
+						<title>Fallback post</title>
+						<link href="https://www.reddit.com/r/MachineLearning/comments/fallback" />
+						<updated>2026-09-21T08:00:00Z</updated>
+						<content type="html">Fallback content</content>
+					</entry>
+				</feed>`,
+					{
+						status: 200,
+						headers: { "content-type": "application/atom+xml" },
+					}
+				)
+			);
+		}) as unknown as typeof fetch;
+
+		const items = await redditAdapter.fetch({
+			sourceId: "reddit-machinelearning",
+			signal: new AbortController().signal,
+			params: { subreddit: "MachineLearning" },
+		});
+
+		expect(requestedUrls).toHaveLength(2);
+		expect(requestedUrls[1]).toBe(
+			"https://www.reddit.com/r/MachineLearning/.rss"
+		);
+		expect(items).toHaveLength(1);
+		expect(items[0]).toMatchObject({
+			sourceId: "reddit-machinelearning",
+			title: "Fallback post",
+		});
+	});
+
+	test("falls back to RSSHub when Reddit blocks both endpoints", async () => {
+		const requestedUrls: string[] = [];
+		globalThis.fetch = ((input) => {
+			const url = String(input);
+			requestedUrls.push(url);
+			if (url.includes("reddit.com/r/")) {
+				return Promise.resolve(new Response("blocked", { status: 429 }));
+			}
+			return Promise.resolve(
+				new Response(
+					JSON.stringify({
+						items: [
+							{
+								id: "rsshub-fallback",
+								title: "RSSHub fallback post",
+								url: "https://www.reddit.com/r/LocalLLaMA/comments/fallback",
+							},
+						],
+					}),
+					{
+						headers: { "content-type": "application/json" },
+						status: 200,
+					}
+				)
+			);
+		}) as unknown as typeof fetch;
+
+		const items = await createRedditAdapter({
+			rssHubBaseUrls: ["https://rsshub.test"],
+		}).fetch({
+			sourceId: "reddit-localllama",
+			signal: new AbortController().signal,
+			params: { subreddit: "LocalLLaMA" },
+		});
+
+		expect(requestedUrls.some((url) => url.includes("format=json"))).toBe(true);
+		expect(items).toHaveLength(1);
+		expect(items[0]).toMatchObject({
+			sourceId: "reddit-localllama",
+			title: "RSSHub fallback post",
+		});
 	});
 });

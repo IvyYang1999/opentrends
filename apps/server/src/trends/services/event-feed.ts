@@ -1321,17 +1321,23 @@ async function readEventTopicIds(
 	return topics;
 }
 
-async function prepareEventFeedTopicSources(
+function prepareEventFeedTopicSources(
 	topicId: string | undefined,
 	waitUntil: ((promise: Promise<unknown>) => void) | undefined
-): Promise<void> {
+): void {
 	if (!topicId) {
 		return;
 	}
 	if (!getTopicPreset(topicId)) {
 		throw new TopicNotFoundError(topicId);
 	}
-	await refreshExpiredTopicSourcesInBackground(topicId, waitUntil);
+	const refresh = refreshExpiredTopicSourcesInBackground(
+		topicId,
+		waitUntil
+	).catch((error) => {
+		console.warn("[event-feed] failed to prepare topic sources", error);
+	});
+	waitUntil?.(refresh);
 }
 
 async function readEventCoverImages(
@@ -1444,7 +1450,7 @@ export async function getEventFeed(
 	} = {}
 ): Promise<EventFeedResponse> {
 	assertEventEmbeddingConfigured();
-	await prepareEventFeedTopicSources(topicId, options.waitUntil);
+	prepareEventFeedTopicSources(topicId, options.waitUntil);
 	const limit = Math.min(
 		Math.max(options.limit ?? EVENT_FEED_DEFAULT_LIMIT, 1),
 		EVENT_FEED_MAX_LIMIT
@@ -1464,18 +1470,15 @@ export async function getEventFeed(
 		rowsLength: rows.length,
 		visibleRows,
 	});
-	const topicIdsByEvent = await readEventTopicIds(
-		pageRows.map((row) => row.eventId)
-	);
+	const eventIds = pageRows.map((row) => row.eventId);
+	const [topicIdsByEvent, coverImages, sourcesByEvent] = await Promise.all([
+		readEventTopicIds(eventIds),
+		readEventCoverImages(eventIds),
+		readEventFeedSources(eventIds),
+	]);
 	for (const row of pageRows) {
 		row.topicIds = topicIdsByEvent.get(row.eventId) ?? [row.topicId];
 	}
-	const coverImages = await readEventCoverImages(
-		pageRows.map((row) => row.eventId)
-	);
-	const sourcesByEvent = await readEventFeedSources(
-		pageRows.map((row) => row.eventId)
-	);
 	const events = pageRows.map((row) =>
 		toFeedItem(
 			row,

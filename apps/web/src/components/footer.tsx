@@ -10,6 +10,7 @@ const footerLinkClassName =
 	"shrink-0 rounded px-2 py-1 text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]";
 
 const TOPIC_IDS = [
+	"featured",
 	"ai",
 	"embodied",
 	"hardware",
@@ -27,7 +28,7 @@ export default function Footer() {
 		{ to: "/{-$locale}/trends", label: t("nav.trends") },
 		{ to: "/{-$locale}/events", label: t("nav.events") },
 		{ to: "/{-$locale}/sources", label: t("nav.sources") },
-		{ to: "/{-$locale}/skills/opentrends", label: t("nav.skills") },
+		{ to: "/{-$locale}/agents", label: t("nav.skills") },
 	] as const;
 
 	return (

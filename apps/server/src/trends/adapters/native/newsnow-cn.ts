@@ -989,8 +989,6 @@ async function fetchKuaishou(ctx: FetchContext): Promise<RawNewsItem[]> {
 		const name = typeof hotItem?.name === "string" ? hotItem.name : "";
 		items.push({
 			id: id.replace("VisionHotRankItem:", ""),
-			imageUrl:
-				typeof hotItem?.iconUrl === "string" ? hotItem.iconUrl : undefined,
 			title: name,
 			url: `https://www.kuaishou.com/search/video?searchKey=${encodeURIComponent(name)}`,
 		});
@@ -1187,7 +1185,7 @@ async function fetchToutiao(ctx: FetchContext): Promise<RawNewsItem[]> {
 	);
 	return (data.data ?? []).map((item) => ({
 		id: item.ClusterIdStr,
-		imageUrl: item.LabelUri?.url ?? item.Image?.url,
+		imageUrl: item.Image?.url,
 		title: item.Title,
 		url: item.ClusterIdStr
 			? `https://www.toutiao.com/trending/${item.ClusterIdStr}/`
@@ -1271,15 +1269,9 @@ async function fetchWeibo(ctx: FetchContext): Promise<RawNewsItem[]> {
 		const title = normalizeText(link.text());
 		const href = link.attr("href");
 		const flag = normalizeText($(row).find("td.td-03").text());
-		const flagUrls: Record<string, string> = {
-			新: "https://simg.s.weibo.com/moter/flags/1_0.png",
-			热: "https://simg.s.weibo.com/moter/flags/2_0.png",
-			爆: "https://simg.s.weibo.com/moter/flags/4_0.png",
-		};
 		items.push({
 			hotValue: flag || undefined,
 			id: title,
-			imageUrl: flagUrls[flag],
 			title,
 			url: resolveUrl("https://s.weibo.com", href),
 		});

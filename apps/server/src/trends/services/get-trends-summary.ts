@@ -1,34 +1,124 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { fieldsMatchAnyKeyword } from "@opentrends/api/keyword-match";
 import { env } from "@opentrends/env/server";
 import { streamText } from "ai";
 
 import { type CacheEnvelope, hotCache } from "../cache/hot-cache";
-import { readSummary, writeSummary } from "../cache/summary-cache";
+import { readSourceItemHistory } from "../cache/source-cache";
+import { readSummary } from "../cache/summary-cache";
+import { FOLLOWED_TOPIC_ID, resolveTopic } from "../config/followed-topic";
 import { getSourcePreset } from "../config/sources";
-import { getTopicPreset } from "../config/topics";
-import type { NewsItem, TopicPreset, TrendsPageData } from "../types";
-import { getTrendsPage, TopicNotFoundError } from "./get-trends-page";
+import {
+	FEATURED_TOPIC_ID,
+	topicForSource,
+	topicPresets,
+} from "../config/topics";
+import type { NewsItem, SourceId, TopicPreset, TrendsPageData } from "../types";
+import { archiveDigest } from "./digest-archive";
+import {
+	getFollowedSourcesPage,
+	getTrendsPage,
+	TopicNotFoundError,
+} from "./get-trends-page";
+import { llmProviderOptions } from "./llm";
+import { isSiliconFlow, trackSiliconFlowModel } from "./llm-usage";
 import type { TranslationLanguage } from "./translate-news-items";
 
-const ITEMS_PER_SOURCE = 6;
-// Hard cap on number of cited items per summary. Keeps the citation header
-// well under common HTTP header limits and keeps the LLM prompt focused.
-const MAX_CITATIONS = 60;
-const SUMMARY_TTL_MS = 60 * 60 * 1000;
-const SUMMARY_STALE_MS = 24 * 60 * 60 * 1000;
+// Clients that still read citations from the response header only get this
+// many, which keeps the header under common HTTP header limits.
+export const HEADER_CITATION_LIMIT = 60;
+const HOUR_MS = 60 * 60 * 1000;
+const DAY_MS = 24 * HOUR_MS;
+const MIN_TARGET_SCRIPT_RATIO = 0.2;
+const SUMMARY_LANGUAGE_RETRY_LIMIT = 1;
+
+export const SUMMARY_WINDOWS = ["today", "week", "month"] as const;
+export type SummaryWindow = (typeof SUMMARY_WINDOWS)[number];
+
+interface SummaryWindowProfile {
+	// How the editor prompt names the period.
+	editorialPeriod: string;
+	// Below `minItems` candidates the window widens to `fallbackWindowMs`, so a
+	// quiet topic still gets a digest.
+	fallbackWindowMs?: number;
+	// History windows sample this many items per source per day so one busy
+	// feed cannot crowd out a whole week or month.
+	historyItemsPerSourcePerDay?: number;
+	// A low per-source cap lets every section of a topic reach the prompt
+	// instead of the first few sources filling the whole citation budget.
+	itemsPerSource: number;
+	// Cap on items in the prompt. Longer periods get a larger budget so that
+	// sampling is less likely to drop the period's major stories.
+	maxCitations: number;
+	minItems?: number;
+	staleMs: number;
+	ttlMs: number;
+	windowMs: number;
+}
+
+const SUMMARY_WINDOW_PROFILES: Record<SummaryWindow, SummaryWindowProfile> = {
+	today: {
+		editorialPeriod: "from the last 24 hours",
+		fallbackWindowMs: 3 * DAY_MS,
+		itemsPerSource: 6,
+		maxCitations: 80,
+		minItems: 40,
+		staleMs: DAY_MS,
+		ttlMs: HOUR_MS,
+		windowMs: DAY_MS,
+	},
+	week: {
+		editorialPeriod: "from the last 7 days",
+		historyItemsPerSourcePerDay: 2,
+		itemsPerSource: 8,
+		maxCitations: 150,
+		staleMs: 2 * DAY_MS,
+		ttlMs: 6 * HOUR_MS,
+		windowMs: 7 * DAY_MS,
+	},
+	month: {
+		editorialPeriod: "from the last 30 days",
+		historyItemsPerSourcePerDay: 1,
+		itemsPerSource: 8,
+		maxCitations: 150,
+		staleMs: 3 * DAY_MS,
+		ttlMs: DAY_MS,
+		windowMs: 30 * DAY_MS,
+	},
+};
+
+export function normalizeSummaryWindow(
+	value: string | undefined
+): SummaryWindow {
+	return (SUMMARY_WINDOWS as readonly string[]).includes(value ?? "")
+		? (value as SummaryWindow)
+		: "today";
+}
+
+// Summary caches are keyed by topic and language. Non-default windows get
+// their own topic key so they never overwrite the default digest.
+function summaryCacheTopicId(topicId: string, window: SummaryWindow): string {
+	return window === "today" ? topicId : `${topicId}#${window}`;
+}
+
 const SUMMARY_CACHE_RETENTION_MS = 7 * 24 * 60 * 60_000;
 const SUMMARY_HOT_CACHE_SCHEMA_VERSION = 2;
-const SUMMARY_PROMPT_VERSION = "summary-date-v1";
+const SUMMARY_PROMPT_VERSION = "top10-v4";
+const CROSS_TOPIC_SELECTION_MODE = "cross-topic-editorial-v3";
 const SUMMARY_HOT_CACHE_TTL_SECONDS = Math.ceil(
 	SUMMARY_CACHE_RETENTION_MS / 1000
 );
 const SUMMARY_FIRST_CHUNK_TIMEOUT_MS = 60_000;
 const SUMMARY_IDLE_CHUNK_TIMEOUT_MS = 75_000;
 const SUMMARY_CACHE_READ_TIMEOUT_MS = 1200;
-const SUMMARY_CACHE_WRITE_TIMEOUT_MS = 1200;
+const SUMMARY_BACKGROUND_CACHE_TIMEOUT_MS = 10_000;
 const FALLBACK_ITEM_LIMIT = 6;
 const CACHED_CHUNK_SIZE = 128;
 const CACHED_CHUNK_DELAY_MS = 4;
+const PROMOTIONAL_TITLE_RE =
+	/\b(?:tickets?|sale|save \$|discount|coupon|sponsored|giveaway|hiring|jobs?)\b|门票|优惠|折扣|促销|招聘|报名|早鸟|抽奖/i;
+const HIGH_SIGNAL_TITLE_RE =
+	/\b(?:release|launch|open.?source|security|vulnerab|breach|regulat|funding|acqui|research|study|benchmark|model|chip|robot|clinical|approval)\b|发布|开源|安全|漏洞|泄露|监管|法规|融资|收购|研究|模型|芯片|机器人|临床|获批|突破/i;
 
 class SummaryGenerationTimeoutError extends Error {
 	constructor(timeoutMs: number) {
@@ -46,16 +136,58 @@ class SummaryCacheReadTimeoutError extends Error {
 
 export interface Citation {
 	n: number;
+	/** The topic the cited source belongs to, so a digest drawn from every
+	 * topic can say which field each line comes from. */
+	topic?: string;
 	url: string;
+}
+
+export type SummaryScope = "topic" | "cross-topic";
+
+function toCitation({ n, item }: CitedItem): Citation {
+	const topic = topicForSource(item.sourceId);
+	return topic ? { n, topic, url: item.url } : { n, url: item.url };
 }
 
 export interface PreparedSummary {
 	citations: Citation[];
+	origin: "cache" | "generated";
 	stream: (abortSignal: AbortSignal) => AsyncGenerator<string, void, void>;
 }
 
 interface TrendsSummaryCacheOptions {
-	waitUntil?: (promise: Promise<unknown>) => void;
+	// Words a briefing narrows the followed sources' items to.
+	keywords?: readonly string[];
+	// Followed sources for the "mine" pseudo-topic.
+	sourceIds?: readonly SourceId[];
+	window?: SummaryWindow;
+}
+
+export class TrendsSummaryNoMatchesError extends Error {
+	constructor() {
+		super("No items match the briefing's keywords.");
+		this.name = "TrendsSummaryNoMatchesError";
+	}
+}
+
+// Keeps the cited items that mention any of the keywords in their title,
+// original title or description, renumbered so the prompt and citations
+// stay dense.
+export function filterCitedItems(
+	cited: readonly CitedItem[],
+	keywords: readonly string[]
+): CitedItem[] {
+	if (keywords.length === 0) {
+		return [...cited];
+	}
+	return cited
+		.filter(({ item }) =>
+			fieldsMatchAnyKeyword(
+				[item.title, item.original?.title, item.description],
+				keywords
+			)
+		)
+		.map((entry, index) => ({ ...entry, n: index + 1 }));
 }
 
 export interface CitedItem {
@@ -82,6 +214,20 @@ export class TrendsSummaryNotConfiguredError extends Error {
 	}
 }
 
+export class TrendsSummaryPendingError extends Error {
+	constructor() {
+		super("Trends summary is being prepared in the background.");
+		this.name = "TrendsSummaryPendingError";
+	}
+}
+
+class SummaryCacheWriteError extends Error {
+	constructor() {
+		super("Failed to persist the generated trends summary to KV.");
+		this.name = "SummaryCacheWriteError";
+	}
+}
+
 export function isTrendsSummaryConfigured(): boolean {
 	return Boolean(env.LLM_API_KEY);
 }
@@ -92,27 +238,218 @@ function isDescriptionRedundant(title: string, description: string): boolean {
 	return d === t || d.startsWith(t) || t.startsWith(d);
 }
 
-function collectCitedItems(page: TrendsPageData): CitedItem[] {
-	const result: CitedItem[] = [];
-	let n = 0;
+interface SourceCandidates {
+	items: NewsItem[];
+	source: string;
+}
+
+function itemTime(item: NewsItem): number {
+	return item.publishedAt ?? item.fetchedAt;
+}
+
+function collectPageCandidates(
+	page: TrendsPageData,
+	notBefore: number,
+	itemsPerSource: number,
+	keywords: readonly string[] = []
+): SourceCandidates[] {
+	const result: SourceCandidates[] = [];
 	for (const section of page.sections) {
 		for (const source of section.sources) {
-			if (source.items.length === 0) {
+			const items = source.items
+				.filter((item) => itemTime(item) >= notBefore)
+				.filter((item) =>
+					fieldsMatchAnyKeyword(
+						[item.title, item.original?.title, item.description],
+						keywords
+					)
+				)
+				.slice(0, itemsPerSource);
+			if (items.length === 0) {
 				continue;
 			}
 			const preset = getSourcePreset(source.sourceId);
-			const sourceLabel = preset?.name ?? source.title;
-			const top = source.items.slice(0, ITEMS_PER_SOURCE);
-			for (const item of top) {
-				if (n >= MAX_CITATIONS) {
-					return result;
-				}
-				n += 1;
-				result.push({ n, source: sourceLabel, item });
+			result.push({ items, source: preset?.name ?? source.title });
+		}
+	}
+	return result;
+}
+
+// Orders a source's items so that taking a prefix spreads over the window:
+// the first item of every day (newest day first), then the second of every
+// day, and so on.
+export function interleaveByDay(items: NewsItem[]): NewsItem[] {
+	const days = new Map<number, NewsItem[]>();
+	for (const item of [...items].sort((a, b) => itemTime(b) - itemTime(a))) {
+		const day = Math.floor(itemTime(item) / DAY_MS);
+		days.set(day, [...(days.get(day) ?? []), item]);
+	}
+	const result: NewsItem[] = [];
+	const buckets = [...days.values()];
+	for (let depth = 0; result.length < items.length; depth += 1) {
+		for (const bucket of buckets) {
+			const item = bucket[depth];
+			if (item) {
+				result.push(item);
 			}
 		}
 	}
 	return result;
+}
+
+function collectHistoryCandidates(
+	topic: TopicPreset,
+	history: Map<SourceId, NewsItem[]>,
+	itemsPerSource: number
+): SourceCandidates[] {
+	const result: SourceCandidates[] = [];
+	for (const section of topic.sections) {
+		for (const sourceId of section.sourceIds) {
+			const items = interleaveByDay(history.get(sourceId) ?? []).slice(
+				0,
+				itemsPerSource
+			);
+			if (items.length === 0) {
+				continue;
+			}
+			result.push({
+				items,
+				source: getSourcePreset(sourceId)?.name ?? sourceId,
+			});
+		}
+	}
+	return result;
+}
+
+function countCandidates(sources: SourceCandidates[]): number {
+	return sources.reduce((total, source) => total + source.items.length, 0);
+}
+
+// Round-robin across sources: every source contributes its first item before
+// any source contributes a second one.
+export function selectCitedItems(
+	sources: SourceCandidates[],
+	maxCitations: number
+): CitedItem[] {
+	const taken = sources.map(() => 0);
+	const rounds = Math.max(0, ...sources.map((source) => source.items.length));
+	let remaining = maxCitations;
+	for (let round = 0; round < rounds && remaining > 0; round += 1) {
+		for (const [index, source] of sources.entries()) {
+			if (remaining === 0) {
+				break;
+			}
+			if (source.items.length > round) {
+				taken[index] = round + 1;
+				remaining -= 1;
+			}
+		}
+	}
+
+	const result: CitedItem[] = [];
+	let n = 0;
+	for (const [index, source] of sources.entries()) {
+		for (const item of source.items.slice(0, taken[index])) {
+			n += 1;
+			result.push({ n, source: source.source, item });
+		}
+	}
+	return result;
+}
+
+export function collectCitedItems(
+	page: TrendsPageData | TrendsPageData[],
+	now: number = Date.now(),
+	keywords: readonly string[] = []
+): CitedItem[] {
+	const pages = Array.isArray(page) ? page : [page];
+	const profile = SUMMARY_WINDOW_PROFILES.today;
+	const candidates = (notBefore: number) =>
+		dedupeSources(
+			pages.flatMap((entry) =>
+				collectPageCandidates(
+					entry,
+					notBefore,
+					profile.itemsPerSource,
+					keywords
+				)
+			)
+		);
+	let sources = candidates(now - profile.windowMs);
+	if (
+		profile.fallbackWindowMs !== undefined &&
+		countCandidates(sources) < (profile.minItems ?? 0)
+	) {
+		sources = candidates(now - profile.fallbackWindowMs);
+	}
+	return selectCitedItems(sources, profile.maxCitations);
+}
+
+// A source can sit in several topics; it should feed the digest once.
+function dedupeSources(sources: SourceCandidates[]): SourceCandidates[] {
+	const seen = new Set<string>();
+	return sources.filter((source) => {
+		if (seen.has(source.source)) {
+			return false;
+		}
+		seen.add(source.source);
+		return true;
+	});
+}
+
+// The featured tab's digest is drawn from every topic, not just its own cards,
+// so the landing page shows the day's biggest stories across the site.
+function digestTopics(
+	topicId: string,
+	topic: TopicPreset
+): [string, TopicPreset][] {
+	if (topicId !== FEATURED_TOPIC_ID) {
+		return [[topicId, topic]];
+	}
+	return Object.entries(topicPresets);
+}
+
+async function collectWindowCitedItems(
+	topicId: string,
+	topic: TopicPreset,
+	lang: TranslationLanguage,
+	window: SummaryWindow,
+	keywords: readonly string[] = []
+): Promise<CitedItem[]> {
+	const profile = SUMMARY_WINDOW_PROFILES[window];
+	const topics = digestTopics(topicId, topic);
+	if (profile.historyItemsPerSourcePerDay === undefined) {
+		const pages = await Promise.all(
+			topics.map(([id, preset]) =>
+				id === FOLLOWED_TOPIC_ID
+					? getFollowedSourcesPage(
+							preset.sections.flatMap((section) => section.sourceIds),
+							lang
+						)
+					: getTrendsPage(id, lang)
+			)
+		);
+		return collectCitedItems(pages, Date.now(), keywords);
+	}
+	const merged: TopicPreset = {
+		...topic,
+		sections: topics.flatMap(([, preset]) => preset.sections),
+	};
+	const sourceIds = [
+		...new Set(merged.sections.flatMap((section) => section.sourceIds)),
+	];
+	const history = await readSourceItemHistory(
+		sourceIds,
+		Date.now() - profile.windowMs,
+		profile.historyItemsPerSourcePerDay,
+		keywords
+	);
+	return selectCitedItems(
+		dedupeSources(
+			collectHistoryCandidates(merged, history, profile.itemsPerSource)
+		),
+		profile.maxCitations
+	);
 }
 
 function formatSourceItemDate(item: NewsItem): string {
@@ -125,20 +462,120 @@ function formatSourceItemDate(item: NewsItem): string {
 	return item.publishedAt ? `published ${day}` : `fetched ${day}`;
 }
 
-function hasCurrentPromptVersion(prompt: string): boolean {
-	return prompt.includes(`Prompt version: ${SUMMARY_PROMPT_VERSION}`);
+function summaryScope(topicId: string): SummaryScope {
+	return topicId === FEATURED_TOPIC_ID ? "cross-topic" : "topic";
 }
 
-export function buildPrompt(topic: TopicPreset, cited: CitedItem[]): string {
+function isFeaturedCacheTopic(topicId: string): boolean {
+	return (
+		topicId === FEATURED_TOPIC_ID || topicId.startsWith(`${FEATURED_TOPIC_ID}#`)
+	);
+}
+
+export function hasCurrentSummaryPromptVersion(
+	prompt: string,
+	topicId?: string
+): boolean {
+	if (!prompt.includes(`Prompt version: ${SUMMARY_PROMPT_VERSION}`)) {
+		return false;
+	}
+	return !(
+		topicId &&
+		isFeaturedCacheTopic(topicId) &&
+		!prompt.includes(`Selection mode: ${CROSS_TOPIC_SELECTION_MODE}`)
+	);
+}
+
+interface SummaryLanguageProfile {
+	// Closing reminder written in the target language. Source items are mostly
+	// English, and models tend to answer in the language of the material unless
+	// the last thing they read says otherwise.
+	closingReminder: string;
+	name: string;
+	reasonLimit: string;
+	takeawayLimit: string;
+}
+
+const WORD_LIMITS = {
+	reasonLimit: "max 20 words",
+	takeawayLimit: "max 15 words",
+};
+
+const SUMMARY_LANGUAGE_PROFILES: Record<
+	TranslationLanguage,
+	SummaryLanguageProfile
+> = {
+	en: {
+		...WORD_LIMITS,
+		closingReminder: "Write the whole list in English.",
+		name: "English",
+	},
+	zh: {
+		closingReminder:
+			"请只用简体中文输出整个列表，即使上面的条目是英文；公司名、产品名、模型名保留原文。",
+		name: "Simplified Chinese",
+		reasonLimit: "max 40 Chinese characters",
+		takeawayLimit: "max 30 Chinese characters",
+	},
+	"zh-Hant": {
+		closingReminder:
+			"請只用繁體中文輸出整個列表，即使上面的項目是英文；公司名、產品名、模型名保留原文。",
+		name: "Traditional Chinese",
+		reasonLimit: "max 40 Chinese characters",
+		takeawayLimit: "max 30 Chinese characters",
+	},
+	ru: {
+		...WORD_LIMITS,
+		closingReminder:
+			"Напишите весь список только на русском языке, даже если материалы выше на английском.",
+		name: "Russian",
+	},
+	"fr-FR": {
+		...WORD_LIMITS,
+		closingReminder:
+			"Rédigez toute la liste uniquement en français, même si les éléments ci-dessus sont en anglais.",
+		name: "French (France)",
+	},
+	"es-ES": {
+		...WORD_LIMITS,
+		closingReminder:
+			"Escribe toda la lista únicamente en español, aunque los elementos anteriores estén en inglés.",
+		name: "Spanish (Spain)",
+	},
+	"de-DE": {
+		...WORD_LIMITS,
+		closingReminder:
+			"Schreiben Sie die gesamte Liste ausschließlich auf Deutsch, auch wenn die Einträge oben auf Englisch sind.",
+		name: "German (Germany)",
+	},
+	"pt-BR": {
+		...WORD_LIMITS,
+		closingReminder:
+			"Escreva toda a lista somente em português do Brasil, mesmo que os itens acima estejam em inglês.",
+		name: "Portuguese (Brazil)",
+	},
+};
+
+export function buildPrompt(
+	topic: TopicPreset,
+	cited: CitedItem[],
+	lang: TranslationLanguage = "en",
+	window: SummaryWindow = "today",
+	scope: SummaryScope = "topic"
+): string {
 	const lines: string[] = [];
 	lines.push(`Prompt version: ${SUMMARY_PROMPT_VERSION}`);
+	lines.push(`Window: ${window}`);
 	lines.push(`Topic: ${topic.title}`);
+	if (scope === "cross-topic") {
+		lines.push(`Selection mode: ${CROSS_TOPIC_SELECTION_MODE}`);
+	}
 	if (topic.description) {
 		lines.push(`Description: ${topic.description}`);
 	}
 	lines.push("");
 	lines.push(
-		"Numbered sources you may cite. Each line is `[N] [Source] (item date) Title — short description` (description shown when available). Prioritize newer dated items when identifying what changed or moved recently:"
+		"Numbered items you may cite. Each line is `[N] [Source] (item date) Title — short description` (description shown when available):"
 	);
 	lines.push("");
 
@@ -147,93 +584,209 @@ export function buildPrompt(topic: TopicPreset, cited: CitedItem[]): string {
 		const includeDesc =
 			description && !isDescriptionRedundant(item.title, description);
 		const suffix = includeDesc ? ` — ${description}` : "";
+		const itemTopic =
+			scope === "cross-topic" ? topicForSource(item.sourceId) : undefined;
+		const topicLabel = itemTopic ? ` [Topic: ${itemTopic}]` : "";
 		lines.push(
-			`[${n}] [${source}] (${formatSourceItemDate(item)}) ${item.title}${suffix}`
+			`[${n}] [${source}]${topicLabel} (${formatSourceItemDate(item)}) ${item.title}${suffix}`
 		);
 	}
+
+	lines.push("");
+	lines.push(SUMMARY_LANGUAGE_PROFILES[lang].closingReminder);
 
 	return lines.join("\n");
 }
 
-function buildSystemPrompt(lang: TranslationLanguage): string {
+export function buildSystemPrompt(
+	lang: TranslationLanguage,
+	window: SummaryWindow = "today",
+	scope: SummaryScope = "topic"
+): string {
+	const profile = SUMMARY_LANGUAGE_PROFILES[lang];
+	const period = SUMMARY_WINDOW_PROFILES[window].editorialPeriod;
+	const recencyRule =
+		window === "today"
+			? "- Prefer the newest items. Skip promotions, ticket sales, job posts, and pure opinion pieces."
+			: "- Judge importance over the whole period, not recency: a major story from early in the period beats a minor one from today. Skip promotions, ticket sales, job posts, and pure opinion pieces.";
+	const scopeRules =
+		scope === "cross-topic"
+			? [
+					"- This is the cross-topic Featured digest. Aim to make at least 3 visibly different topics appear in the first 5 entries and at least 4 across the full list when stories of comparable value exist. This is an editorial target, not a quota.",
+					"- Do not let AI dominate merely because it has more candidates. After the strongest one or two stories from a single theme, prefer a comparably consequential story from another topic.",
+					"- Quality wins over quotas: never include a weak story just to represent another `[Topic: …]`. Rank first by consequence, novelty, evidence, and likely reader impact.",
+					"- Penalize promotions, routine model announcements, curiosity-only discoveries, local oddities, and opinion without new facts.",
+				]
+			: [];
+	return [
+		"You are the editor of OpenTrends, a dashboard of first-hand tech sources.",
+		`From the numbered items the user gives you, pick the 10 things most worth knowing ${period}.`,
+		"Rules:",
+		"- Merge items that report the same story into one entry and cite all of them. A story covered by several sources matters more.",
+		"- Never include the same real-world event twice, even when different headlines emphasize different angles. Before writing, compare all selected entries and remove semantic duplicates.",
+		...scopeRules,
+		recencyRule,
+		"- Output only a Markdown ordered list numbered `1.`, `2.`, `3.` … with at most 10 entries (fewer when the material is thin). No heading, no preamble, no closing remarks, no blank lines between entries.",
+		`- Each entry is one line: \`1. **Takeaway in one sentence (${profile.takeawayLimit})** — why it is worth reading (${profile.reasonLimit}) [N][M]\`.`,
+		`- Write everything in ${profile.name}, whatever language the items are in. Keep company, product, and model names in their original form.`,
+		"- End each entry with citation tags in the form `[N]`, where N is the item number. Cite several items adjacent like `[3][7]`, never `[3, 7]`. Only cite numbers that appear in the list.",
+	].join("\n");
+}
+
+export function buildCrossTopicFallbackSummary(
+	cited: CitedItem[],
+	lang: TranslationLanguage
+): string {
+	const selected = selectCrossTopicFallbackItems(cited);
+	return selected
+		.map(({ item, n }, index) => {
+			const title = item.title.replace(/\s+/g, " ").replaceAll("**", "").trim();
+			return `${index + 1}. **${title}** — ${fallbackEditorialReason(item, lang)} [${n}]`;
+		})
+		.join("\n");
+}
+
+interface ScoredFallbackCandidate {
+	entry: CitedItem;
+	score: number;
+}
+
+function fallbackCandidates(cited: CitedItem[]): CitedItem[] {
+	const normalized: CitedItem[] = [];
+	const seenUrls = new Set<string>();
+	for (const entry of cited) {
+		if (seenUrls.has(entry.item.url)) {
+			continue;
+		}
+		seenUrls.add(entry.item.url);
+		normalized.push(entry);
+	}
+	const withoutPromotions = normalized.filter(
+		(entry) => !PROMOTIONAL_TITLE_RE.test(entry.item.title)
+	);
+	return withoutPromotions.length > 0 ? withoutPromotions : normalized;
+}
+
+function scoreFallbackCandidates(
+	candidates: CitedItem[]
+): ScoredFallbackCandidate[] {
+	const now = Math.max(
+		Date.now(),
+		...candidates.map(({ item }) => itemTime(item))
+	);
+	return candidates.map((entry) => {
+		const ageHours = Math.max(0, (now - itemTime(entry.item)) / HOUR_MS);
+		const description = entry.item.description?.trim();
+		const rankBonus = entry.item.rank ? Math.max(0, 12 - entry.item.rank) : 0;
+		return {
+			entry,
+			score:
+				Math.max(0, 24 - ageHours) / 4 +
+				rankBonus +
+				(description && !isDescriptionRedundant(entry.item.title, description)
+					? 10
+					: 0) +
+				(HIGH_SIGNAL_TITLE_RE.test(entry.item.title) ? 8 : 0),
+		};
+	});
+}
+
+function selectCrossTopicFallbackItems(cited: CitedItem[]): CitedItem[] {
+	const scored = scoreFallbackCandidates(fallbackCandidates(cited));
+	const selected: CitedItem[] = [];
+	const selectedEntries = new Set<CitedItem>();
+	const topicCounts = new Map<string, number>();
+	const sourceCounts = new Map<string, number>();
+	while (selected.length < Math.min(10, scored.length)) {
+		let bestIndex = -1;
+		let bestScore = Number.NEGATIVE_INFINITY;
+		for (const [index, candidate] of scored.entries()) {
+			if (selectedEntries.has(candidate.entry)) {
+				continue;
+			}
+			const topicId = topicForSource(candidate.entry.item.sourceId) ?? "other";
+			const topicCount = topicCounts.get(topicId) ?? 0;
+			const sourceCount = sourceCounts.get(candidate.entry.source) ?? 0;
+			// Diversity is a small editorial tie-breaker, never a quota. A much
+			// stronger story can still win another slot from the same field.
+			const adjustedScore =
+				candidate.score +
+				(topicCount === 0 ? 5 : 0) -
+				topicCount * 2 -
+				sourceCount * 3;
+			if (adjustedScore > bestScore) {
+				bestIndex = index;
+				bestScore = adjustedScore;
+			}
+		}
+		const best = scored[bestIndex]?.entry;
+		if (!best) {
+			break;
+		}
+		selected.push(best);
+		selectedEntries.add(best);
+		const topicId = topicForSource(best.item.sourceId) ?? "other";
+		topicCounts.set(topicId, (topicCounts.get(topicId) ?? 0) + 1);
+		sourceCounts.set(best.source, (sourceCounts.get(best.source) ?? 0) + 1);
+	}
+	return selected;
+}
+
+function fallbackEditorialReason(
+	item: NewsItem,
+	lang: TranslationLanguage
+): string {
+	const description = item.description
+		?.replace(/<[^>]+>/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+	if (
+		description &&
+		!isDescriptionRedundant(item.title, description) &&
+		isWrittenInTargetLanguage(description, lang)
+	) {
+		const limit = lang === "zh" || lang === "zh-Hant" ? 44 : 120;
+		const characters = Array.from(description);
+		return characters.length > limit
+			? `${characters.slice(0, limit).join("")}…`
+			: description;
+	}
 	if (lang === "zh") {
-		return [
-			"你是趋势新闻看板的编辑。",
-			"根据下面带编号的信息源，写一段简短的中文总结，突出共同主题、值得关注的故事和真正有趣或重要的内容。",
-			"每条信息源都带有日期；优先总结日期较新的条目，尽量说明最近更新、变化或新出现的内容，较早条目只作为背景。",
-			"输出 Markdown：可以用 **加粗** 强调关键词；不要大标题（#），不要写「以下是总结」之类的开场白。",
-			"重要：每当具体提到某条新闻时，**必须**在该断言或要点结尾追加来源编号，格式严格写作 `[N]`，N 是上面列表里的编号。例如：「OpenAI 推出了 GPT-5 [3][7]」。引用多条用 `[3][7]` 连写，不要写成 `[3, 7]`。",
-			"只引用真实出现在编号列表里的 N，不要自创。如果某句没有具体来源，就不要加引用。",
-		].join("\n");
+		return "涉及产品、研究或行业格局的新变化";
 	}
 	if (lang === "zh-Hant") {
-		return [
-			"你是趨勢新聞看板的編輯。",
-			"根據下面帶編號的資訊來源，寫一段簡短的繁體中文總結，突出共同主題、值得關注的故事和真正有趣或重要的內容。",
-			"每則資訊來源都帶有日期；優先總結日期較新的項目，盡量說明最近更新、變化或新出現的內容，較早項目只作背景。",
-			"輸出 Markdown：可以用 **粗體** 強調關鍵詞；不要大標題（#），不要寫「以下是總結」之類的開場白。",
-			"重要：每當具體提到某則新聞時，**必須**在該斷言或要點結尾追加來源編號，格式嚴格寫作 `[N]`，N 是上面列表裡的編號。例如：「OpenAI 推出了 GPT-5 [3][7]」。引用多則用 `[3][7]` 連寫，不要寫成 `[3, 7]`。",
-			"只引用真實出現在編號列表裡的 N，不要自創。如果某句沒有具體來源，就不要加引用。",
-		].join("\n");
+		return "涉及產品、研究或產業格局的新變化";
 	}
-	if (lang === "ru") {
-		return [
-			"Вы редактор панели технологических трендов.",
-			"По пронумерованным заголовкам ниже напишите краткую сводку на русском языке: выделите общие темы, заметные сюжеты и действительно важные или неожиданные детали.",
-			"У каждого источника есть дата; отдавайте приоритет более новым материалам и по возможности объясняйте, что недавно обновилось, изменилось или появилось. Более старые материалы используйте только как контекст.",
-			"Отвечайте в Markdown: используйте **жирный** для акцентов; не добавляйте заголовки верхнего уровня (#) и вступления вроде «Вот сводка».",
-			"ВАЖНО: когда ссылаетесь на конкретный материал, добавляйте номер источника в формате `[N]` в конце предложения или утверждения. Несколько источников пишите подряд, например `[3][7]`, а не `[3, 7]`.",
-			"Цитируйте только номера, реально присутствующие в списке. Если предложение не привязано к конкретному материалу, не добавляйте ссылку.",
-		].join("\n");
+	return "A concrete change in products, research, or the industry";
+}
+
+const CJK_CHAR_RE = /[\u3400-\u9fff]/g;
+const CYRILLIC_CHAR_RE = /\p{Script=Cyrillic}/gu;
+const LATIN_CHAR_RE = /\p{Script=Latin}/gu;
+
+function countMatches(text: string, pattern: RegExp): number {
+	return text.match(pattern)?.length ?? 0;
+}
+
+// Only scripts that differ from the mostly-English source material can be
+// checked cheaply; Latin-script targets always pass.
+export function isWrittenInTargetLanguage(
+	text: string,
+	lang: TranslationLanguage
+): boolean {
+	let target: number;
+	if (lang === "zh" || lang === "zh-Hant") {
+		target = countMatches(text, CJK_CHAR_RE);
+	} else if (lang === "ru") {
+		target = countMatches(text, CYRILLIC_CHAR_RE);
+	} else {
+		return true;
 	}
-	if (lang === "fr-FR") {
-		return [
-			"Vous êtes éditeur d'un tableau de bord des tendances technologiques.",
-			"À partir des titres numérotés ci-dessous, rédigez un court résumé en français de France qui met en avant les thèmes communs, les histoires notables et les éléments vraiment surprenants ou importants.",
-			"Chaque élément source inclut une date ; donnez la priorité aux éléments les plus récents et indiquez ce qui a changé, été mis à jour ou émergé récemment. Utilisez les éléments plus anciens seulement comme contexte.",
-			"Répondez en Markdown : utilisez le **gras** pour les points clés ; évitez les titres de premier niveau (#) et les introductions comme « Voici un résumé ».",
-			"IMPORTANT : quand vous mentionnez un élément précis, ajoutez une citation au format `[N]` à la fin de la phrase ou de l'affirmation. Pour plusieurs sources, écrivez-les côte à côte, par exemple `[3][7]`, pas `[3, 7]`.",
-			"Ne citez que les numéros réellement présents dans la liste. Si une phrase n'est pas liée à un élément précis, n'ajoutez pas de citation.",
-		].join("\n");
+	const latin = countMatches(text, LATIN_CHAR_RE);
+	if (target + latin === 0) {
+		return true;
 	}
-	if (lang === "es-ES") {
-		return [
-			"Eres editor de un panel de tendencias tecnológicas.",
-			"A partir de los titulares numerados de abajo, escribe un resumen breve en español de España que destaque temas comunes, historias relevantes y cualquier detalle realmente sorprendente o importante.",
-			"Cada elemento de fuente incluye una fecha; da prioridad a los elementos más recientes y explica qué ha cambiado, se ha actualizado o ha aparecido últimamente. Usa los elementos antiguos solo como contexto.",
-			"Responde en Markdown: usa **negrita** para enfatizar; evita encabezados de primer nivel (#) y entradas como «Aquí tienes un resumen».",
-			"IMPORTANTE: cuando menciones un elemento concreto, añade una cita con el formato `[N]` al final de la frase o afirmación. Para varias fuentes, escríbelas juntas, por ejemplo `[3][7]`, no `[3, 7]`.",
-			"Cita solo números que aparezcan realmente en la lista. Si una frase no está vinculada a un elemento concreto, no añadas cita.",
-		].join("\n");
-	}
-	if (lang === "de-DE") {
-		return [
-			"Sie sind Redakteur eines Dashboards für Technologietrends.",
-			"Schreiben Sie anhand der nummerierten Überschriften unten eine kurze Zusammenfassung auf Deutsch (Deutschland), die gemeinsame Themen, wichtige Geschichten und wirklich überraschende oder bedeutsame Details hervorhebt.",
-			"Jedes Quellelement enthält ein Datum; priorisieren Sie neuere Einträge und erklären Sie nach Möglichkeit, was sich kürzlich geändert, aktualisiert oder neu ergeben hat. Ältere Einträge nur als Kontext verwenden.",
-			"Antworten Sie in Markdown: Verwenden Sie **Fettdruck** für Akzente; vermeiden Sie Überschriften erster Ebene (#) und Einleitungen wie „Hier ist eine Zusammenfassung“.",
-			"WICHTIG: Wenn Sie sich auf einen konkreten Eintrag beziehen, fügen Sie am Ende des Satzes oder der Aussage eine Quellenangabe im Format `[N]` hinzu. Mehrere Quellen direkt hintereinander schreiben, z. B. `[3][7]`, nicht `[3, 7]`.",
-			"Zitieren Sie nur Nummern, die tatsächlich in der Liste vorkommen. Wenn ein Satz nicht an einen konkreten Eintrag gebunden ist, lassen Sie die Quellenangabe weg.",
-		].join("\n");
-	}
-	if (lang === "pt-BR") {
-		return [
-			"Você é editor de um painel de tendências de tecnologia.",
-			"Com base nas manchetes numeradas abaixo, escreva um resumo curto em português do Brasil destacando temas comuns, histórias relevantes e qualquer detalhe realmente surpreendente ou importante.",
-			"Cada item de fonte inclui uma data; priorize itens mais recentes e explique o que mudou, foi atualizado ou surgiu recentemente. Use itens mais antigos apenas como contexto.",
-			"Responda em Markdown: use **negrito** para dar ênfase; evite títulos de primeiro nível (#) e aberturas como «Aqui está um resumo».",
-			"IMPORTANTE: sempre que mencionar um item específico, adicione uma citação no formato `[N]` ao final da frase ou afirmação. Para várias fontes, escreva-as juntas, por exemplo `[3][7]`, não `[3, 7]`.",
-			"Cite apenas números que realmente aparecem na lista. Se uma frase não estiver ligada a um item específico, não adicione citação.",
-		].join("\n");
-	}
-	return [
-		"You are an editor for a trending tech news dashboard.",
-		"Given the numbered headlines below, write a short summary that highlights common themes, notable stories, and anything genuinely surprising or significant.",
-		"Each source item includes a date; prioritize newer dated items and call out what recently changed, updated, or emerged. Use older items only as context.",
-		"Respond in Markdown: use **bold** to emphasize key terms; Avoid top-level headings (#) and no preamble like 'Here is a summary'.",
-		"IMPORTANT: whenever you reference a specific item, append a citation tag in the form `[N]` (where N is the index from the list above), placed at the end of the sentence or claim. To cite multiple sources, write them adjacent like `[3][7]`, not `[3, 7]`.",
-		"Only cite numbers that actually appear in the list. If a sentence isn't tied to a specific item, omit the citation.",
-	].join("\n");
+	return target / (target + latin) >= MIN_TARGET_SCRIPT_RATIO;
 }
 
 function makeSummaryCacheKey(
@@ -284,17 +837,17 @@ async function readHotSummaryCache(
 		return null;
 	}
 	const text = envelope.value.text.trim();
-	if (!hasCurrentPromptVersion(envelope.value.prompt)) {
+	if (!hasCurrentSummaryPromptVersion(envelope.value.prompt, topicId)) {
 		return null;
 	}
 	return text ? envelope.value : null;
 }
 
-async function writeHotSummaryCache(
+function writeHotSummaryCache(
 	topicId: string,
 	lang: TranslationLanguage,
 	entry: CachedSummaryEntry
-): Promise<void> {
+): Promise<boolean> {
 	const now = Date.now();
 	const envelope: CacheEnvelope<CachedSummaryEntry> = {
 		createdAt: now,
@@ -303,16 +856,44 @@ async function writeHotSummaryCache(
 		staleUntil: entry.staleUntil,
 		value: entry,
 	};
-	await hotCache.put(
+	return hotCache.put(
 		makeSummaryHotCacheKey(topicId, lang),
 		envelope,
 		SUMMARY_HOT_CACHE_TTL_SECONDS
 	);
 }
 
-async function readSummaryWithTimeout(
+export async function hasCurrentHotSummaryCache(
 	topicId: string,
 	lang: TranslationLanguage
+): Promise<boolean> {
+	return Boolean(await readHotSummaryCache(topicId, lang));
+}
+
+export async function hasFreshHotSummaryCache(
+	topicId: string,
+	lang: TranslationLanguage
+): Promise<boolean> {
+	const envelope = await hotCache.get<CachedSummaryEntry>(
+		makeSummaryHotCacheKey(topicId, lang)
+	);
+	if (
+		!envelope ||
+		envelope.schemaVersion !== SUMMARY_HOT_CACHE_SCHEMA_VERSION ||
+		envelope.freshUntil <= Date.now()
+	) {
+		return false;
+	}
+	return (
+		Boolean(envelope.value.text.trim()) &&
+		hasCurrentSummaryPromptVersion(envelope.value.prompt, topicId)
+	);
+}
+
+async function readSummaryWithTimeout(
+	topicId: string,
+	lang: TranslationLanguage,
+	timeoutMs = SUMMARY_CACHE_READ_TIMEOUT_MS
 ): Promise<Awaited<ReturnType<typeof readSummary>>> {
 	let timeout: ReturnType<typeof setTimeout> | undefined;
 	try {
@@ -321,7 +902,7 @@ async function readSummaryWithTimeout(
 			new Promise<never>((_, reject) => {
 				timeout = setTimeout(
 					() => reject(new SummaryCacheReadTimeoutError()),
-					SUMMARY_CACHE_READ_TIMEOUT_MS
+					timeoutMs
 				);
 			}),
 		]);
@@ -333,7 +914,9 @@ async function readSummaryWithTimeout(
 }
 
 function cachedSummaryToEntry(
-	cached: Awaited<ReturnType<typeof readSummary>>
+	cached: Awaited<ReturnType<typeof readSummary>>,
+	window: SummaryWindow,
+	topicId: string
 ): CachedSummaryEntry | null {
 	if (!cached) {
 		return null;
@@ -342,21 +925,23 @@ function cachedSummaryToEntry(
 	if (!text) {
 		return null;
 	}
-	if (!hasCurrentPromptVersion(cached.prompt)) {
+	if (!hasCurrentSummaryPromptVersion(cached.prompt, topicId)) {
 		return null;
 	}
 	return {
 		citations: cached.citations,
 		expiresAt: cached.expiresAt,
 		prompt: cached.prompt,
-		staleUntil: cached.createdAt + SUMMARY_STALE_MS,
+		staleUntil: cached.createdAt + SUMMARY_WINDOW_PROFILES[window].staleMs,
 		text: cached.text,
 	};
 }
 
 async function readAnyCachedSummary(
 	topicId: string,
-	lang: TranslationLanguage
+	lang: TranslationLanguage,
+	window: SummaryWindow,
+	readTimeoutMs = SUMMARY_CACHE_READ_TIMEOUT_MS
 ): Promise<CachedSummaryEntry | null> {
 	const memory = readMemorySummary(topicId, lang);
 	if (memory) {
@@ -370,9 +955,9 @@ async function readAnyCachedSummary(
 	}
 
 	try {
-		const cached = await readSummaryWithTimeout(topicId, lang);
+		const cached = await readSummaryWithTimeout(topicId, lang, readTimeoutMs);
 		if (cached) {
-			const entry = cachedSummaryToEntry(cached);
+			const entry = cachedSummaryToEntry(cached, window, topicId);
 			if (entry) {
 				hydrateMemorySummary(topicId, lang, entry);
 				await writeHotSummaryCache(topicId, lang, entry);
@@ -389,56 +974,97 @@ async function readAnyCachedSummary(
 
 async function refreshSummaryCache(
 	topicId: string,
-	lang: TranslationLanguage
+	lang: TranslationLanguage,
+	window: SummaryWindow,
+	sourceIds?: readonly SourceId[]
 ): Promise<void> {
 	if (!env.LLM_API_KEY) {
 		throw new TrendsSummaryNotConfiguredError();
 	}
-	const topic = getTopicPreset(topicId);
-	if (!topic) {
+	const resolved = resolveTopic(topicId, sourceIds);
+	if (!resolved) {
 		throw new TopicNotFoundError(topicId);
 	}
-	const page = await getTrendsPage(topicId, lang);
-	const cited = collectCitedItems(page);
-	const citations: Citation[] = cited.map(({ n, item }) => ({
-		n,
-		url: item.url,
-	}));
-	const prompt = buildPrompt(topic, cited);
-	const cached = await readSummaryWithTimeout(topicId, lang);
-	const cachedEntry = cachedSummaryToEntry(cached);
+	const topic = resolved.preset;
+	const cacheTopicId = summaryCacheTopicId(resolved.cacheTopicId, window);
+	const scope = summaryScope(topicId);
+	const cited = await collectWindowCitedItems(topicId, topic, lang, window);
+	const citations: Citation[] = cited.map(toCitation);
+	const prompt = buildPrompt(topic, cited, lang, window, scope);
+	const cachedEntry = await readAnyCachedSummary(
+		cacheTopicId,
+		lang,
+		window,
+		SUMMARY_BACKGROUND_CACHE_TIMEOUT_MS
+	);
 	if (cachedEntry && cachedEntry.prompt === prompt) {
-		hydrateMemorySummary(topicId, lang, cachedEntry);
-		await writeHotSummaryCache(topicId, lang, cachedEntry);
+		if (!(await writeHotSummaryCache(cacheTopicId, lang, cachedEntry))) {
+			throw new SummaryCacheWriteError();
+		}
+		hydrateMemorySummary(cacheTopicId, lang, cachedEntry);
 		return;
 	}
 
 	const controller = new AbortController();
-	for await (const _chunk of streamGeneratedSummary({
-		citations,
-		cited,
-		lang,
-		prompt,
-		topic,
-		topicId,
-		abortSignal: controller.signal,
-	})) {
-		// Consume the generator so it can write the completed summary to cache.
+	for (let attempt = 0; attempt <= SUMMARY_LANGUAGE_RETRY_LIMIT; attempt += 1) {
+		for await (const _chunk of streamGeneratedSummary({
+			cacheTopicId,
+			citations,
+			cited,
+			lang,
+			prompt,
+			scope,
+			topic,
+			window,
+			abortSignal: controller.signal,
+		})) {
+			// Consume the generator so it can write the completed summary to cache.
+		}
+		// A summary in the wrong language is never cached, so a missing entry
+		// here means the attempt has to be repeated.
+		if (readMemorySummary(cacheTopicId, lang)?.prompt === prompt) {
+			return;
+		}
 	}
+	if (scope === "cross-topic") {
+		const text = buildCrossTopicFallbackSummary(cited, lang);
+		if (text) {
+			await writeCachedSummary({
+				citations,
+				lang,
+				prompt,
+				text,
+				topicId: cacheTopicId,
+				window,
+			});
+			return;
+		}
+	}
+	throw new Error(
+		`Summary generation did not produce a cache entry for ${cacheTopicId}:${lang}.`
+	);
 }
 
 function startSummaryRefresh(
 	topicId: string,
-	lang: TranslationLanguage
+	lang: TranslationLanguage,
+	window: SummaryWindow,
+	sourceIds?: readonly SourceId[]
 ): Promise<void> {
-	const cacheKey = makeSummaryCacheKey(topicId, lang);
+	const cacheKey = makeSummaryCacheKey(
+		summaryCacheTopicId(
+			resolveTopic(topicId, sourceIds)?.cacheTopicId ?? topicId,
+			window
+		),
+		lang
+	);
 	const inFlight = inFlightSummaryRefreshes.get(cacheKey);
 	if (inFlight) {
 		return inFlight;
 	}
 	const refresh = (async () => {
 		try {
-			await refreshSummaryCache(topicId, lang);
+			await refreshSummaryCache(topicId, lang, window, sourceIds);
 		} finally {
 			inFlightSummaryRefreshes.delete(cacheKey);
 		}
@@ -449,41 +1075,11 @@ function startSummaryRefresh(
 
 export function refreshTrendsSummaryCache(
 	topicId: string,
-	lang: TranslationLanguage
+	lang: TranslationLanguage,
+	window: SummaryWindow = "today",
+	sourceIds?: readonly SourceId[]
 ): Promise<void> {
-	return startSummaryRefresh(topicId, lang);
-}
-
-function refreshSummaryInBackground(
-	refresh: Promise<void>,
-	waitUntil: TrendsSummaryCacheOptions["waitUntil"]
-): void {
-	const observedRefresh = refresh.catch((error) => {
-		console.warn("[trends-summary] background refresh failed", error);
-	});
-	if (waitUntil) {
-		waitUntil(observedRefresh);
-	}
-}
-
-async function withTimeout<T>(
-	promise: Promise<T>,
-	ms: number,
-	label: string
-): Promise<T> {
-	let timeout: ReturnType<typeof setTimeout> | undefined;
-	try {
-		return await Promise.race([
-			promise,
-			new Promise<never>((_, reject) => {
-				timeout = setTimeout(() => reject(new Error(label)), ms);
-			}),
-		]);
-	} finally {
-		if (timeout) {
-			clearTimeout(timeout);
-		}
-	}
+	return startSummaryRefresh(topicId, lang, window, sourceIds);
 }
 
 async function writeCachedSummary(params: {
@@ -492,34 +1088,44 @@ async function writeCachedSummary(params: {
 	prompt: string;
 	text: string;
 	topicId: string;
+	window: SummaryWindow;
 }): Promise<void> {
 	const now = Date.now();
+	const profile = SUMMARY_WINDOW_PROFILES[params.window];
 	const entry: CachedSummaryEntry = {
 		citations: params.citations,
-		expiresAt: now + SUMMARY_TTL_MS,
+		expiresAt: now + profile.ttlMs,
 		prompt: params.prompt,
-		staleUntil: now + SUMMARY_STALE_MS,
+		staleUntil: now + profile.staleMs,
 		text: params.text,
 	};
-	hydrateMemorySummary(params.topicId, params.lang, entry);
-	await writeHotSummaryCache(params.topicId, params.lang, entry);
-	try {
-		await withTimeout(
-			writeSummary({
-				topicId: params.topicId,
-				lang: params.lang,
-				prompt: params.prompt,
-				text: params.text,
-				citations: params.citations,
-				createdAt: now,
-				ttlMs: SUMMARY_TTL_MS,
-			}),
-			SUMMARY_CACHE_WRITE_TIMEOUT_MS,
-			"Timed out writing cached trends summary."
-		);
-	} catch (error) {
-		console.warn("[trends-summary] failed to write cached summary", error);
+	if (!(await writeHotSummaryCache(params.topicId, params.lang, entry))) {
+		throw new SummaryCacheWriteError();
 	}
+	hydrateMemorySummary(params.topicId, params.lang, entry);
+	// Real topics' "today" digests are kept per day for the calendar; a
+	// followed list's digest (cache id "mine:…") is one reader's and is not.
+	if (params.window === "today" && !params.topicId.includes(":")) {
+		await archiveDigest({
+			citations: params.citations,
+			lang: params.lang,
+			text: params.text,
+			topicId: params.topicId,
+		}).catch((error) => {
+			console.warn("[trends-summary] failed to archive digest", error);
+		});
+	}
+}
+
+// Body format for clients that ask for it: one JSON line carrying every
+// citation, then the Markdown. A response header cannot hold the citation
+// lists of the longer windows.
+export async function* withCitationPreamble(
+	citations: Citation[],
+	stream: AsyncGenerator<string, void, void>
+): AsyncGenerator<string, void, void> {
+	yield `${JSON.stringify({ citations })}\n`;
+	yield* stream;
 }
 
 function delay(ms: number): Promise<void> {
@@ -563,27 +1169,66 @@ async function readNextSummaryChunk(
 	}
 }
 
-async function* streamGeneratedSummary(params: {
+interface GeneratedSummaryParams {
+	abortSignal: AbortSignal;
+	cacheTopicId: string;
 	citations: Citation[];
 	cited: CitedItem[];
 	lang: TranslationLanguage;
 	prompt: string;
+	scope: SummaryScope;
 	topic: TopicPreset;
-	topicId: string;
-	abortSignal: AbortSignal;
-}): AsyncGenerator<string, void, void> {
+	window: SummaryWindow;
+}
+
+async function cacheGeneratedSummary(
+	params: GeneratedSummaryParams,
+	text: string
+): Promise<void> {
+	if (!isWrittenInTargetLanguage(text, params.lang)) {
+		console.warn(
+			`[trends-summary] discarded ${params.cacheTopicId} summary not written in ${params.lang}`
+		);
+		return;
+	}
+	await writeCachedSummary({
+		citations: params.citations,
+		lang: params.lang,
+		prompt: params.prompt,
+		text,
+		topicId: params.cacheTopicId,
+		window: params.window,
+	});
+}
+
+async function* streamGeneratedSummary(
+	params: GeneratedSummaryParams
+): AsyncGenerator<string, void, void> {
 	const provider = createOpenAICompatible({
 		name: "llm",
 		apiKey: env.LLM_API_KEY ?? "",
 		baseURL: env.LLM_BASE_URL,
+		includeUsage: isSiliconFlow(env.LLM_BASE_URL),
 	});
 	const chunks: string[] = [];
 	let iterator: AsyncIterator<string> | undefined;
 	try {
+		// streamText reports provider failures through onError and then simply
+		// ends the text stream, so a rejected key would otherwise look like an
+		// empty summary.
+		let providerError: unknown;
 		const result = streamText({
 			abortSignal: params.abortSignal,
-			model: provider(env.LLM_MODEL),
-			system: buildSystemPrompt(params.lang),
+			model: trackSiliconFlowModel(
+				provider(env.LLM_MODEL),
+				"summary",
+				env.LLM_BASE_URL
+			),
+			onError: ({ error }) => {
+				providerError = error;
+			},
+			providerOptions: llmProviderOptions(),
+			system: buildSystemPrompt(params.lang, params.window, params.scope),
 			prompt: params.prompt,
 		});
 		iterator = result.textStream[Symbol.asyncIterator]();
@@ -602,15 +1247,10 @@ async function* streamGeneratedSummary(params: {
 			yield chunk;
 		}
 		const text = chunks.join("").trim();
-		if (text) {
-			await writeCachedSummary({
-				citations: params.citations,
-				lang: params.lang,
-				prompt: params.prompt,
-				text,
-				topicId: params.topicId,
-			});
+		if (!text) {
+			throw providerError ?? new Error("The model returned an empty summary.");
 		}
+		await cacheGeneratedSummary(params, text);
 	} catch (error) {
 		try {
 			await Promise.race([
@@ -621,6 +1261,9 @@ async function* streamGeneratedSummary(params: {
 			/* Ignore cleanup failures after a generation timeout. */
 		}
 		console.warn("[trends-summary] failed to stream model summary", error);
+		if (error instanceof SummaryCacheWriteError) {
+			throw error;
+		}
 		if (chunks.length === 0) {
 			yield buildFallbackSummary(params.topic, params.cited, params.lang);
 		}
@@ -683,6 +1326,47 @@ function buildFallbackSummary(
 	].join("\n");
 }
 
+// Digests cached before citations carried a topic get it filled in from the
+// current pages the first time they are served, then the enriched entry is
+// written back so this runs once per entry.
+async function withCitationTopics(
+	entry: CachedSummaryEntry,
+	cacheTopicId: string,
+	topicId: string,
+	topic: TopicPreset,
+	lang: TranslationLanguage,
+	window: SummaryWindow
+): Promise<Citation[]> {
+	if (entry.citations.every((citation) => citation.topic)) {
+		return entry.citations;
+	}
+	let cited: CitedItem[];
+	try {
+		cited = await collectWindowCitedItems(topicId, topic, lang, window);
+	} catch {
+		return entry.citations;
+	}
+	const topicByUrl = new Map<string, string>();
+	for (const { item } of cited) {
+		const found = topicForSource(item.sourceId);
+		if (found) {
+			topicByUrl.set(item.url, found);
+		}
+	}
+	const citations = entry.citations.map((citation) => {
+		const found = citation.topic ?? topicByUrl.get(citation.url);
+		return found ? { ...citation, topic: found } : citation;
+	});
+	if (
+		citations.some((citation, index) => citation !== entry.citations[index])
+	) {
+		const enriched = { ...entry, citations };
+		hydrateMemorySummary(cacheTopicId, lang, enriched);
+		await writeHotSummaryCache(cacheTopicId, lang, enriched);
+	}
+	return citations;
+}
+
 export async function prepareTrendsSummary(
 	topicId: string,
 	lang: TranslationLanguage = "en",
@@ -691,45 +1375,65 @@ export async function prepareTrendsSummary(
 	if (!env.LLM_API_KEY) {
 		throw new TrendsSummaryNotConfiguredError();
 	}
-	const topic = getTopicPreset(topicId);
-	if (!topic) {
+	const resolved = resolveTopic(topicId, options.sourceIds, options.keywords);
+	if (!resolved) {
 		throw new TopicNotFoundError(topicId);
 	}
+	const window = options.window ?? "today";
+	const cacheTopicId = summaryCacheTopicId(resolved.cacheTopicId, window);
 
-	const cachedSummary = await readAnyCachedSummary(topicId, lang);
+	const cachedSummary = await readAnyCachedSummary(cacheTopicId, lang, window);
 	if (cachedSummary) {
-		if (cachedSummary.expiresAt <= Date.now()) {
-			refreshSummaryInBackground(
-				startSummaryRefresh(topicId, lang),
-				options.waitUntil
-			);
-		}
 		return {
-			citations: cachedSummary.citations,
+			citations: await withCitationTopics(
+				cachedSummary,
+				cacheTopicId,
+				topicId,
+				resolved.preset,
+				lang,
+				window
+			),
+			origin: "cache",
 			stream: (abortSignal) =>
 				replayCachedSummary(cachedSummary.text, abortSignal),
 		};
 	}
 
-	const page = await getTrendsPage(topicId, lang);
-	const cited = collectCitedItems(page);
-	const citations: Citation[] = cited.map(({ n, item }) => ({
-		n,
-		url: item.url,
-	}));
-	const prompt = buildPrompt(topic, cited);
+	// Topic digests are prewarmed by the scheduler and only replayed here. A
+	// followed-sources digest is one reader's request: it is generated in the
+	// response instead of waiting behind the shared queue.
+	if (topicId === FOLLOWED_TOPIC_ID) {
+		const topic = resolved.preset;
+		const keywords = options.keywords ?? [];
+		const cited = await collectWindowCitedItems(
+			topicId,
+			topic,
+			lang,
+			window,
+			keywords
+		);
+		if (cited.length === 0) {
+			throw new TrendsSummaryNoMatchesError();
+		}
+		const citations: Citation[] = cited.map(toCitation);
+		const prompt = buildPrompt(topic, cited, lang, window, "topic");
+		return {
+			citations,
+			origin: "generated",
+			stream: (abortSignal) =>
+				streamGeneratedSummary({
+					abortSignal,
+					cacheTopicId,
+					citations,
+					cited,
+					lang,
+					prompt,
+					scope: "topic",
+					topic,
+					window,
+				}),
+		};
+	}
 
-	return {
-		citations,
-		stream: (abortSignal) =>
-			streamGeneratedSummary({
-				citations,
-				cited,
-				lang,
-				prompt,
-				topic,
-				topicId,
-				abortSignal,
-			}),
-	};
+	throw new TrendsSummaryPendingError();
 }

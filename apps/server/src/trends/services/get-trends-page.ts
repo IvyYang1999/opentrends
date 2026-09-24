@@ -3,19 +3,31 @@ import {
 	readSnapshot,
 	readSnapshotSummaries,
 	readSnapshots,
+	readSourceRefreshStates,
 } from "../cache/source-cache";
-import { getSourcePreset } from "../config/sources";
-import { getTopicPreset } from "../config/topics";
+import {
+	FOLLOWED_TOPIC_ID,
+	followedSourcesKey,
+	followedTopicPreset,
+} from "../config/followed-topic";
+import { getSourceKind, getSourcePreset } from "../config/sources";
+import { getTopicPreset, topicPresets } from "../config/topics";
 import type {
 	SourceCardData,
 	SourceId,
 	SourceSnapshot,
 	TopicId,
+	TopicPreset,
 	TrendsPageData,
 	TrendsSectionData,
 } from "../types";
 import { refreshSource } from "./refresh-source";
 import {
+	prioritizeExpiredSourceIds,
+	selectDueSourceIds,
+} from "./source-refresh-priority";
+import {
+	needsTranslation,
 	type TranslationLanguage,
 	type TranslationMode,
 	translateTrendsPage,
@@ -37,6 +49,7 @@ const TRENDS_PAGE_HOT_CACHE_TTL_SECONDS = Math.ceil(
 	TRENDS_PAGE_CACHE_RETENTION_MS / 1000
 );
 const NO_SNAPSHOT_MESSAGE = "Source has no snapshot yet.";
+const MAX_PAGE_BACKGROUND_REFRESHES = 4;
 export const DEFAULT_TRENDS_ITEMS_PER_SOURCE = 30;
 export const PREVIEW_TRENDS_ITEMS_PER_SOURCE = 16;
 const memoryTrendsPageCache = new Map<
@@ -80,13 +93,82 @@ function isMemoryCacheableTrendsPage(
 	return translationMode === "background";
 }
 
-function makeTrendsPageCacheKey(
+export function makeTrendsPageCacheKey(
 	topicId: string,
 	lang: TranslationLanguage,
 	translationMode: TranslationMode,
 	itemsPerSource: number
 ): string {
-	return `trends:v4:page:${topicId}:${lang}:${translationMode}:${itemsPerSource}`;
+	return `trends:v5:page:${topicId}:${lang}:${translationMode}:${itemsPerSource}`;
+}
+
+export function translationPageCacheKeysForSource(
+	sourceId: SourceId,
+	lang: TranslationLanguage
+): string[] {
+	const keys: string[] = [];
+	for (const [topicId, topic] of Object.entries(topicPresets)) {
+		if (
+			!topic.sections.some((section) =>
+				section.sourceIds.some(
+					(candidateSourceId) => candidateSourceId === sourceId
+				)
+			)
+		) {
+			continue;
+		}
+		for (const itemsPerSource of [
+			PREVIEW_TRENDS_ITEMS_PER_SOURCE,
+			DEFAULT_TRENDS_ITEMS_PER_SOURCE,
+		]) {
+			keys.push(
+				makeTrendsPageCacheKey(topicId, lang, "background", itemsPerSource)
+			);
+		}
+	}
+	return keys;
+}
+
+// Called when a batch of translations lands. Only the in-memory copies are
+// dropped: deleting the KV pages too meant every page whose sources were
+// being translated (which is most of them, most of the time) vanished from
+// the shared cache and the next reader rebuilt it from D1, three to five
+// seconds at a time. A page with untranslated items is already cached for
+// only a minute, so the new titles show up on the next refresh anyway.
+export function invalidateTranslatedTrendsPageCache(
+	_sourceId: SourceId,
+	_lang: TranslationLanguage
+): Promise<void> {
+	clearTrendsPageCache();
+	return Promise.resolve();
+}
+
+// Rebuilds a page unless the shared cache already has a fresh one; the
+// scheduler calls this after refreshing sources so readers find pages
+// ready instead of paying for the build.
+export async function warmTrendsPage(
+	topicId: string,
+	lang: TranslationLanguage,
+	itemsPerSource = DEFAULT_TRENDS_ITEMS_PER_SOURCE
+): Promise<"fresh" | "rebuilt"> {
+	const cacheKey = makeTrendsPageCacheKey(
+		topicId,
+		lang,
+		"background",
+		itemsPerSource
+	);
+	const cached = await readHotTrendsPageCache(cacheKey).catch(() => null);
+	if (cached && cached.freshUntil > Date.now()) {
+		return "fresh";
+	}
+	await startTrendsPageRefresh(
+		cacheKey,
+		topicId,
+		lang,
+		"background",
+		itemsPerSource
+	);
+	return "rebuilt";
 }
 
 function writeMemoryTrendsPageCache(
@@ -178,14 +260,15 @@ async function refreshTrendsPage(
 	);
 	const now = Date.now();
 	let freshUntil = getPageFreshUntil(page, now);
-	if (hasMissingSnapshots(page)) {
+	// Missing or expired snapshots are refreshed in the background. The page is
+	// still cached briefly: leaving it uncached made every request rebuild it
+	// from D1 for as long as a single source stayed expired.
+	if (
+		hasMissingSnapshots(page) ||
+		hasExpiredSnapshots(page, now) ||
+		hasPendingTranslations(page, lang)
+	) {
 		freshUntil = now + TRENDS_PAGE_CACHE_MIN_FRESH_MS;
-	}
-	if (hasExpiredSnapshots(page, now)) {
-		freshUntil = now;
-	}
-	if (freshUntil <= now) {
-		return page;
 	}
 	const staleUntil = now + TRENDS_PAGE_CACHE_STALE_MS;
 	writeMemoryTrendsPageCache(
@@ -208,6 +291,17 @@ async function refreshTrendsPage(
 		TRENDS_PAGE_HOT_CACHE_TTL_SECONDS
 	);
 	return page;
+}
+
+function hasPendingTranslations(
+	page: TrendsPageData,
+	lang: TranslationLanguage
+): boolean {
+	return page.sections.some((section) =>
+		section.sources.some((source) =>
+			source.items.some((item) => needsTranslation(item, lang))
+		)
+	);
 }
 
 function hasMissingSnapshots(page: TrendsPageData): boolean {
@@ -248,15 +342,10 @@ function getExpiredSnapshotSourceIds(
 	page: TrendsPageData,
 	now = Date.now()
 ): SourceId[] {
-	const expired = new Set<SourceId>();
-	for (const section of page.sections) {
-		for (const source of section.sources) {
-			if (source.expiresAt !== undefined && source.expiresAt <= now) {
-				expired.add(source.sourceId);
-			}
-		}
-	}
-	return [...expired];
+	return prioritizeExpiredSourceIds(
+		page.sections.flatMap((section) => section.sources),
+		now
+	);
 }
 
 function refreshStaleTrendsPage(
@@ -307,13 +396,18 @@ function refreshSourceIdsInBackground(
 	}
 
 	const refresh = (async () => {
-		let refreshed = false;
-		for (const sourceId of sourceIds) {
-			const outcome = await refreshSource(sourceId);
-			if (outcome.kind === "ok" || outcome.kind === "error") {
-				refreshed = true;
-			}
-		}
+		const uniqueSourceIds = [...new Set(sourceIds)];
+		const refreshStates = await readSourceRefreshStates(uniqueSourceIds);
+		const dueSourceIds = selectDueSourceIds(
+			uniqueSourceIds,
+			refreshStates,
+			Date.now(),
+			MAX_PAGE_BACKGROUND_REFRESHES
+		);
+		const outcomes = await Promise.all(dueSourceIds.map(refreshSource));
+		const refreshed = outcomes.some(
+			(outcome) => outcome.kind === "ok" || outcome.kind === "error"
+		);
 		if (refreshed) {
 			clearTrendsPageCache();
 		}
@@ -385,6 +479,7 @@ function snapshotToCard(
 		sourceId,
 		title,
 		eventEligible: preset?.eventEligible,
+		kind: getSourceKind(sourceId),
 		homeUrl,
 		status: snapshot.status,
 		updatedAt: snapshot.fetchedAt,
@@ -397,7 +492,7 @@ function snapshotToCard(
 	};
 }
 
-async function buildTrendsPage(
+function buildTrendsPage(
 	topicId: string,
 	lang: TranslationLanguage = "en",
 	translationMode: TranslationMode = "background",
@@ -407,7 +502,83 @@ async function buildTrendsPage(
 	if (!topic) {
 		throw new TopicNotFoundError(topicId);
 	}
+	return buildPageFromPreset(
+		topicId,
+		topic,
+		lang,
+		translationMode,
+		itemsPerSource
+	);
+}
 
+// The followed-sources page is assembled per request from the reader's own
+// list and never enters the shared page caches.
+// A followed list's page is one reader's, but the same list (a whole
+// topic, a briefing's scope) is asked for again and again; it is kept for
+// a few minutes in memory and in KV so a briefing opens at once.
+const FOLLOWED_PAGE_FRESH_MS = 3 * 60_000;
+const followedPageCache = new Map<
+	string,
+	{ freshUntil: number; page: TrendsPageData }
+>();
+
+export async function getFollowedSourcesPage(
+	sourceIds: readonly SourceId[],
+	lang: TranslationLanguage = "en",
+	translationMode: TranslationMode = "background",
+	itemsPerSource = DEFAULT_TRENDS_ITEMS_PER_SOURCE
+): Promise<TrendsPageData> {
+	const cacheable = translationMode === "background";
+	const key = `trends:v5:page:mine:${followedSourcesKey(sourceIds)}:${lang}:${itemsPerSource}`;
+	const now = Date.now();
+	if (cacheable) {
+		const memory = followedPageCache.get(key);
+		if (memory && memory.freshUntil > now) {
+			return memory.page;
+		}
+		const hot = await hotCache.get<TrendsPageData>(key).catch(() => null);
+		if (hot && hot.freshUntil > now) {
+			followedPageCache.set(key, {
+				freshUntil: hot.freshUntil,
+				page: hot.value,
+			});
+			return hot.value;
+		}
+	}
+	const page = await buildPageFromPreset(
+		FOLLOWED_TOPIC_ID,
+		followedTopicPreset(sourceIds),
+		lang,
+		translationMode,
+		itemsPerSource
+	);
+	if (cacheable) {
+		const freshUntil = now + FOLLOWED_PAGE_FRESH_MS;
+		followedPageCache.set(key, { freshUntil, page });
+		await hotCache
+			.put(
+				key,
+				{
+					createdAt: now,
+					freshUntil,
+					schemaVersion: TRENDS_PAGE_HOT_CACHE_SCHEMA_VERSION,
+					staleUntil: freshUntil,
+					value: page,
+				},
+				Math.ceil(FOLLOWED_PAGE_FRESH_MS / 1000) + 60
+			)
+			.catch(() => false);
+	}
+	return page;
+}
+
+async function buildPageFromPreset(
+	topicId: string,
+	topic: TopicPreset,
+	lang: TranslationLanguage,
+	translationMode: TranslationMode,
+	itemsPerSource: number
+): Promise<TrendsPageData> {
 	const sourceIds = [
 		...new Set(topic.sections.flatMap((section) => section.sourceIds)),
 	];
@@ -550,7 +721,8 @@ export async function getTrendSourceCard(
 	sourceId: string,
 	lang: TranslationLanguage = "en",
 	translationMode: TranslationMode = "background",
-	itemsPerSource = DEFAULT_TRENDS_ITEMS_PER_SOURCE
+	itemsPerSource = DEFAULT_TRENDS_ITEMS_PER_SOURCE,
+	options: TrendsPageCacheOptions = {}
 ): Promise<SourceCardData> {
 	const topic = getTopicPreset(topicId);
 	if (!topic) {
@@ -582,7 +754,8 @@ export async function getTrendSourceCard(
 			sections: [{ id: "source", title: source.title, sources: [source] }],
 		},
 		lang,
-		translationMode
+		translationMode,
+		{ waitUntil: options.waitUntil }
 	);
 	return translated.sections[0]?.sources[0] ?? source;
 }

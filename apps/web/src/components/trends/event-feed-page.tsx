@@ -16,12 +16,15 @@ import {
 	ExternalLink,
 	GitBranch,
 	Layers,
+	LoaderCircle,
 } from "lucide-react";
 import type { ReactNode } from "react";
-import { useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 
+import { toolButtonClassName } from "@/components/chrome-styles";
 import { localePathParam, type Translator, useLocale, useT } from "@/lib/i18n";
 
+import { CoverImage } from "./cover-image";
 import {
 	loadTrendEvents,
 	TrendEventsEmbeddingNotConfiguredError,
@@ -31,12 +34,15 @@ import { formatRelativeTime } from "./relative-time";
 import { SourceLogoStack } from "./source-favicon";
 import { trendEventDetailQueryOptions } from "./trends-query";
 import type { EventDetailData, EventFeedItem } from "./types";
+import { ViewSwitch } from "./view-switch";
+import { useViewsScrollElement } from "./views-scroll";
 
 interface EventFeedPageProps {
 	selectedTopic?: string;
 }
 
 const TOPIC_IDS = [
+	"featured",
 	"ai",
 	"embodied",
 	"hardware",
@@ -55,6 +61,7 @@ const EVENT_SKELETON_KEYS = [
 	"event-skeleton-7",
 	"event-skeleton-8",
 	"event-skeleton-9",
+	"event-skeleton-10",
 ] as const;
 
 const EVENT_PAGE_SIZE = 30;
@@ -126,7 +133,7 @@ export function EventFeedPage({ selectedTopic }: EventFeedPageProps) {
 	const t = useT();
 	const flowLabel = locale.startsWith("zh") ? "处理流" : "Flow";
 	const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
-	const scrollRef = useRef<HTMLDivElement>(null);
+	const layoutScroll = useViewsScrollElement();
 	const lanes = useEventLaneCount();
 	const eventsQuery = useInfiniteQuery({
 		queryKey: ["trend-events", selectedTopic ?? "all", EVENT_PAGE_SIZE],
@@ -155,7 +162,7 @@ export function EventFeedPage({ selectedTopic }: EventFeedPageProps) {
 		estimateSize: (index) => estimateEventCardSize(events[index]),
 		gap: EVENT_MASONRY_GAP,
 		getItemKey: (index) => events[index]?.eventId ?? `events-loader-${index}`,
-		getScrollElement: () => scrollRef.current,
+		getScrollElement: () => layoutScroll?.() ?? null,
 		laneAssignmentMode: "measured",
 		lanes,
 		overscan: lanes * 4,
@@ -178,16 +185,7 @@ export function EventFeedPage({ selectedTopic }: EventFeedPageProps) {
 			</div>
 		);
 	} else if (eventsQuery.isPending && events.length === 0) {
-		eventContent = (
-			<div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-				{EVENT_SKELETON_KEYS.map((key) => (
-					<div
-						className="h-44 animate-pulse rounded border border-[var(--border-default)] bg-[var(--surface-card)]"
-						key={key}
-					/>
-				))}
-			</div>
-		);
+		eventContent = <EventFeedSkeleton label={t("events.loading")} />;
 	} else if (events.length === 0) {
 		eventContent = (
 			<div className="flex min-h-[260px] items-center justify-center rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-6 text-center text-[13px] text-[var(--text-secondary)]">
@@ -217,46 +215,35 @@ export function EventFeedPage({ selectedTopic }: EventFeedPageProps) {
 	}
 
 	return (
-		<div
-			className="min-w-0 flex-1 overflow-auto bg-[var(--surface-app)] text-[var(--text-primary)]"
-			ref={scrollRef}
-		>
-			<div className="border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-2 sm:px-4">
-				<div className="flex flex-wrap items-center justify-between gap-2">
-					<div className="flex shrink-0 items-center gap-2">
-						<Link
-							className="inline-flex h-7 items-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]"
-							params={{ locale: localeParam }}
-							to="/{-$locale}/events/flow"
+		<div className="min-w-0 bg-[var(--surface-app)] text-[var(--text-primary)]">
+			<div className="flex h-10 items-center justify-between gap-3 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 sm:px-4">
+				<ViewSwitch
+					localeParam={localeParam}
+					topicId={selectedTopic}
+					view="events"
+				/>
+				<div className="flex shrink-0 items-center gap-2">
+					{eventsQuery.isPending && events.length === 0 ? (
+						<span
+							aria-live="polite"
+							className="inline-flex items-center gap-1.5 text-[11px] text-[var(--text-secondary)]"
 						>
-							<GitBranch className="size-3.5" />
-							{flowLabel}
-						</Link>
+							<LoaderCircle className="size-3.5 text-[var(--accent-blue)] motion-safe:animate-spin" />
+							{t("events.loading")}
+						</span>
+					) : (
 						<span className="text-[11px] text-[var(--text-muted)]">
 							{t("events.count", { count: events.length })}
 						</span>
-					</div>
-				</div>
-				<div className="mt-2 flex gap-1 overflow-x-auto pb-0.5 text-[12px] [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+					)}
 					<Link
-						className={topicFilterClassName(!selectedTopic)}
+						className={toolButtonClassName}
 						params={{ locale: localeParam }}
-						search={{}}
-						to="/{-$locale}/events"
+						to="/{-$locale}/events/flow"
 					>
-						{t("events.all")}
+						<GitBranch aria-hidden className="size-3.5" />
+						<span>{flowLabel}</span>
 					</Link>
-					{TOPIC_IDS.map((topicId) => (
-						<Link
-							className={topicFilterClassName(selectedTopic === topicId)}
-							key={topicId}
-							params={{ locale: localeParam }}
-							search={{ topic: topicId }}
-							to="/{-$locale}/events"
-						>
-							{getTopicLabel(topicId, t)}
-						</Link>
-					))}
 				</div>
 			</div>
 			<div className="p-3 sm:p-4">{eventContent}</div>
@@ -274,12 +261,46 @@ export function EventFeedPage({ selectedTopic }: EventFeedPageProps) {
 	);
 }
 
-function topicFilterClassName(active: boolean): string {
-	const base =
-		"shrink-0 rounded border px-2 py-1 transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]";
-	return active
-		? `${base} border-[var(--accent-blue)] bg-[var(--accent-blue-bg)] text-[var(--accent-blue)]`
-		: `${base} border-[var(--border-default)] bg-[var(--surface-card)] text-[var(--text-secondary)]`;
+function EventFeedSkeleton({ label }: { label: string }) {
+	return (
+		<div aria-busy="true" aria-label={label} role="status">
+			<div
+				aria-hidden="true"
+				className="columns-1 gap-3 md:columns-2 lg:columns-3 xl:columns-4 2xl:columns-5"
+			>
+				{EVENT_SKELETON_KEYS.map((key, index) => (
+					<div
+						className="mb-3 break-inside-avoid overflow-hidden rounded border border-[var(--border-default)] bg-[var(--surface-card)]"
+						key={key}
+					>
+						{index % 3 === 2 ? null : (
+							<div className="aspect-[16/9] border-[var(--border-subtle)] border-b bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+						)}
+						<div className="space-y-3 p-3">
+							<div className="space-y-2">
+								<div className="h-4 w-[88%] rounded bg-[var(--state-hover)] motion-safe:animate-pulse" />
+								<div className="h-4 w-[64%] rounded bg-[var(--state-hover)] motion-safe:animate-pulse" />
+							</div>
+							<div className="space-y-1.5">
+								<div className="h-2.5 w-full rounded bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+								<div className="h-2.5 w-[78%] rounded bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+							</div>
+							<div className="h-6 w-20 rounded border border-[var(--border-default)] bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+							<div className="flex items-center gap-2">
+								<div className="h-5 w-10 rounded bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+								<div className="h-2.5 w-16 rounded bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+								<div className="h-2.5 w-12 rounded bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+							</div>
+						</div>
+						<div className="border-[var(--border-subtle)] border-t px-3 py-2">
+							<div className="h-3 w-24 rounded bg-[var(--surface-sidebar)] motion-safe:animate-pulse" />
+						</div>
+					</div>
+				))}
+			</div>
+			<span className="sr-only">{label}</span>
+		</div>
+	);
 }
 
 function getTopicLabel(topicId: string, t: Translator): string {
@@ -399,7 +420,7 @@ function EventCard({
 	return (
 		<article className="w-full overflow-hidden rounded border border-[var(--border-default)] bg-[var(--surface-card)]">
 			{event.imageUrl ? (
-				<img
+				<CoverImage
 					alt=""
 					className="aspect-[16/9] w-full border-[var(--border-subtle)] border-b bg-[var(--surface-sidebar)] object-cover"
 					height={360}
@@ -537,7 +558,7 @@ function EventDetailDialog({
 										target="_blank"
 									>
 										{item.imageUrl ? (
-											<img
+											<CoverImage
 												alt=""
 												className="mt-0.5 size-12 shrink-0 rounded border border-[var(--border-subtle)] bg-[var(--surface-sidebar)] object-cover"
 												height={48}

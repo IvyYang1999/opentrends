@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from "bun:test";
 
-import { createRssAdapter } from "../adapters/rss";
+import { cleanGoogleNewsTitle, createRssAdapter } from "../adapters/rss";
 
 const originalFetch = globalThis.fetch;
 
@@ -192,5 +192,47 @@ describe("createRssAdapter", () => {
 			url: "https://example.com/atom",
 			title: "Atom item",
 		});
+	});
+
+	test("drops the publisher suffix, empty and duplicate titles from Google News", async () => {
+		const xml = `<?xml version="1.0"?>
+<rss version="2.0">
+  <channel>
+    <item>
+      <title>Kimi K3 arrives on Bedrock - Unite.AI</title>
+      <link>https://news.google.com/rss/articles/a</link>
+    </item>
+    <item>
+      <title> - Kimi API 开放平台</title>
+      <link>https://news.google.com/rss/articles/b</link>
+    </item>
+    <item>
+      <title>Kimi K3 arrives on Bedrock - Silicon UK</title>
+      <link>https://news.google.com/rss/articles/c</link>
+    </item>
+  </channel>
+</rss>`;
+		globalThis.fetch = (async () =>
+			new Response(xml, { status: 200 })) as unknown as typeof fetch;
+		const adapter = createRssAdapter({
+			provider: "rss",
+			name: "Kimi",
+			feedUrl: "https://news.google.com/rss/search?q=Kimi",
+			refresh: "rss",
+		});
+		const items = await adapter.fetch({
+			sourceId: "kimi",
+			signal: new AbortController().signal,
+		});
+		expect(items.map((item) => item.title)).toEqual([
+			"Kimi K3 arrives on Bedrock",
+		]);
+	});
+
+	test("cleanGoogleNewsTitle keeps hyphenated titles without a publisher", () => {
+		expect(cleanGoogleNewsTitle("State-of-the-art results - The Verge")).toBe(
+			"State-of-the-art results"
+		);
+		expect(cleanGoogleNewsTitle("GPT-6 Sol")).toBe("GPT-6 Sol");
 	});
 });

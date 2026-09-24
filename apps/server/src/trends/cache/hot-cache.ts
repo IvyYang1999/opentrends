@@ -13,7 +13,7 @@ export interface HotCache {
 		key: string,
 		value: CacheEnvelope<T>,
 		ttlSeconds: number
-	): Promise<void>;
+	): Promise<boolean>;
 }
 
 import { getWorkerBindings } from "../../runtime";
@@ -58,13 +58,19 @@ class CloudflareKvHotCache implements HotCache {
 		key: string,
 		value: CacheEnvelope<T>,
 		ttlSeconds: number
-	): Promise<void> {
+	): Promise<boolean> {
+		const cache = getWorkerBindings()?.HOT_CACHE;
+		if (!cache) {
+			return false;
+		}
 		try {
-			await getWorkerBindings()?.HOT_CACHE.put(key, JSON.stringify(value), {
+			await cache.put(key, JSON.stringify(value), {
 				expirationTtl: ttlSeconds,
 			});
+			return true;
 		} catch (error) {
 			console.warn("[hot-cache] failed to write KV entry", { error, key });
+			return false;
 		}
 	}
 }

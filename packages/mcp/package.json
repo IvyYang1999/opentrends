@@ -1,0 +1,29 @@
+{
+  "name": "opentrends-mcp",
+  "version": "0.1.0",
+  "description": "MCP server for OpenTrends: today's tech digest, topic feeds and sources, straight from the public API.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "opentrends-mcp": "./src/index.ts"
+  },
+  "exports": {
+    ".": "./src/server.ts"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.20.0",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@opentrends/config": "workspace:*",
+    "@types/bun": "catalog:",
+    "typescript": "catalog:"
+  }
+}

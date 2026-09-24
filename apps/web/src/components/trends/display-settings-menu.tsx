@@ -45,10 +45,11 @@ const TOGGLES: readonly ToggleEntry[] = [
 	{ key: "showRank", labelKey: "display.rank" },
 	{ key: "showHotValue", labelKey: "display.hotValue" },
 	{ key: "showRelativeTime", labelKey: "display.publishedTime" },
+	{ key: "showOriginalTitle", labelKey: "display.originalTitle" },
 ];
 
 const MENU_TRIGGER_CLASS =
-	"inline-flex h-7 items-center gap-1.5 rounded border border-[var(--border-default)] bg-[var(--surface-card)] px-2 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[popup-open]:bg-[var(--state-hover-subtle)] data-[popup-open]:text-[var(--text-primary)] [&>span]:hidden sm:[&>span]:inline";
+	"inline-flex h-7 items-center gap-1.5 border border-[var(--border-default)] bg-[var(--surface-card)] px-2 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)] data-[popup-open]:bg-[var(--state-hover-subtle)] data-[popup-open]:text-[var(--text-primary)] [&>span]:hidden sm:[&>span]:inline";
 
 export function LayoutSettingsMenu() {
 	const t = useT();
@@ -125,6 +126,27 @@ export function DisplaySettingsMenuContent({
 				<span>{t("display.label")}</span>
 			</DropdownMenuTrigger>
 			<DropdownMenuContent align="end" className="bg-card">
+				<DropdownMenuGroup>
+					<DropdownMenuLabel>{t("display.layout")}</DropdownMenuLabel>
+					<DropdownMenuRadioGroup
+						onValueChange={(value) => {
+							const nextLayout = LAYOUTS.find(
+								(layout) => layout.value === value
+							)?.value;
+							if (nextLayout) {
+								setDisplayLayout(nextLayout, storeOptions);
+							}
+						}}
+						value={settings.layout}
+					>
+						{LAYOUTS.map((layout) => (
+							<DropdownMenuRadioItem key={layout.value} value={layout.value}>
+								{t(layout.labelKey)}
+							</DropdownMenuRadioItem>
+						))}
+					</DropdownMenuRadioGroup>
+				</DropdownMenuGroup>
+				<DropdownMenuSeparator />
 				<DropdownMenuGroup>
 					<DropdownMenuLabel>{t("display.showOnEachItem")}</DropdownMenuLabel>
 					<DropdownMenuSeparator />

@@ -3,6 +3,7 @@ import type { QueryClient } from "@tanstack/react-query";
 import {
 	createRootRouteWithContext,
 	HeadContent,
+	notFound,
 	Outlet,
 	Scripts,
 } from "@tanstack/react-router";
@@ -13,7 +14,7 @@ import {
 	GITHUB_REPOSITORY_URL,
 	type GitHubRepositoryStats,
 } from "@/functions/get-github-repository-stats";
-import { HTML_LANG, useLocale } from "@/lib/i18n";
+import { HTML_LANG, isLocale, useLocale } from "@/lib/i18n";
 import { buildSeo } from "@/lib/seo";
 import type { orpc } from "@/utils/orpc";
 
@@ -44,6 +45,12 @@ const QueryDevtools = import.meta.env.DEV
 	: null;
 
 export const Route = createRootRouteWithContext<RouterAppContext>()({
+	beforeLoad: ({ params }) => {
+		const locale = (params as { locale?: string }).locale;
+		if (locale && !isLocale(locale)) {
+			throw notFound();
+		}
+	},
 	loader: (): GitHubRepositoryStats => ({
 		stars: null,
 		url: GITHUB_REPOSITORY_URL,
@@ -66,7 +73,6 @@ export const Route = createRootRouteWithContext<RouterAppContext>()({
 			links: [
 				{ rel: "icon", href: "/logo-mark.svg", type: "image/svg+xml" },
 				{ rel: "stylesheet", href: appCss },
-				...seo.links,
 			],
 		};
 	},
@@ -81,6 +87,18 @@ function RootDocument() {
 		<html lang={HTML_LANG[locale]} suppressHydrationWarning>
 			<head>
 				<HeadContent />
+				<script
+					// biome-ignore lint/security/noDangerouslySetInnerHtml: JSON-LD is a static object with no user or remote input.
+					dangerouslySetInnerHTML={{
+						__html: JSON.stringify({
+							"@context": "https://schema.org",
+							"@type": "WebSite",
+							name: "OpenTrends",
+							url: "https://opentrends.io/",
+						}),
+					}}
+					type="application/ld+json"
+				/>
 				<script
 					data-ga-id="G-XJR14VWEGN"
 					data-hosts="opentrends.io,www.opentrends.io"

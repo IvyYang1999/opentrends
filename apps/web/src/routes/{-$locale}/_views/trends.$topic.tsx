@@ -1,23 +1,40 @@
 /* biome-ignore lint/style/useFilenamingConvention: TanStack file-route naming requires $topic segment. */
 import { useQuery } from "@tanstack/react-query";
-import { createFileRoute, notFound, redirect } from "@tanstack/react-router";
-
-import Loader from "@/components/loader";
+import {
+	createFileRoute,
+	Link,
+	notFound,
+	redirect,
+} from "@tanstack/react-router";
+import { Star } from "lucide-react";
+import {
+	FOLLOWED_TOPIC_ID,
+	useFollowedSources,
+} from "@/components/trends/followed-sources";
 import { TrendsTopicNotFoundError } from "@/components/trends/load-trends";
+import { loadTrendsForSsr } from "@/components/trends/load-trends-ssr";
+import { readLocalPreference } from "@/components/trends/source-preferences";
 import { TrendsPage } from "@/components/trends/trends-page";
 import { trendsPageQueryOptions } from "@/components/trends/trends-query";
+import { SourceGridSkeleton } from "@/components/trends/trends-skeleton";
 import type { TrendsPageData } from "@/components/trends/types";
 import {
+	isLocale,
 	type Locale,
+	localePathParam,
 	resolveLocale,
 	type TranslationKey,
 	translate,
+	useLocale,
+	useT,
 } from "@/lib/i18n";
 import { buildSeo } from "@/lib/seo";
 
 const TOPIC_SLUG_SEPARATOR_RE = /[-_]+/;
 
 const TOPIC_TITLE_KEYS = {
+	mine: "topic.mine",
+	featured: "topic.featured",
 	ai: "topic.ai",
 	embodied: "topic.embodied",
 	hardware: "topic.hardware",
@@ -82,9 +99,12 @@ function buildTopicKeywords(
 	return [topic, topicLabel, `${topicLabel} news`, `${topicLabel} trending`];
 }
 
-export const Route = createFileRoute("/{-$locale}/trends/$topic")({
+export const Route = createFileRoute("/{-$locale}/_views/trends/$topic")({
 	component: TrendsTopicComponent,
 	loader: async ({ context, params }) => {
+		if (params.locale && !isLocale(params.locale)) {
+			throw notFound();
+		}
 		if (params.topic === "brain") {
 			throw redirect({
 				to: "/{-$locale}/trends/$topic",
@@ -92,11 +112,33 @@ export const Route = createFileRoute("/{-$locale}/trends/$topic")({
 			});
 		}
 
+		const locale = resolveLocale(params.locale);
+		// The followed page depends on the reader's own list, which only the
+		// browser knows; on the client it is read from storage here so the
+		// page arrives with the navigation instead of after a placeholder.
+		if (params.topic === FOLLOWED_TOPIC_ID) {
+			if (!import.meta.env.SSR) {
+				const followedIds =
+					readLocalPreference(FOLLOWED_TOPIC_ID)?.orderedSourceIds ?? [];
+				if (followedIds.length > 0) {
+					await context.queryClient.ensureQueryData(
+						trendsPageQueryOptions(FOLLOWED_TOPIC_ID, locale, followedIds)
+					);
+				}
+			}
+			return;
+		}
 		if (import.meta.env.SSR) {
+			const page = await loadTrendsForSsr(params.topic, locale);
+			if (page) {
+				context.queryClient.setQueryData(
+					trendsPageQueryOptions(params.topic, locale).queryKey,
+					page
+				);
+			}
 			return;
 		}
 
-		const locale = resolveLocale(params.locale);
 		await context.queryClient.ensureQueryData(
 			trendsPageQueryOptions(params.topic, locale)
 		);
@@ -117,15 +159,68 @@ export const Route = createFileRoute("/{-$locale}/trends/$topic")({
 	},
 });
 
+// Nothing followed yet: point at the star on every card.
+function FollowedEmptyState() {
+	const t = useT();
+	const locale = useLocale();
+	return (
+		<main className="flex flex-1 flex-col items-center justify-center gap-3 bg-[var(--surface-app)] px-6 py-20 text-center">
+			<Star aria-hidden className="size-6 text-[var(--text-muted)]" />
+			<p className="max-w-sm text-[13px] text-[var(--text-secondary)]">
+				{t("followed.empty")}
+			</p>
+			<Link
+				className="text-[13px] text-[var(--accent-blue)] hover:underline"
+				params={{ locale: localePathParam(locale), topic: "featured" }}
+				to="/{-$locale}/trends/$topic"
+			>
+				{t("followed.browseFeatured")}
+			</Link>
+		</main>
+	);
+}
+
 function TrendsTopicComponent() {
 	const params = Route.useParams();
 	const locale = resolveLocale(params.locale);
+	if (params.topic === FOLLOWED_TOPIC_ID) {
+		return <FollowedTopicComponent locale={locale} />;
+	}
+	return <TopicComponent locale={locale} topic={params.topic} />;
+}
+
+function FollowedTopicComponent({ locale }: { locale: Locale }) {
+	const { followedIds } = useFollowedSources();
+	const enabled = followedIds.length > 0;
 	const trends = useQuery<TrendsPageData, Error>({
-		...trendsPageQueryOptions(params.topic, locale),
+		...trendsPageQueryOptions(FOLLOWED_TOPIC_ID, locale, followedIds),
+		enabled,
+	});
+	if (!enabled) {
+		return <FollowedEmptyState />;
+	}
+	if (trends.isPending) {
+		return <SourceGridSkeleton />;
+	}
+	if (trends.error) {
+		throw trends.error;
+	}
+	const page = trends.data;
+	return (
+		<TrendsPage
+			key={`${page.id}:${locale}:${followedIds.join(",")}`}
+			page={page}
+		/>
+	);
+}
+
+function TopicComponent({ locale, topic }: { locale: Locale; topic: string }) {
+	const trends = useQuery<TrendsPageData, Error>({
+		...trendsPageQueryOptions(topic, locale),
 	});
 
 	if (trends.isPending) {
-		return <Loader />;
+		return <SourceGridSkeleton />;
 	}
 
 	if (trends.error) {

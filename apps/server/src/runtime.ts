@@ -4,21 +4,34 @@ import { runWithServerEnv } from "@opentrends/env/server";
 
 import type { EventMergeMessage } from "./trends/services/event-merge-jobs";
 import type { SummaryPrewarmMessage } from "./trends/services/summary-prewarm-jobs";
+import type { TranslationPrewarmMessage } from "./trends/services/translation-prewarm-jobs";
 
 export type WorkerQueueMessage =
 	| { kind: "event-merge"; payload: EventMergeMessage }
-	| { kind: "summary-prewarm"; payload: SummaryPrewarmMessage };
+	| { kind: "summary-prewarm"; payload: SummaryPrewarmMessage }
+	| { kind: "translation-prewarm"; payload: TranslationPrewarmMessage };
 
 export interface WorkerBindings {
 	BETTER_AUTH_SECRET: string;
 	BETTER_AUTH_URL: string;
 	CORS_ORIGIN: string;
 	DB: D1Database;
+	EMAIL_API_KEY?: string;
+	EMAIL_API_URL?: string;
+	EMAIL_FROM?: string;
+	EMAIL_PROVIDER?: "forward-email" | "resend";
 	EVENT_MERGE_QUEUE: Queue<WorkerQueueMessage>;
+	GITHUB_CLIENT_ID?: string;
+	GITHUB_OAUTH_KEY?: string;
+	GOOGLE_CLIENT_ID?: string;
+	GOOGLE_OAUTH_KEY?: string;
 	HOT_CACHE: KVNamespace;
+	IMAGES: ImagesBinding;
 	LLM_API_KEY?: string;
 	LLM_BASE_URL: string;
+	LLM_ENABLE_THINKING?: "true" | "false";
 	LLM_MODEL: string;
+	LLM_TRANSLATION_MODEL?: string;
 	NODE_ENV: "development" | "production" | "test";
 	RSSHUB_BASE_URLS?: string;
 	SILICONFLOW_API_KEY?: string;
