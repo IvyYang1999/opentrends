@@ -1,4 +1,5 @@
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { fieldsMatchAnyKeyword } from "@opentrends/api/keyword-match";
 import { env } from "@opentrends/env/server";
 import { streamText } from "ai";
 
@@ -180,11 +181,12 @@ export function filterCitedItems(
 		return [...cited];
 	}
 	return cited
-		.filter(({ item }) => {
-			const haystack =
-				`${item.title}\n${item.original?.title ?? ""}\n${item.description ?? ""}`.toLowerCase();
-			return keywords.some((keyword) => haystack.includes(keyword));
-		})
+		.filter(({ item }) =>
+			fieldsMatchAnyKeyword(
+				[item.title, item.original?.title, item.description],
+				keywords
+			)
+		)
 		.map((entry, index) => ({ ...entry, n: index + 1 }));
 }
 
@@ -248,13 +250,20 @@ function itemTime(item: NewsItem): number {
 function collectPageCandidates(
 	page: TrendsPageData,
 	notBefore: number,
-	itemsPerSource: number
+	itemsPerSource: number,
+	keywords: readonly string[] = []
 ): SourceCandidates[] {
 	const result: SourceCandidates[] = [];
 	for (const section of page.sections) {
 		for (const source of section.sources) {
 			const items = source.items
 				.filter((item) => itemTime(item) >= notBefore)
+				.filter((item) =>
+					fieldsMatchAnyKeyword(
+						[item.title, item.original?.title, item.description],
+						keywords
+					)
+				)
 				.slice(0, itemsPerSource);
 			if (items.length === 0) {
 				continue;
@@ -350,14 +359,20 @@ export function selectCitedItems(
 
 export function collectCitedItems(
 	page: TrendsPageData | TrendsPageData[],
-	now: number = Date.now()
+	now: number = Date.now(),
+	keywords: readonly string[] = []
 ): CitedItem[] {
 	const pages = Array.isArray(page) ? page : [page];
 	const profile = SUMMARY_WINDOW_PROFILES.today;
 	const candidates = (notBefore: number) =>
 		dedupeSources(
 			pages.flatMap((entry) =>
-				collectPageCandidates(entry, notBefore, profile.itemsPerSource)
+				collectPageCandidates(
+					entry,
+					notBefore,
+					profile.itemsPerSource,
+					keywords
+				)
 			)
 		);
 	let sources = candidates(now - profile.windowMs);
@@ -398,7 +413,8 @@ async function collectWindowCitedItems(
 	topicId: string,
 	topic: TopicPreset,
 	lang: TranslationLanguage,
-	window: SummaryWindow
+	window: SummaryWindow,
+	keywords: readonly string[] = []
 ): Promise<CitedItem[]> {
 	const profile = SUMMARY_WINDOW_PROFILES[window];
 	const topics = digestTopics(topicId, topic);
@@ -413,7 +429,7 @@ async function collectWindowCitedItems(
 					: getTrendsPage(id, lang)
 			)
 		);
-		return collectCitedItems(pages);
+		return collectCitedItems(pages, Date.now(), keywords);
 	}
 	const merged: TopicPreset = {
 		...topic,
@@ -425,7 +441,8 @@ async function collectWindowCitedItems(
 	const history = await readSourceItemHistory(
 		sourceIds,
 		Date.now() - profile.windowMs,
-		profile.historyItemsPerSourcePerDay
+		profile.historyItemsPerSourcePerDay,
+		keywords
 	);
 	return selectCitedItems(
 		dedupeSources(
@@ -1387,9 +1404,13 @@ export async function prepareTrendsSummary(
 	// response instead of waiting behind the shared queue.
 	if (topicId === FOLLOWED_TOPIC_ID) {
 		const topic = resolved.preset;
-		const cited = filterCitedItems(
-			await collectWindowCitedItems(topicId, topic, lang, window),
-			options.keywords ?? []
+		const keywords = options.keywords ?? [];
+		const cited = await collectWindowCitedItems(
+			topicId,
+			topic,
+			lang,
+			window,
+			keywords
 		);
 		if (cited.length === 0) {
 			throw new TrendsSummaryNoMatchesError();

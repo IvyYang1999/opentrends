@@ -1,3 +1,4 @@
+import { normalizeKeywordForMatch } from "@opentrends/api/keyword-match";
 import { db, schema } from "@opentrends/db";
 import { and, asc, eq, inArray, or, sql } from "drizzle-orm";
 import type { BatchItem } from "drizzle-orm/batch";
@@ -40,6 +41,13 @@ export interface SourceRefreshState {
 	expiresAt?: number;
 	sourceId: SourceId;
 	status: SourceStatus;
+}
+
+function escapeLikePattern(value: string): string {
+	return value
+		.replaceAll("\\", "\\\\")
+		.replaceAll("%", "\\%")
+		.replaceAll("_", "\\_");
 }
 
 interface SourceRow {
@@ -555,6 +563,7 @@ interface SourceItemHistoryRow {
 	description: string | null;
 	fetched_at: number;
 	item_id: string;
+	original_title: string | null;
 	published_at: number | null;
 	rank: number;
 	source_id: string;
@@ -567,11 +576,39 @@ interface SourceItemHistoryRow {
 export function buildSourceItemHistoryQuery(
 	sourceIds: readonly SourceId[],
 	sinceMs: number,
-	itemsPerSourcePerDay: number
+	itemsPerSourcePerDay: number,
+	keywords: readonly string[] = []
 ) {
 	const itemTime = sql`coalesce(${sourceItem.publishedAt}, ${sourceItem.fetchedAt})`;
+	const searchableText = sql`lower(
+		coalesce(${sourceItem.title}, '') || ' ' ||
+		coalesce(${sourceItem.description}, '') || ' ' ||
+		coalesce(json_extract(${sourceItem.original}, '$.title'), '')
+	)`;
+	const compactSearchableText = sql`replace(replace(replace(replace(replace(replace(
+		${searchableText}, '-', ''), '_', ''), ' ', ''), char(9), ''), char(10), ''), char(13), '')`;
+	const normalizedKeywords = [
+		...new Set(
+			keywords
+				.map(normalizeKeywordForMatch)
+				.filter((keyword) => keyword.length > 0)
+		),
+	];
+	let keywordPredicate =
+		normalizedKeywords.length > 0
+			? or(
+					...normalizedKeywords.map(
+						(keyword) =>
+							sql`${compactSearchableText} like ${`%${escapeLikePattern(keyword)}%`} escape '\\'`
+					)
+				)
+			: sql`0`;
+	if (keywords.length === 0) {
+		keywordPredicate = undefined;
+	}
 	return sql`
 		select source_id, item_id, url, title,
+			json_extract(original, '$.title') as original_title,
 			substr(description, 1, ${HISTORY_DESCRIPTION_MAX_CHARS}) as description,
 			rank, published_at, fetched_at
 		from (
@@ -583,6 +620,7 @@ export function buildSourceItemHistoryQuery(
 			from ${sourceItem}
 			where ${inArray(sourceItem.sourceId, [...sourceIds])}
 				and ${itemTime} >= ${Math.floor(sinceMs / 1000)}
+				${keywordPredicate ? sql`and ${keywordPredicate}` : sql``}
 		)
 		where day_rank <= ${itemsPerSourcePerDay}
 		order by source_id asc, coalesce(published_at, fetched_at) desc
@@ -598,6 +636,7 @@ export function historyRowToNewsItem(row: SourceItemHistoryRow): NewsItem {
 		sourceId: row.source_id,
 		fetchedAt: row.fetched_at * 1000,
 		description: row.description ?? undefined,
+		original: row.original_title ? { title: row.original_title } : undefined,
 		publishedAt:
 			row.published_at === null ? undefined : row.published_at * 1000,
 	};
@@ -608,12 +647,18 @@ export function historyRowToNewsItem(row: SourceItemHistoryRow): NewsItem {
 export async function readSourceItemHistory(
 	sourceIds: readonly SourceId[],
 	sinceMs: number,
-	itemsPerSourcePerDay: number
+	itemsPerSourcePerDay: number,
+	keywords: readonly string[] = []
 ): Promise<Map<SourceId, NewsItem[]>> {
 	const history = new Map<SourceId, NewsItem[]>();
 	for (const batch of chunk(sourceIds, SNAPSHOT_READ_BATCH_SIZE)) {
 		const rows = await db.all<SourceItemHistoryRow>(
-			buildSourceItemHistoryQuery(batch, sinceMs, itemsPerSourcePerDay)
+			buildSourceItemHistoryQuery(
+				batch,
+				sinceMs,
+				itemsPerSourcePerDay,
+				keywords
+			)
 		);
 		for (const row of rows) {
 			const item = historyRowToNewsItem(row);

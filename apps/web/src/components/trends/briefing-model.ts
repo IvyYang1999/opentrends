@@ -1,3 +1,5 @@
+import { fieldsMatchAnyKeyword } from "@opentrends/api/keyword-match";
+
 // A briefing is a reader's own digest: some sources (usually a whole topic
 // or two), a few keywords to narrow them, and the hour they would like it.
 // Kept in the browser like the follow list; nothing about it is inferred.
@@ -87,15 +89,15 @@ export function matchingItems<
 		title: string;
 	},
 >(items: readonly T[], keywords: readonly string[]): T[] {
-	const needles = keywords.map((keyword) => keyword.toLowerCase());
 	const kept =
-		needles.length === 0
+		keywords.length === 0
 			? [...items]
-			: items.filter((item) => {
-					const haystack =
-						`${item.title}\n${item.original?.title ?? ""}\n${item.description ?? ""}`.toLowerCase();
-					return needles.some((needle) => haystack.includes(needle));
-				});
+			: items.filter((item) =>
+					fieldsMatchAnyKeyword(
+						[item.title, item.original?.title, item.description],
+						keywords
+					)
+				);
 	kept.sort(
 		(a, b) => (b.publishedAt ?? b.fetchedAt) - (a.publishedAt ?? a.fetchedAt)
 	);

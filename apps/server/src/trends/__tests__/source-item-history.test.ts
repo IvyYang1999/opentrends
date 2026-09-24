@@ -31,9 +31,11 @@ function insertItem(
 	item: {
 		ageDays: number;
 		id: string;
+		originalTitle?: string;
 		published?: boolean;
 		rank: number;
 		sourceId: string;
+		title?: string;
 	}
 ): void {
 	const time = NOW_SECONDS - item.ageDays * DAY_SECONDS;
@@ -41,19 +43,20 @@ function insertItem(
 		.query(
 			`insert into source_item
 				(source_id, item_id, generation, url, title, description, rank,
-				 published_at, fetched_at, last_seen_at, content_hash)
-			 values (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, 'hash')`
+				 published_at, fetched_at, last_seen_at, content_hash, original)
+			 values (?, ?, 1, ?, ?, ?, ?, ?, ?, ?, 'hash', ?)`
 		)
 		.run(
 			item.sourceId,
 			item.id,
 			`https://example.com/${item.id}`,
-			`Title ${item.id}`,
+			item.title ?? `Title ${item.id}`,
 			"d".repeat(1000),
 			item.rank,
 			item.published === false ? null : time,
 			time,
-			time
+			time,
+			item.originalTitle ? JSON.stringify({ title: item.originalTitle }) : null
 		);
 }
 
@@ -121,6 +124,52 @@ describe("source item history query", () => {
 			expect(items[0]?.publishedAt).toBe(NOW_SECONDS * 1000);
 			expect(items[0]?.description).toHaveLength(280);
 			expect(items.at(-1)?.publishedAt).toBeUndefined();
+		} finally {
+			database.close();
+		}
+	});
+
+	test("filters keywords before taking each day's top item", async () => {
+		setServerEnv();
+		const { buildSourceItemHistoryQuery, historyRowToNewsItem } = await import(
+			"../cache/source-cache"
+		);
+		const database = await createDatabase();
+		try {
+			for (const day of [0, 1]) {
+				insertItem(database, {
+					ageDays: day,
+					id: `unrelated-${day}`,
+					rank: 1,
+					sourceId: "feed",
+					title: "Claude Opus 5.5",
+				});
+				insertItem(database, {
+					ageDays: day,
+					id: `gpt-${day}`,
+					rank: 2,
+					sourceId: "feed",
+					originalTitle: day === 1 ? "GPT-6 release" : undefined,
+					title: day === 1 ? "新模型发布" : "GPT-6 release",
+				});
+			}
+
+			const query = new SQLiteSyncDialect().sqlToQuery(
+				buildSourceItemHistoryQuery(
+					["feed"] as SourceId[],
+					(NOW_SECONDS - 7 * DAY_SECONDS) * 1000,
+					1,
+					["GPT6"]
+				)
+			);
+			const rows = database
+				.query(query.sql)
+				.all(...(query.params as (number | string)[]));
+			const items = rows.map((row) =>
+				historyRowToNewsItem(row as Parameters<typeof historyRowToNewsItem>[0])
+			);
+
+			expect(items.map((item) => item.id)).toEqual(["gpt-0", "gpt-1"]);
 		} finally {
 			database.close();
 		}

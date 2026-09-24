@@ -53,4 +53,16 @@ describe("briefing model", () => {
 		]);
 		expect(matchingItems(items, [])).toHaveLength(3);
 	});
+
+	test("matches compact product keywords across common separators", () => {
+		const items = [
+			{ fetchedAt: 1, title: "GPT-6 launches" },
+			{ fetchedAt: 2, title: "GPT 6 pricing" },
+			{ fetchedAt: 3, title: "Claude Opus 5.5" },
+		];
+		expect(matchingItems(items, ["GPT6"]).map((item) => item.title)).toEqual([
+			"GPT 6 pricing",
+			"GPT-6 launches",
+		]);
+	});
 });

@@ -61,4 +61,24 @@ describe("filterCitedItems", () => {
 		]);
 		expect(filterCitedItems(cited, [])).toHaveLength(3);
 	});
+
+	test("matches compact product keywords across common separators", async () => {
+		const { filterCitedItems } = await import("../services/get-trends-summary");
+		const item = (title: string) =>
+			({
+				fetchedAt: 0,
+				id: title,
+				sourceId: "s",
+				title,
+				url: title,
+			}) as never;
+		const cited = [
+			{ item: item("GPT-6 launches"), n: 1, source: "a" },
+			{ item: item("GPT 6 pricing"), n: 2, source: "b" },
+			{ item: item("Claude Opus 5.5"), n: 3, source: "c" },
+		];
+		expect(
+			filterCitedItems(cited, ["GPT6"]).map((entry) => entry.item.title)
+		).toEqual(["GPT-6 launches", "GPT 6 pricing"]);
+	});
 });
