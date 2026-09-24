@@ -3,12 +3,18 @@ import { fieldsMatchAnyKeyword } from "@opentrends/api/keyword-match";
 // A briefing is a reader's own digest: some sources (usually a whole topic
 // or two), a few keywords to narrow them, and the hour they would like it.
 // Kept in the browser like the follow list; nothing about it is inferred.
+// What a briefing reads: every source on the site, the reader's follow
+// list, or the sources of some topics.
+export type BriefingScope = "all" | "followed" | "topics";
+
 export interface Briefing {
 	createdAt: number;
 	hour: number;
 	id: string;
 	keywords: string[];
 	name: string;
+	/** Missing on briefings saved before scopes existed: those chose topics. */
+	scope?: BriefingScope;
 	sourceIds: string[];
 	/** Set once the reader asked for it by mail; doubles as the unsubscribe token. */
 	subscriptionId?: string;
@@ -54,6 +60,33 @@ export function sourcesForTopics(
 		}
 	}
 	return [...seen];
+}
+
+export function briefingScope(briefing: Briefing): BriefingScope {
+	return briefing.scope ?? "topics";
+}
+
+// The sources a briefing reads right now: the follow list and the topic
+// lists can change after the briefing was saved, so they are resolved
+// each time rather than trusted from storage.
+export function resolveBriefingSources(
+	briefing: Briefing,
+	topics: readonly TopicSummary[],
+	followedIds: readonly string[]
+): string[] {
+	switch (briefingScope(briefing)) {
+		case "all":
+			return sourcesForTopics(
+				topics.map((topic) => topic.id),
+				topics
+			);
+		case "followed":
+			return [...followedIds];
+		default:
+			return topics.length > 0
+				? sourcesForTopics(briefing.topicIds, topics)
+				: briefing.sourceIds;
+	}
 }
 
 export function newBriefingId(): string {

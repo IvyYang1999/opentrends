@@ -8,8 +8,9 @@ import { getTopicPreset } from "./topics";
 // is fixed; the source list travels with each request and is hashed into the
 // cache keys, so two readers with the same list share one digest.
 export const FOLLOWED_TOPIC_ID = "mine";
-// Room for a whole topic's sources, so a briefing can follow "all of AI".
-export const MAX_FOLLOWED_SOURCES = 120;
+// Room for every source on the site, so a briefing can watch a keyword
+// across all topics.
+export const MAX_FOLLOWED_SOURCES = 320;
 export const MAX_KEYWORDS = 10;
 const MAX_KEYWORD_CHARS = 40;
 

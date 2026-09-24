@@ -2,20 +2,23 @@ import { env } from "@opentrends/env/web";
 import { ScrollArea } from "@opentrends/ui/components/scroll-area";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Plus, Trash2 } from "lucide-react";
+import { Pencil, Plus, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
 	type Briefing,
+	type BriefingScope,
+	briefingScope,
 	DEFAULT_HOUR,
 	matchingItems,
 	newBriefingId,
 	parseKeywordInput,
 	readBriefings,
+	resolveBriefingSources,
 	STORAGE_KEY,
-	sourcesForTopics,
 	type TopicSummary,
 } from "@/components/trends/briefing-model";
+import { useFollowedSources } from "@/components/trends/followed-sources";
 import { formatRelativeTime } from "@/components/trends/relative-time";
 import { SourceFavicon } from "@/components/trends/source-favicon";
 import { trendsPageQueryOptions } from "@/components/trends/trends-query";
@@ -31,18 +34,19 @@ import {
 } from "@/lib/i18n";
 import { buildSeo } from "@/lib/seo";
 
-// A reader's own digests. A briefing names its sources (whole topics, or
-// the follow list) and a few keywords; the digest is the same ten lines the
-// topics get, drawn only from those. Stored in the browser like the follow
-// list. Logged-in readers can also deliver the same briefing by email.
+// A reader's own digests. A briefing says what it reads (everything, the
+// follow list, or some topics), a few keywords to narrow that, and an hour.
+// The digest is the same ten lines the topics get, drawn only from those.
+// Briefings live in the browser like the follow list; signed-in readers can
+// have one mailed to their account address every day.
 
 const HOURS = [6, 7, 8, 9, 12, 18, 20, 22] as const;
 const ITEM_LIMIT = 40;
+const SCOPES: BriefingScope[] = ["all", "followed", "topics"];
 
 interface Strings {
+	cancel: string;
 	create: string;
-	custom: string;
-	customBody: string;
 	delete: string;
 	deliverBody: string;
 	deliverButton: string;
@@ -51,132 +55,149 @@ interface Strings {
 	deliverNotConfigured: string;
 	deliverSignIn: string;
 	deliverStop: string;
-	deliverTitle: string;
-	deliveryNote: string;
+	edit: string;
+	editTitle: string;
 	everyDay: string;
-	hour: string;
 	keywords: string;
 	keywordsHint: string;
 	matching: string;
 	mine: string;
 	name: string;
 	namePlaceholder: string;
+	newTitle: string;
 	none: string;
 	official: string;
 	officialBody: string;
 	save: string;
+	scope: string;
+	scopeAll: string;
+	scopeFollowed: string;
+	scopeFollowedEmpty: string;
+	scopeTopics: string;
 	seoDescription: string;
 	sources: string;
 	subscribe: string;
 	subscribed: string;
 	title: string;
-	topics: string;
+	webOnly: string;
 }
 
 const EN: Strings = {
-	deliverBody: "Get this briefing by mail at its hour, every day.",
+	cancel: "Cancel",
+	create: "New briefing",
+	deliverBody: "Mail it to",
 	deliverButton: "Send it to me",
-	deliverDone: "Arrives daily at",
+	deliverDone: "Mailed daily at",
 	deliverFailed: "Could not subscribe; try again.",
 	deliverNotConfigured: "Mail delivery is not set up on this deployment yet.",
-	deliverSignIn: "Sign in to send this briefing to your account email.",
+	deliverSignIn: "Sign in to have it mailed to your account address.",
 	deliverStop: "Stop",
-	deliverTitle: "By mail",
-	create: "New briefing",
-	custom: "Make your own",
-	customBody:
-		"Pick topics, add keywords, choose an hour. The digest reads only the sources of those topics and only items mentioning your words.",
 	delete: "Delete",
-	deliveryNote:
-		"Read it here or sign in to have it delivered by email every day.",
+	edit: "Edit",
+	editTitle: "Edit briefing",
 	everyDay: "Every day at",
-	hour: "Hour",
 	keywords: "Keywords",
-	keywordsHint: "Comma-separated, up to ten. Leave empty for everything.",
+	keywordsHint: "Comma-separated, up to ten. Empty means everything.",
 	matching: "Matching items",
 	mine: "My briefings",
 	name: "Name",
 	namePlaceholder: "e.g. Agents & MCP",
-	none: "No briefings yet. Subscribe to a topic below or make your own.",
+	newTitle: "New briefing",
+	none: "No briefings yet. Make one, or subscribe to a topic below.",
 	official: "Topic briefings",
-	officialBody: "One tap: all of a topic's sources, ten lines a day.",
+	officialBody:
+		"A whole topic, ten lines a day. Subscribing opens the form so you can set the hour.",
 	save: "Save",
+	scope: "Reads",
+	scopeAll: "Everything",
+	scopeFollowed: "Sources I follow",
+	scopeFollowedEmpty: "You are not following any source yet.",
+	scopeTopics: "Topics",
 	seoDescription:
-		"Your own daily digest: pick topics and keywords, get ten lines with citations.",
+		"Your own daily digest: pick what it reads and a few keywords, get ten lines with citations.",
 	sources: "sources",
 	subscribe: "Subscribe",
 	subscribed: "Subscribed",
 	title: "Briefings",
-	topics: "Topics",
+	webOnly: "On this page",
 };
 
 const ZH: Strings = {
-	deliverBody: "每天到点，把这份简报发到邮箱。",
-	deliverButton: "发给我",
-	deliverDone: "每天送达，",
+	cancel: "取消",
+	create: "新建简报",
+	deliverBody: "发到邮箱",
+	deliverButton: "开启推送",
+	deliverDone: "每天推送，",
 	deliverFailed: "订阅没成功，再试一次。",
 	deliverNotConfigured: "这个部署还没接邮件服务。",
-	deliverSignIn: "登录后可把简报发送到账号邮箱。",
+	deliverSignIn: "登录后可以每天发到账号邮箱。",
 	deliverStop: "停止",
-	deliverTitle: "邮件推送",
-	create: "新建简报",
-	custom: "定制我的简报",
-	customBody:
-		"选主题、写关键词、定时间。摘要只读这些主题的来源，只看提到你关键词的内容。",
 	delete: "删除",
-	deliveryNote: "可以在网页里看，也可以登录后每天发到账号邮箱。",
+	edit: "编辑",
+	editTitle: "编辑简报",
 	everyDay: "每天",
-	hour: "时间",
 	keywords: "关键词",
 	keywordsHint: "逗号分隔，最多 10 个；留空表示全部。",
 	matching: "命中的内容",
 	mine: "我的简报",
 	name: "名称",
 	namePlaceholder: "例如：Agent 与 MCP",
-	none: "还没有简报。订阅下面的主题简报，或者定制一份。",
+	newTitle: "新建简报",
+	none: "还没有简报。新建一份，或者订阅下面的主题简报。",
 	official: "主题简报",
-	officialBody: "一键订阅：一个主题的全部来源，每天 10 条。",
+	officialBody:
+		"一个主题的全部来源，每天 10 条。点订阅会打开表单，可以先定时间。",
 	save: "保存",
-	seoDescription: "你自己的每日简报：选主题和关键词，得到带引用的 10 条。",
+	scope: "读什么",
+	scopeAll: "全部主题",
+	scopeFollowed: "我关注的来源",
+	scopeFollowedEmpty: "你还没有关注任何来源。",
+	scopeTopics: "选主题",
+	seoDescription: "你自己的每日简报：选读什么和关键词，得到带引用的 10 条。",
 	sources: "个来源",
 	subscribe: "订阅",
 	subscribed: "已订阅",
 	title: "简报",
-	topics: "主题",
+	webOnly: "网页查看",
 };
 
 const ZH_HANT: Strings = {
 	...ZH,
-	deliverBody: "每天到點，把這份簡報寄到信箱。",
-	deliverButton: "寄給我",
-	deliverDone: "每天送達，",
+	cancel: "取消",
+	create: "新建簡報",
+	deliverBody: "寄到信箱",
+	deliverButton: "開啟推送",
+	deliverDone: "每天推送，",
 	deliverFailed: "訂閱沒成功，再試一次。",
 	deliverNotConfigured: "這個部署還沒接郵件服務。",
-	deliverSignIn: "登入後可把簡報寄到帳號信箱。",
+	deliverSignIn: "登入後可以每天寄到帳號信箱。",
 	deliverStop: "停止",
-	deliverTitle: "郵件推送",
-	create: "新建簡報",
-	custom: "定製我的簡報",
-	customBody:
-		"選主題、寫關鍵字、定時間。摘要只讀這些主題的來源，只看提到你關鍵字的內容。",
 	delete: "刪除",
-	deliveryNote: "可以在網頁裡看，也可以登入後每天寄到帳號信箱。",
-	hour: "時間",
+	edit: "編輯",
+	editTitle: "編輯簡報",
 	keywords: "關鍵字",
 	keywordsHint: "逗號分隔，最多 10 個；留空表示全部。",
 	matching: "命中的內容",
 	mine: "我的簡報",
 	name: "名稱",
 	namePlaceholder: "例如：Agent 與 MCP",
-	none: "還沒有簡報。訂閱下面的主題簡報，或者定製一份。",
+	newTitle: "新建簡報",
+	none: "還沒有簡報。新建一份，或者訂閱下面的主題簡報。",
 	official: "主題簡報",
-	officialBody: "一鍵訂閱：一個主題的全部來源，每天 10 則。",
-	seoDescription: "你自己的每日簡報：選主題和關鍵字，得到附引用的 10 則。",
+	officialBody:
+		"一個主題的全部來源，每天 10 則。點訂閱會打開表單，可以先定時間。",
+	save: "儲存",
+	scope: "讀什麼",
+	scopeAll: "全部主題",
+	scopeFollowed: "我關注的來源",
+	scopeFollowedEmpty: "你還沒有關注任何來源。",
+	scopeTopics: "選主題",
+	seoDescription: "你自己的每日簡報：選讀什麼和關鍵字，得到附引用的 10 則。",
 	sources: "個來源",
 	subscribe: "訂閱",
 	subscribed: "已訂閱",
 	title: "簡報",
-	topics: "主題",
+	webOnly: "網頁檢視",
 };
 
 const STRINGS: Partial<Record<Locale, Strings>> & { en: Strings } = {
@@ -229,136 +250,45 @@ function useBriefings() {
 	};
 }
 
-// Asks the API to mail the briefing daily; the returned id is kept on the
-// briefing so the reader can stop it from here too.
-function Delivery({
-	briefing,
-	onChange,
-	strings,
-}: {
-	briefing: Briefing;
-	onChange: (patch: Partial<Briefing>) => void;
-	strings: Strings;
-}) {
-	const locale = useLocale();
-	const session = authClient.useSession();
-	const [state, setState] = useState<
-		"idle" | "sending" | "failed" | "unconfigured"
-	>("idle");
-
-	async function subscribe() {
-		setState("sending");
-		try {
-			const response = await fetch(
-				`${env.VITE_SERVER_URL}/api/briefings/subscriptions`,
-				{
-					body: JSON.stringify({
-						hour: briefing.hour,
-						keywords: briefing.keywords,
-						lang: locale,
-						name: briefing.name,
-						sourceIds: briefing.sourceIds,
-						tzOffsetMinutes: -new Date().getTimezoneOffset(),
-					}),
-					credentials: "include",
-					headers: { "Content-Type": "application/json" },
-					method: "POST",
-				}
-			);
-			if (response.status === 503) {
-				setState("unconfigured");
-				return;
+async function createSubscription(
+	briefing: Briefing,
+	sourceIds: string[],
+	locale: string
+): Promise<{ id: string } | { error: "unconfigured" | "failed" }> {
+	try {
+		const response = await fetch(
+			`${env.VITE_SERVER_URL}/api/briefings/subscriptions`,
+			{
+				body: JSON.stringify({
+					hour: briefing.hour,
+					keywords: briefing.keywords,
+					lang: locale,
+					name: briefing.name,
+					sourceIds,
+					tzOffsetMinutes: -new Date().getTimezoneOffset(),
+				}),
+				credentials: "include",
+				headers: { "Content-Type": "application/json" },
+				method: "POST",
 			}
-			if (!response.ok) {
-				setState("failed");
-				return;
-			}
-			const { id } = (await response.json()) as { id: string };
-			onChange({ subscriptionId: id });
-			setState("idle");
-		} catch {
-			setState("failed");
+		);
+		if (response.status === 503) {
+			return { error: "unconfigured" };
 		}
-	}
-
-	async function stop() {
-		if (briefing.subscriptionId) {
-			await fetch(
-				`${env.VITE_SERVER_URL}/api/briefings/subscriptions/${briefing.subscriptionId}`,
-				{ credentials: "include", method: "DELETE" }
-			).catch(() => undefined);
+		if (!response.ok) {
+			return { error: "failed" };
 		}
-		onChange({ subscriptionId: undefined });
+		return (await response.json()) as { id: string };
+	} catch {
+		return { error: "failed" };
 	}
+}
 
-	if (briefing.subscriptionId) {
-		return (
-			<p className="flex flex-wrap items-center gap-2 text-[12px] text-[var(--text-secondary)]">
-				<span>
-					{strings.deliverDone} {String(briefing.hour).padStart(2, "0")}:00
-				</span>
-				<button
-					className="text-[var(--accent-blue)] hover:underline"
-					onClick={stop}
-					type="button"
-				>
-					{strings.deliverStop}
-				</button>
-			</p>
-		);
-	}
-	if (session.isPending) {
-		return (
-			<span className="inline-block h-7 w-44 animate-pulse bg-[var(--state-hover-subtle)]" />
-		);
-	}
-	if (!session.data?.user) {
-		return (
-			<p className="text-[12px] text-[var(--text-secondary)]">
-				{strings.deliverSignIn}{" "}
-				<Link
-					className="text-[var(--accent-blue)] hover:underline"
-					params={{ locale: localePathParam(locale) }}
-					to="/{-$locale}/login"
-				>
-					{strings.deliverButton}
-				</Link>
-			</p>
-		);
-	}
-	return (
-		<form
-			className="flex flex-wrap items-center gap-2"
-			onSubmit={(event) => {
-				event.preventDefault();
-				subscribe();
-			}}
-		>
-			<span className="text-[12px] text-[var(--text-muted)]">
-				{strings.deliverBody}
-			</span>
-			<span className="text-[12px] text-[var(--text-primary)]">
-				{session.data.user.email}
-			</span>
-			<button
-				className={BUTTON_CLASS}
-				disabled={state === "sending"}
-				type="submit"
-			>
-				{strings.deliverButton}
-			</button>
-			{state === "failed" ? (
-				<span className="text-[12px] text-[var(--accent-red)]">
-					{strings.deliverFailed}
-				</span>
-			) : null}
-			{state === "unconfigured" ? (
-				<span className="text-[12px] text-[var(--text-muted)]">
-					{strings.deliverNotConfigured}
-				</span>
-			) : null}
-		</form>
-	);
+async function deleteSubscription(id: string): Promise<void> {
+	await fetch(`${env.VITE_SERVER_URL}/api/briefings/subscriptions/${id}`, {
+		credentials: "include",
+		method: "DELETE",
+	}).catch(() => undefined);
 }
 
 export const Route = createFileRoute("/{-$locale}/briefings")({
@@ -381,6 +311,10 @@ const BUTTON_CLASS =
 	"inline-flex h-7 items-center gap-1.5 bg-[var(--accent-blue)] px-3 font-medium text-[12px] text-white transition-opacity hover:opacity-90 disabled:opacity-40";
 const GHOST_BUTTON_CLASS =
 	"inline-flex h-7 items-center gap-1.5 border border-[var(--border-default)] bg-[var(--surface-card)] px-2.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]";
+const CHIP_CLASS =
+	"inline-flex h-7 items-center border border-[var(--border-default)] bg-[var(--surface-card)] px-2.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] aria-pressed:border-[var(--accent-blue)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:text-[var(--accent-blue)] data-[active=true]:border-[var(--accent-blue)] data-[active=true]:bg-[var(--accent-blue-bg)] data-[active=true]:text-[var(--accent-blue)]";
+const TAG_CLASS =
+	"inline-flex h-5 items-center bg-[var(--accent-blue-bg)] px-1.5 font-medium text-[11px] text-[var(--accent-blue)]";
 
 function topicLabel(topic: TopicSummary, t: ReturnType<typeof useT>): string {
 	const key = `topic.${topic.id}` as TranslationKey;
@@ -388,50 +322,74 @@ function topicLabel(topic: TopicSummary, t: ReturnType<typeof useT>): string {
 	return translated === key ? topic.title : translated;
 }
 
+function scopeLabel(
+	briefing: Briefing,
+	topics: readonly TopicSummary[],
+	strings: Strings,
+	t: ReturnType<typeof useT>
+): string {
+	switch (briefingScope(briefing)) {
+		case "all":
+			return strings.scopeAll;
+		case "followed":
+			return strings.scopeFollowed;
+		default:
+			return (
+				briefing.topicIds
+					.map((id) => {
+						const topic = topics.find((entry) => entry.id === id);
+						return topic ? topicLabel(topic, t) : id;
+					})
+					.join(" · ") || strings.scopeTopics
+			);
+	}
+}
+
+interface FormValues {
+	hour: number;
+	keywords: string;
+	name: string;
+	scope: BriefingScope;
+	topicIds: string[];
+}
+
 function BriefingForm({
+	followedCount,
+	initial,
+	onCancel,
 	onSave,
 	strings,
+	title,
 	topics,
 }: {
-	onSave: (briefing: Briefing) => void;
+	followedCount: number;
+	initial: FormValues;
+	onCancel: () => void;
+	onSave: (values: FormValues) => void;
 	strings: Strings;
+	title: string;
 	topics: TopicSummary[];
 }) {
 	const t = useT();
-	const [name, setName] = useState("");
-	const [topicIds, setTopicIds] = useState<string[]>([]);
-	const [keywords, setKeywords] = useState("");
-	const [hour, setHour] = useState<number>(DEFAULT_HOUR);
-	const sourceIds = useMemo(
-		() => sourcesForTopics(topicIds, topics),
-		[topicIds, topics]
-	);
+	const [values, setValues] = useState<FormValues>(initial);
+	const keywords = parseKeywordInput(values.keywords);
+	const scopeLabels: Record<BriefingScope, string> = {
+		all: strings.scopeAll,
+		followed: strings.scopeFollowed,
+		topics: strings.scopeTopics,
+	};
+	const ready =
+		values.scope === "all" ||
+		(values.scope === "followed" && followedCount > 0) ||
+		(values.scope === "topics" && values.topicIds.length > 0);
 
 	function toggleTopic(id: string) {
-		setTopicIds((current) =>
-			current.includes(id)
-				? current.filter((value) => value !== id)
-				: [...current, id]
-		);
-	}
-
-	function save() {
-		const parsedKeywords = parseKeywordInput(keywords);
-		const fallbackName =
-			topicIds.map((id) => t(`topic.${id}` as TranslationKey)).join(" · ") ||
-			strings.custom;
-		onSave({
-			createdAt: Date.now(),
-			hour,
-			id: newBriefingId(),
-			keywords: parsedKeywords,
-			name: name.trim() || fallbackName,
-			sourceIds,
-			topicIds,
-		});
-		setName("");
-		setTopicIds([]);
-		setKeywords("");
+		setValues((current) => ({
+			...current,
+			topicIds: current.topicIds.includes(id)
+				? current.topicIds.filter((value) => value !== id)
+				: [...current.topicIds, id],
+		}));
 	}
 
 	return (
@@ -439,55 +397,97 @@ function BriefingForm({
 			className="space-y-4 border border-[var(--border-default)] bg-[var(--surface-card)] p-4"
 			onSubmit={(event) => {
 				event.preventDefault();
-				save();
+				onSave(values);
 			}}
 		>
+			<h2 className="font-semibold text-[14px] text-[var(--text-heading)]">
+				{title}
+			</h2>
 			<label className="block space-y-1 text-[12px] text-[var(--text-muted)]">
 				<span>{strings.name}</span>
 				<input
 					className={INPUT_CLASS}
-					onChange={(event) => setName(event.target.value)}
+					onChange={(event) =>
+						setValues((current) => ({ ...current, name: event.target.value }))
+					}
 					placeholder={strings.namePlaceholder}
-					value={name}
+					value={values.name}
 				/>
 			</label>
-			<fieldset className="space-y-1.5">
+			<fieldset className="space-y-2">
 				<legend className="text-[12px] text-[var(--text-muted)]">
-					{strings.topics}
+					{strings.scope}
 				</legend>
 				<div className="flex flex-wrap gap-1.5">
-					{topics.map((topic) => (
+					{SCOPES.map((scope) => (
 						<button
-							aria-pressed={topicIds.includes(topic.id)}
-							className="border border-[var(--border-default)] px-2.5 py-0.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:border-[var(--accent-blue)] aria-pressed:border-[var(--accent-blue)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:text-[var(--accent-blue)]"
-							key={topic.id}
-							onClick={() => toggleTopic(topic.id)}
+							aria-pressed={values.scope === scope}
+							className={CHIP_CLASS}
+							key={scope}
+							onClick={() => setValues((current) => ({ ...current, scope }))}
 							type="button"
 						>
-							{topicLabel(topic, t)}
+							{scopeLabels[scope]}
 						</button>
 					))}
 				</div>
-				<p className="text-[11px] text-[var(--text-muted)]">
-					{sourceIds.length} {strings.sources}
-				</p>
+				{values.scope === "topics" ? (
+					<div className="flex flex-wrap gap-1.5">
+						{topics.map((topic) => (
+							<button
+								aria-pressed={values.topicIds.includes(topic.id)}
+								className={CHIP_CLASS}
+								key={topic.id}
+								onClick={() => toggleTopic(topic.id)}
+								type="button"
+							>
+								{topicLabel(topic, t)}
+							</button>
+						))}
+					</div>
+				) : null}
+				{values.scope === "followed" && followedCount === 0 ? (
+					<p className="text-[12px] text-[var(--accent-red)]">
+						{strings.scopeFollowedEmpty}
+					</p>
+				) : null}
 			</fieldset>
 			<label className="block space-y-1 text-[12px] text-[var(--text-muted)]">
 				<span>{strings.keywords}</span>
 				<input
 					className={INPUT_CLASS}
-					onChange={(event) => setKeywords(event.target.value)}
+					onChange={(event) =>
+						setValues((current) => ({
+							...current,
+							keywords: event.target.value,
+						}))
+					}
 					placeholder="GPT-6, MCP, 具身"
-					value={keywords}
+					value={values.keywords}
 				/>
-				<span className="block text-[11px]">{strings.keywordsHint}</span>
+				{keywords.length > 0 ? (
+					<span className="flex flex-wrap gap-1 pt-1">
+						{keywords.map((keyword) => (
+							<span className={TAG_CLASS} key={keyword}>
+								{keyword}
+							</span>
+						))}
+					</span>
+				) : (
+					<span className="block text-[11px]">{strings.keywordsHint}</span>
+				)}
 			</label>
 			<label className="flex items-center gap-2 text-[12px] text-[var(--text-muted)]">
 				<span>{strings.everyDay}</span>
 				<select
-					className="border border-[var(--border-default)] bg-[var(--surface-app)] px-2 py-1 text-[13px] text-[var(--text-primary)]"
-					onChange={(event) => setHour(Number(event.target.value))}
-					value={hour}
+					className="h-7 border border-[var(--border-default)] bg-[var(--surface-app)] px-2 text-[13px] text-[var(--text-primary)]"
+					onChange={(event) =>
+						setValues((current) => ({
+							...current,
+							hour: Number(event.target.value),
+						}))
+					}
+					value={values.hour}
 				>
 					{HOURS.map((value) => (
 						<option key={value} value={value}>
@@ -495,33 +495,135 @@ function BriefingForm({
 						</option>
 					))}
 				</select>
-				<span className="text-[11px]">{strings.deliveryNote}</span>
 			</label>
+			<div className="flex items-center gap-2">
+				<button className={BUTTON_CLASS} disabled={!ready} type="submit">
+					{strings.save}
+				</button>
+				<button className={GHOST_BUTTON_CLASS} onClick={onCancel} type="button">
+					{strings.cancel}
+				</button>
+			</div>
+		</form>
+	);
+}
+
+// Mail delivery for one briefing. Only a signed-in reader can ask, and only
+// to the account address; the server refuses anything else.
+function Delivery({
+	briefing,
+	onChange,
+	sourceIds,
+	strings,
+}: {
+	briefing: Briefing;
+	onChange: (patch: Partial<Briefing>) => void;
+	sourceIds: string[];
+	strings: Strings;
+}) {
+	const locale = useLocale();
+	const session = authClient.useSession();
+	const [state, setState] = useState<
+		"idle" | "sending" | "failed" | "unconfigured"
+	>("idle");
+
+	async function subscribe() {
+		setState("sending");
+		const result = await createSubscription(briefing, sourceIds, locale);
+		if ("error" in result) {
+			setState(result.error);
+			return;
+		}
+		onChange({ subscriptionId: result.id });
+		setState("idle");
+	}
+
+	async function stop() {
+		if (briefing.subscriptionId) {
+			await deleteSubscription(briefing.subscriptionId);
+		}
+		onChange({ subscriptionId: undefined });
+	}
+
+	if (briefing.subscriptionId) {
+		return (
+			<span className="inline-flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
+				<span>
+					{strings.deliverDone} {String(briefing.hour).padStart(2, "0")}:00
+				</span>
+				<button
+					className="text-[var(--accent-blue)] hover:underline"
+					onClick={stop}
+					type="button"
+				>
+					{strings.deliverStop}
+				</button>
+			</span>
+		);
+	}
+	if (session.isPending) {
+		return (
+			<span className="inline-block h-7 w-44 animate-pulse bg-[var(--state-hover-subtle)]" />
+		);
+	}
+	if (!session.data?.user) {
+		return (
+			<span className="text-[12px] text-[var(--text-secondary)]">
+				{strings.webOnly} · {strings.deliverSignIn}{" "}
+				<Link
+					className="text-[var(--accent-blue)] hover:underline"
+					params={{ locale: localePathParam(locale) }}
+					to="/{-$locale}/login"
+				>
+					{strings.deliverButton}
+				</Link>
+			</span>
+		);
+	}
+	return (
+		<span className="inline-flex flex-wrap items-center gap-2 text-[12px]">
+			<span className="text-[var(--text-muted)]">{strings.deliverBody}</span>
+			<span className="text-[var(--text-primary)]">
+				{session.data.user.email}
+			</span>
 			<button
 				className={BUTTON_CLASS}
-				disabled={sourceIds.length === 0}
-				type="submit"
+				disabled={state === "sending"}
+				onClick={subscribe}
+				type="button"
 			>
-				<Plus className="size-3.5" />
-				{strings.save}
+				{strings.deliverButton}
 			</button>
-		</form>
+			{state === "failed" ? (
+				<span className="text-[var(--accent-red)]">
+					{strings.deliverFailed}
+				</span>
+			) : null}
+			{state === "unconfigured" ? (
+				<span className="text-[var(--text-muted)]">
+					{strings.deliverNotConfigured}
+				</span>
+			) : null}
+		</span>
 	);
 }
 
 // The briefing itself: its digest, then the items that matched.
 function BriefingView({
 	briefing,
+	sourceIds,
 	strings,
 }: {
 	briefing: Briefing;
+	sourceIds: string[];
 	strings: Strings;
 }) {
 	const locale = useLocale();
 	const t = useT();
-	const page = useQuery(
-		trendsPageQueryOptions("mine", locale, briefing.sourceIds)
-	);
+	const page = useQuery({
+		...trendsPageQueryOptions("mine", locale, sourceIds),
+		enabled: sourceIds.length > 0,
+	});
 	const items = useMemo(() => {
 		if (!page.data) {
 			return [];
@@ -549,11 +651,11 @@ function BriefingView({
 
 	if (!page.data) {
 		return (
-			<div className="h-10 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)]" />
+			<div className="h-10 border border-[var(--border-default)] bg-[var(--surface-sidebar)]" />
 		);
 	}
 	return (
-		<div className="overflow-hidden border border-[var(--border-default)]">
+		<div className="border border-[var(--border-default)]">
 			<TrendsSummary
 				collapsed={false}
 				keywords={briefing.keywords}
@@ -592,46 +694,150 @@ function BriefingView({
 	);
 }
 
+type FormState =
+	| { kind: "closed" }
+	| { kind: "new"; initial: FormValues }
+	| { kind: "edit"; id: string; initial: FormValues };
+
 function BriefingsRoute() {
 	const params = Route.useParams();
 	const locale = resolveLocale(params.locale);
 	const strings = getStrings(locale);
 	const t = useT();
 	const topics = useQuery(topicsQueryOptions);
+	const topicList = topics.data?.topics ?? [];
+	const { followedIds } = useFollowedSources();
 	const { add, briefings, remove, update } = useBriefings();
 	const [openId, setOpenId] = useState<string | null>(null);
-	const [creating, setCreating] = useState(false);
+	const [form, setForm] = useState<FormState>({ kind: "closed" });
 	const open = briefings.find((b) => b.id === openId) ?? briefings[0];
+	const openSources = open
+		? resolveBriefingSources(open, topicList, followedIds)
+		: [];
 	const subscribedTopics = new Set(
 		briefings
-			.filter((b) => b.keywords.length === 0 && b.topicIds.length === 1)
+			.filter(
+				(b) =>
+					briefingScope(b) === "topics" &&
+					b.keywords.length === 0 &&
+					b.topicIds.length === 1
+			)
 			.map((b) => b.topicIds[0])
 	);
 
-	function subscribeTopic(topic: TopicSummary) {
-		add({
-			createdAt: Date.now(),
+	function blankForm(overrides: Partial<FormValues> = {}): FormValues {
+		return {
 			hour: DEFAULT_HOUR,
-			id: newBriefingId(),
-			keywords: [],
-			name: topicLabel(topic, t),
-			sourceIds: topic.sourceIds,
-			topicIds: [topic.id],
+			keywords: "",
+			name: "",
+			scope: "topics",
+			topicIds: [],
+			...overrides,
+		};
+	}
+
+	function save(values: FormValues) {
+		const keywords = parseKeywordInput(values.keywords);
+		const topicIds = values.scope === "topics" ? values.topicIds : [];
+		const scopeNames: Record<BriefingScope, string> = {
+			all: strings.scopeAll,
+			followed: strings.scopeFollowed,
+			topics: topicIds
+				.map((id) => t(`topic.${id}` as TranslationKey))
+				.join(" · "),
+		};
+		const scopeName = scopeNames[values.scope];
+		const fields = {
+			hour: values.hour,
+			keywords,
+			name: values.name.trim() || scopeName,
+			scope: values.scope,
+			sourceIds: resolveBriefingSources(
+				{
+					createdAt: 0,
+					hour: values.hour,
+					id: "",
+					keywords,
+					name: "",
+					scope: values.scope,
+					sourceIds: [],
+					topicIds,
+				},
+				topicList,
+				followedIds
+			),
+			topicIds,
+		};
+		if (form.kind === "edit") {
+			const existing = briefings.find((b) => b.id === form.id);
+			// A mailed briefing is re-registered with its new shape.
+			if (existing?.subscriptionId) {
+				const previous = existing.subscriptionId;
+				createSubscription(
+					{ ...existing, ...fields },
+					fields.sourceIds,
+					locale
+				).then((result) => {
+					deleteSubscription(previous);
+					update(form.id, {
+						subscriptionId: "error" in result ? undefined : result.id,
+					});
+				});
+			}
+			update(form.id, fields);
+			setOpenId(form.id);
+		} else {
+			const briefing: Briefing = {
+				...fields,
+				createdAt: Date.now(),
+				id: newBriefingId(),
+			};
+			add(briefing);
+			setOpenId(briefing.id);
+		}
+		setForm({ kind: "closed" });
+	}
+
+	function startEdit(briefing: Briefing) {
+		setForm({
+			id: briefing.id,
+			initial: {
+				hour: briefing.hour,
+				keywords: briefing.keywords.join(", "),
+				name: briefing.name,
+				scope: briefingScope(briefing),
+				topicIds: briefing.topicIds,
+			},
+			kind: "edit",
 		});
+	}
+
+	async function removeBriefing(briefing: Briefing) {
+		if (briefing.subscriptionId) {
+			await deleteSubscription(briefing.subscriptionId);
+		}
+		remove(briefing.id);
+		if (form.kind === "edit" && form.id === briefing.id) {
+			setForm({ kind: "closed" });
+		}
 	}
 
 	return (
 		<ScrollArea className="min-w-0 flex-1 bg-[var(--surface-sidebar)] text-[var(--text-primary)]">
-			<div className="mx-auto w-full max-w-4xl space-y-8 p-6 sm:p-10">
-				<header className="flex items-end justify-between gap-4">
-					<div>
-						<h1 className="font-bold text-2xl text-[var(--text-heading)] tracking-tight">
-							{strings.mine}
-						</h1>
-					</div>
+			<div className="mx-auto w-full max-w-4xl space-y-6 p-6 sm:p-10">
+				<header className="flex items-center justify-between gap-4">
+					<h1 className="font-bold text-2xl text-[var(--text-heading)] tracking-tight">
+						{strings.mine}
+					</h1>
 					<button
 						className={GHOST_BUTTON_CLASS}
-						onClick={() => setCreating((value) => !value)}
+						onClick={() =>
+							setForm(
+								form.kind === "new"
+									? { kind: "closed" }
+									: { initial: blankForm(), kind: "new" }
+							)
+						}
 						type="button"
 					>
 						<Plus className="size-3.5" />
@@ -639,24 +845,17 @@ function BriefingsRoute() {
 					</button>
 				</header>
 
-				{creating && topics.data ? (
-					<section className="space-y-2">
-						<h2 className="font-semibold text-[15px] text-[var(--text-heading)]">
-							{strings.custom}
-						</h2>
-						<p className="text-[13px] text-[var(--text-secondary)]">
-							{strings.customBody}
-						</p>
-						<BriefingForm
-							onSave={(briefing) => {
-								add(briefing);
-								setOpenId(briefing.id);
-								setCreating(false);
-							}}
-							strings={strings}
-							topics={topics.data.topics}
-						/>
-					</section>
+				{form.kind !== "closed" && topics.data ? (
+					<BriefingForm
+						followedCount={followedIds.length}
+						initial={form.initial}
+						key={form.kind === "edit" ? form.id : "new"}
+						onCancel={() => setForm({ kind: "closed" })}
+						onSave={save}
+						strings={strings}
+						title={form.kind === "edit" ? strings.editTitle : strings.newTitle}
+						topics={topics.data.topics}
+					/>
 				) : null}
 
 				{briefings.length === 0 ? (
@@ -664,13 +863,16 @@ function BriefingsRoute() {
 						{strings.none}
 					</p>
 				) : (
-					<div className="space-y-4">
+					<section className="space-y-3">
 						<div className="flex flex-wrap gap-1.5">
 							{briefings.map((briefing) => (
-								<span className="inline-flex items-center" key={briefing.id}>
+								<span
+									className={`${CHIP_CLASS} gap-1 pr-1`}
+									data-active={open?.id === briefing.id}
+									key={briefing.id}
+								>
 									<button
-										aria-pressed={open?.id === briefing.id}
-										className="border border-[var(--border-default)] px-3 py-1 text-[13px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] aria-pressed:border-[var(--accent-blue)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:text-[var(--accent-blue)]"
+										className="inline-flex h-full items-center"
 										onClick={() => setOpenId(briefing.id)}
 										type="button"
 									>
@@ -678,34 +880,72 @@ function BriefingsRoute() {
 									</button>
 									<button
 										aria-label={strings.delete}
-										className="border border-[var(--border-default)] border-l-0 px-2 py-1 text-[var(--text-muted)] transition-colors hover:text-[var(--accent-red)]"
-										onClick={() => remove(briefing.id)}
+										className="inline-flex size-5 items-center justify-center text-[var(--text-muted)] hover:text-[var(--accent-red)]"
+										onClick={() => removeBriefing(briefing)}
 										title={strings.delete}
 										type="button"
 									>
-										<Trash2 className="size-3.5" />
+										<X className="size-3" />
 									</button>
 								</span>
 							))}
 						</div>
 						{open ? (
 							<>
-								<p className="text-[12px] text-[var(--text-muted)]">
-									{strings.everyDay} {String(open.hour).padStart(2, "0")}:00 ·{" "}
-									{open.sourceIds.length} {strings.sources}
-									{open.keywords.length > 0
-										? ` · ${open.keywords.join(", ")}`
-										: ""}
-								</p>
+								<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] text-[var(--text-muted)]">
+									<span>{scopeLabel(open, topicList, strings, t)}</span>
+									<span>
+										{openSources.length} {strings.sources}
+									</span>
+									{open.keywords.length > 0 ? (
+										<span className="flex flex-wrap gap-1">
+											{open.keywords.map((keyword) => (
+												<span className={TAG_CLASS} key={keyword}>
+													{keyword}
+												</span>
+											))}
+										</span>
+									) : null}
+									<span>
+										{strings.everyDay} {String(open.hour).padStart(2, "0")}:00
+									</span>
+									<button
+										className="inline-flex items-center gap-1 text-[var(--accent-blue)] hover:underline"
+										onClick={() => startEdit(open)}
+										type="button"
+									>
+										<Pencil className="size-3" />
+										{strings.edit}
+									</button>
+									<button
+										className="inline-flex items-center gap-1 text-[var(--text-muted)] hover:text-[var(--accent-red)]"
+										onClick={() => removeBriefing(open)}
+										type="button"
+									>
+										<Trash2 className="size-3" />
+										{strings.delete}
+									</button>
+								</div>
 								<Delivery
 									briefing={open}
 									onChange={(patch) => update(open.id, patch)}
+									sourceIds={openSources}
 									strings={strings}
 								/>
-								<BriefingView briefing={open} strings={strings} />
+								{openSources.length > 0 ? (
+									<BriefingView
+										briefing={open}
+										sourceIds={openSources}
+										strings={strings}
+									/>
+								) : (
+									<p className="text-[12px] text-[var(--accent-red)]">
+										{strings.scopeFollowedEmpty}
+									</p>
+								)}
 							</>
 						) : null}
-					</div>
+					</section>
 				)}
 
 				<section className="space-y-3">
@@ -716,7 +956,7 @@ function BriefingsRoute() {
 						{strings.officialBody}
 					</p>
 					<ul className="grid grid-cols-1 gap-px border border-[var(--border-default)] bg-[var(--border-subtle)] sm:grid-cols-2 lg:grid-cols-3">
-						{(topics.data?.topics ?? []).map((topic) => {
+						{topicList.map((topic) => {
 							const done = subscribedTopics.has(topic.id);
 							return (
 								<li
@@ -727,20 +967,22 @@ function BriefingsRoute() {
 										<span className="block font-semibold text-[13px] text-[var(--text-heading)]">
 											{topicLabel(topic, t)}
 										</span>
-										{locale === "en" && topic.description ? (
-											<span className="block text-[12px] text-[var(--text-secondary)]">
-												{topic.description}
-											</span>
-										) : null}
 										<span className="block text-[11px] text-[var(--text-muted)]">
-											{topic.sourceIds.length} {strings.sources} ·{" "}
-											{strings.everyDay} 08:00
+											{topic.sourceIds.length} {strings.sources}
 										</span>
 									</span>
 									<button
 										className={done ? GHOST_BUTTON_CLASS : BUTTON_CLASS}
 										disabled={done}
-										onClick={() => subscribeTopic(topic)}
+										onClick={() =>
+											setForm({
+												initial: blankForm({
+													name: topicLabel(topic, t),
+													topicIds: [topic.id],
+												}),
+												kind: "new",
+											})
+										}
 										type="button"
 									>
 										{done ? strings.subscribed : strings.subscribe}

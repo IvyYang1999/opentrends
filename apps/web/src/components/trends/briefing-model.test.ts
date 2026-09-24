@@ -66,3 +66,30 @@ describe("briefing model", () => {
 		]);
 	});
 });
+
+describe("resolveBriefingSources", () => {
+	test("reads the scope live", async () => {
+		const { resolveBriefingSources } = await import("./briefing-model");
+		const topics = [
+			{ id: "ai", sourceIds: ["a", "b"], title: "AI" },
+			{ id: "cn", sourceIds: ["c"], title: "CN" },
+		];
+		const base = {
+			createdAt: 0,
+			hour: 8,
+			id: "x",
+			keywords: [],
+			name: "n",
+			sourceIds: ["old"],
+			topicIds: ["ai"],
+		};
+		expect(
+			resolveBriefingSources({ ...base, scope: "all" }, topics, ["f"])
+		).toEqual(["a", "b", "c"]);
+		expect(
+			resolveBriefingSources({ ...base, scope: "followed" }, topics, ["f"])
+		).toEqual(["f"]);
+		expect(resolveBriefingSources(base, topics, ["f"])).toEqual(["a", "b"]);
+		expect(resolveBriefingSources(base, [], ["f"])).toEqual(["old"]);
+	});
+});
