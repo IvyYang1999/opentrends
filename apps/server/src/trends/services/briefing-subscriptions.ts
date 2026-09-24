@@ -263,6 +263,45 @@ export function renderBriefingEmail(params: {
 	return { html, subject, text };
 }
 
+// Builds the digest for a subscription's sources and keywords and hands
+// the mail to the provider. Shared by the daily tick and "send it now".
+async function composeAndSend(
+	subscription: BriefingSubscription,
+	day: string
+): Promise<"sent" | "empty"> {
+	const prepared = await prepareTrendsSummary("mine", subscription.lang, {
+		keywords: subscription.keywords,
+		sourceIds: subscription.sourceIds,
+		window: "today",
+	});
+	let markdown = "";
+	for await (const chunk of prepared.stream(new AbortController().signal)) {
+		markdown += chunk;
+	}
+	const entries = parseDigestEntries(markdown, prepared.citations);
+	if (entries.length === 0) {
+		return "empty";
+	}
+	const unsubscribeUrl = `${env.BETTER_AUTH_URL}/api/briefings/unsubscribe/${subscription.id}`;
+	const message = renderBriefingEmail({
+		day,
+		entries,
+		name: subscription.name,
+		unsubscribeUrl,
+	});
+	await sendEmail({
+		...message,
+		messageId: briefingMessageId({
+			day,
+			from: env.EMAIL_FROM ?? "",
+			subscriptionId: subscription.id,
+		}),
+		to: subscription.email,
+		unsubscribeUrl,
+	});
+	return "sent";
+}
+
 async function deliver(
 	subscription: BriefingSubscription,
 	day: string
@@ -285,17 +324,8 @@ async function deliver(
 		throw new Error("Could not reserve briefing delivery.");
 	}
 	try {
-		const prepared = await prepareTrendsSummary("mine", subscription.lang, {
-			keywords: subscription.keywords,
-			sourceIds: subscription.sourceIds,
-			window: "today",
-		});
-		let markdown = "";
-		for await (const chunk of prepared.stream(new AbortController().signal)) {
-			markdown += chunk;
-		}
-		const entries = parseDigestEntries(markdown, prepared.citations);
-		if (entries.length === 0) {
+		const outcome = await composeAndSend(subscription, day);
+		if (outcome === "empty") {
 			await writeDeliveryMarker(markerKey, {
 				attempts,
 				state: "sent",
@@ -303,23 +333,6 @@ async function deliver(
 			});
 			return "already-sent";
 		}
-		const unsubscribeUrl = `${env.BETTER_AUTH_URL}/api/briefings/unsubscribe/${subscription.id}`;
-		const message = renderBriefingEmail({
-			day,
-			entries,
-			name: subscription.name,
-			unsubscribeUrl,
-		});
-		await sendEmail({
-			...message,
-			messageId: briefingMessageId({
-				day,
-				from: env.EMAIL_FROM ?? "",
-				subscriptionId: subscription.id,
-			}),
-			to: subscription.email,
-			unsubscribeUrl,
-		});
 		// The provider has already accepted the message. A marker write failure
 		// must not turn that success into a retry and send the same digest twice.
 		await writeDeliveryMarker(markerKey, {
@@ -386,4 +399,15 @@ export async function runBriefingDeliveryTick(now: number): Promise<number> {
 		}
 	}
 	return sent;
+}
+
+// A single immediate send, outside the daily marker: for the reader who
+// wants to see what the mail looks like right now.
+export function sendSubscriptionNow(
+	subscription: BriefingSubscription
+): Promise<"sent" | "empty"> {
+	return composeAndSend(
+		subscription,
+		dayKey(Date.now(), subscription.tzOffsetMinutes)
+	);
 }

@@ -2,7 +2,7 @@ import { env } from "@opentrends/env/web";
 import { ScrollArea } from "@opentrends/ui/components/scroll-area";
 import { queryOptions, useQuery } from "@tanstack/react-query";
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { Pencil, Plus, Trash2, X } from "lucide-react";
+import { Pencil, Plus, Send, Trash2, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import {
@@ -60,6 +60,7 @@ interface Strings {
 	everyDay: string;
 	keywords: string;
 	keywordsHint: string;
+	loading: string;
 	matching: string;
 	mine: string;
 	name: string;
@@ -68,12 +69,21 @@ interface Strings {
 	none: string;
 	official: string;
 	officialBody: string;
+	ruleDelivery: string;
+	ruleHour: string;
+	ruleKeywords: string;
+	ruleScope: string;
+	rules: string;
 	save: string;
 	scope: string;
 	scopeAll: string;
 	scopeFollowed: string;
 	scopeFollowedEmpty: string;
 	scopeTopics: string;
+	sendNow: string;
+	sendNowDone: string;
+	sendNowEmpty: string;
+	sendNowFailed: string;
 	seoDescription: string;
 	sources: string;
 	subscribe: string;
@@ -92,6 +102,16 @@ const EN: Strings = {
 	deliverNotConfigured: "Mail delivery is not set up on this deployment yet.",
 	deliverSignIn: "Sign in to have it mailed to your account address.",
 	deliverStop: "Stop",
+	sendNow: "Send one now",
+	sendNowDone: "Sent. Check your inbox.",
+	sendNowEmpty: "Nothing to send today yet.",
+	sendNowFailed: "Could not send; try again.",
+	rules: "Rules",
+	ruleScope: "Scope",
+	ruleKeywords: "Keywords",
+	ruleHour: "Time",
+	ruleDelivery: "Delivery",
+	loading: "Building the briefing…",
 	delete: "Delete",
 	edit: "Edit",
 	editTitle: "Edit briefing",
@@ -132,6 +152,16 @@ const ZH: Strings = {
 	deliverNotConfigured: "这个部署还没接邮件服务。",
 	deliverSignIn: "登录后可以每天发到账号邮箱。",
 	deliverStop: "停止",
+	sendNow: "现在发一封",
+	sendNowDone: "已发送，去邮箱看看。",
+	sendNowEmpty: "今天还没有可发的内容。",
+	sendNowFailed: "发送失败，再试一次。",
+	rules: "规则",
+	ruleScope: "范围",
+	ruleKeywords: "关键词",
+	ruleHour: "时间",
+	ruleDelivery: "投递",
+	loading: "正在生成简报…",
 	delete: "删除",
 	edit: "编辑",
 	editTitle: "编辑简报",
@@ -172,6 +202,16 @@ const ZH_HANT: Strings = {
 	deliverNotConfigured: "這個部署還沒接郵件服務。",
 	deliverSignIn: "登入後可以每天寄到帳號信箱。",
 	deliverStop: "停止",
+	sendNow: "現在發一封",
+	sendNowDone: "已寄出，去信箱看看。",
+	sendNowEmpty: "今天還沒有可寄的內容。",
+	sendNowFailed: "寄送失敗，再試一次。",
+	rules: "規則",
+	ruleScope: "範圍",
+	ruleKeywords: "關鍵字",
+	ruleHour: "時間",
+	ruleDelivery: "投遞",
+	loading: "正在產生簡報…",
 	delete: "刪除",
 	edit: "編輯",
 	editTitle: "編輯簡報",
@@ -284,6 +324,24 @@ async function createSubscription(
 	}
 }
 
+async function sendSubscriptionNow(
+	id: string
+): Promise<"sent" | "empty" | "failed"> {
+	try {
+		const response = await fetch(
+			`${env.VITE_SERVER_URL}/api/briefings/subscriptions/${id}/send`,
+			{ credentials: "include", method: "POST" }
+		);
+		if (!response.ok) {
+			return "failed";
+		}
+		const body = (await response.json()) as { outcome: "sent" | "empty" };
+		return body.outcome;
+	} catch {
+		return "failed";
+	}
+}
+
 async function deleteSubscription(id: string): Promise<void> {
 	await fetch(`${env.VITE_SERVER_URL}/api/briefings/subscriptions/${id}`, {
 		credentials: "include",
@@ -312,9 +370,12 @@ const BUTTON_CLASS =
 const GHOST_BUTTON_CLASS =
 	"inline-flex h-7 items-center gap-1.5 border border-[var(--border-default)] bg-[var(--surface-card)] px-2.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:bg-[var(--state-hover-subtle)] hover:text-[var(--text-primary)]";
 const CHIP_CLASS =
-	"inline-flex h-7 items-center border border-[var(--border-default)] bg-[var(--surface-card)] px-2.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] aria-pressed:border-[var(--accent-blue)] aria-pressed:bg-[var(--accent-blue-bg)] aria-pressed:text-[var(--accent-blue)] data-[active=true]:border-[var(--accent-blue)] data-[active=true]:bg-[var(--accent-blue-bg)] data-[active=true]:text-[var(--accent-blue)]";
+	"inline-flex h-7 items-center border border-[var(--border-default)] bg-[var(--surface-card)] px-2.5 text-[12px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] aria-pressed:border-[var(--text-heading)] aria-pressed:bg-[var(--text-heading)] aria-pressed:text-[var(--surface-app)]";
+// The briefing list: a tab strip. The open one is the dark tab.
+const TAB_CLASS =
+	"group inline-flex h-8 items-stretch border border-[var(--border-default)] bg-[var(--surface-card)] text-[13px] text-[var(--text-secondary)] transition-colors hover:text-[var(--text-primary)] data-[active=true]:border-[var(--text-heading)] data-[active=true]:bg-[var(--text-heading)] data-[active=true]:text-[var(--surface-app)]";
 const TAG_CLASS =
-	"inline-flex h-5 items-center bg-[var(--accent-blue-bg)] px-1.5 font-medium text-[11px] text-[var(--accent-blue)]";
+	"inline-flex h-6 items-center border border-[var(--accent-blue)]/40 bg-[var(--accent-blue-bg)] px-2 font-medium text-[12px] text-[var(--accent-blue)]";
 
 function topicLabel(topic: TopicSummary, t: ReturnType<typeof useT>): string {
 	const key = `topic.${topic.id}` as TranslationKey;
@@ -547,18 +608,12 @@ function Delivery({
 
 	if (briefing.subscriptionId) {
 		return (
-			<span className="inline-flex items-center gap-2 text-[12px] text-[var(--text-secondary)]">
-				<span>
-					{strings.deliverDone} {String(briefing.hour).padStart(2, "0")}:00
-				</span>
-				<button
-					className="text-[var(--accent-blue)] hover:underline"
-					onClick={stop}
-					type="button"
-				>
-					{strings.deliverStop}
-				</button>
-			</span>
+			<SubscribedDelivery
+				briefing={briefing}
+				onStop={stop}
+				strings={strings}
+				subscriptionId={briefing.subscriptionId}
+			/>
 		);
 	}
 	if (session.isPending) {
@@ -608,6 +663,104 @@ function Delivery({
 	);
 }
 
+function SubscribedDelivery({
+	briefing,
+	onStop,
+	strings,
+	subscriptionId,
+}: {
+	briefing: Briefing;
+	onStop: () => void;
+	strings: Strings;
+	subscriptionId: string;
+}) {
+	const [state, setState] = useState<
+		"idle" | "sending" | "sent" | "empty" | "failed"
+	>("idle");
+	async function sendNow() {
+		setState("sending");
+		setState(await sendSubscriptionNow(subscriptionId));
+	}
+	const note = {
+		empty: strings.sendNowEmpty,
+		failed: strings.sendNowFailed,
+		idle: "",
+		sending: "…",
+		sent: strings.sendNowDone,
+	}[state];
+	return (
+		<span className="inline-flex flex-wrap items-center gap-2 text-[12px] text-[var(--text-secondary)]">
+			<span>
+				{strings.deliverDone} {String(briefing.hour).padStart(2, "0")}:00
+			</span>
+			<button
+				className={GHOST_BUTTON_CLASS}
+				disabled={state === "sending"}
+				onClick={sendNow}
+				type="button"
+			>
+				<Send className="size-3" />
+				{strings.sendNow}
+			</button>
+			<button
+				className="text-[var(--text-muted)] hover:text-[var(--accent-red)]"
+				onClick={onStop}
+				type="button"
+			>
+				{strings.deliverStop}
+			</button>
+			{note ? (
+				<span
+					className={
+						state === "failed"
+							? "text-[var(--accent-red)]"
+							: "text-[var(--text-muted)]"
+					}
+				>
+					{note}
+				</span>
+			) : null}
+		</span>
+	);
+}
+
+// Stands in for the briefing while its page is built: the digest's rows,
+// then a few item rows, at the heights the real ones take.
+function BriefingSkeleton({ label }: { label: string }) {
+	return (
+		<div
+			aria-busy="true"
+			className="border border-[var(--border-default)]"
+			role="status"
+		>
+			<div className="space-y-2 bg-[var(--surface-card)] px-4 py-3">
+				<div className="flex items-center justify-between">
+					<span className="h-4 w-32 animate-pulse bg-[var(--state-hover-subtle)]" />
+					<span className="text-[11px] text-[var(--text-muted)]">{label}</span>
+				</div>
+				{[0, 1, 2, 3, 4].map((row) => (
+					<span
+						className="block h-[23px] animate-pulse bg-[var(--state-hover-subtle)]"
+						key={row}
+						style={{ width: `${88 - row * 7}%` }}
+					/>
+				))}
+			</div>
+			<ul className="divide-y divide-[var(--border-subtle)] border-[var(--border-default)] border-t bg-[var(--surface-card)]">
+				{[0, 1, 2, 3, 4, 5].map((row) => (
+					<li className="flex items-center gap-2 px-4 py-2" key={row}>
+						<span className="size-4 animate-pulse bg-[var(--state-hover-subtle)]" />
+						<span
+							className="h-4 animate-pulse bg-[var(--state-hover-subtle)]"
+							style={{ width: `${70 - (row % 3) * 12}%` }}
+						/>
+					</li>
+				))}
+			</ul>
+		</div>
+	);
+}
+
 // The briefing itself: its digest, then the items that matched.
 function BriefingView({
 	briefing,
@@ -650,9 +803,7 @@ function BriefingView({
 	}, [page.data, briefing.keywords]);
 
 	if (!page.data) {
-		return (
-			<div className="h-10 border border-[var(--border-default)] bg-[var(--surface-sidebar)]" />
-		);
+		return <BriefingSkeleton label={strings.loading} />;
 	}
 	return (
 		<div className="border border-[var(--border-default)]">
@@ -691,6 +842,114 @@ function BriefingView({
 				</ul>
 			</div>
 		</div>
+	);
+}
+
+// The open briefing: its rules, then the briefing itself.
+function OpenBriefing({
+	onChange,
+	onEdit,
+	onRemove,
+	open,
+	openSources,
+	strings,
+	topicList,
+	topicsLoaded,
+}: {
+	onChange: (patch: Partial<Briefing>) => void;
+	onEdit: (briefing: Briefing) => void;
+	onRemove: (briefing: Briefing) => void;
+	open: Briefing;
+	openSources: string[];
+	strings: Strings;
+	topicList: readonly TopicSummary[];
+	topicsLoaded: boolean;
+}) {
+	const t = useT();
+	return (
+		<>
+			<dl className="grid grid-cols-[auto_1fr] items-center gap-x-4 gap-y-2 border border-[var(--border-default)] bg-[var(--surface-card)] px-4 py-3 text-[13px] sm:grid-cols-[auto_1fr_auto_1fr]">
+				<dt className="text-[11px] text-[var(--text-muted)] uppercase tracking-wide">
+					{strings.ruleScope}
+				</dt>
+				<dd className="flex flex-wrap items-center gap-2 text-[var(--text-primary)]">
+					<span className="font-medium">
+						{scopeLabel(open, topicList, strings, t)}
+					</span>
+					{topicsLoaded ? (
+						<span className="text-[var(--text-muted)]">
+							{openSources.length} {strings.sources}
+						</span>
+					) : null}
+				</dd>
+				<dt className="text-[11px] text-[var(--text-muted)] uppercase tracking-wide">
+					{strings.ruleKeywords}
+				</dt>
+				<dd className="flex flex-wrap gap-1">
+					{open.keywords.length > 0 ? (
+						open.keywords.map((keyword) => (
+							<span className={TAG_CLASS} key={keyword}>
+								{keyword}
+							</span>
+						))
+					) : (
+						<span className="text-[var(--text-muted)]">
+							{strings.keywordsHint}
+						</span>
+					)}
+				</dd>
+				<dt className="text-[11px] text-[var(--text-muted)] uppercase tracking-wide">
+					{strings.ruleHour}
+				</dt>
+				<dd className="flex flex-wrap items-center gap-3 text-[var(--text-primary)]">
+					<span className="font-medium tabular-nums">
+						{strings.everyDay} {String(open.hour).padStart(2, "0")}:00
+					</span>
+					<button
+						className="inline-flex items-center gap-1 text-[12px] text-[var(--accent-blue)] hover:underline"
+						onClick={() => onEdit(open)}
+						type="button"
+					>
+						<Pencil className="size-3" />
+						{strings.edit}
+					</button>
+					<button
+						className="inline-flex items-center gap-1 text-[12px] text-[var(--text-muted)] hover:text-[var(--accent-red)]"
+						onClick={() => onRemove(open)}
+						type="button"
+					>
+						<Trash2 className="size-3" />
+						{strings.delete}
+					</button>
+				</dd>
+				<dt className="text-[11px] text-[var(--text-muted)] uppercase tracking-wide">
+					{strings.ruleDelivery}
+				</dt>
+				<dd>
+					<Delivery
+						briefing={open}
+						onChange={onChange}
+						sourceIds={openSources}
+						strings={strings}
+					/>
+				</dd>
+			</dl>
+			{openSources.length > 0 ? (
+				<BriefingView
+					briefing={open}
+					sourceIds={openSources}
+					strings={strings}
+				/>
+			) : null}
+			{openSources.length === 0 && !topicsLoaded ? (
+				<BriefingSkeleton label={strings.loading} />
+			) : null}
+			{openSources.length === 0 && topicsLoaded ? (
+				<p className="text-[12px] text-[var(--accent-red)]">
+					{strings.scopeFollowedEmpty}
+				</p>
+			) : null}
+		</>
 	);
 }
 
@@ -867,12 +1126,12 @@ function BriefingsRoute() {
 						<div className="flex flex-wrap gap-1.5">
 							{briefings.map((briefing) => (
 								<span
-									className={`${CHIP_CLASS} gap-1 pr-1`}
+									className={TAB_CLASS}
 									data-active={open?.id === briefing.id}
 									key={briefing.id}
 								>
 									<button
-										className="inline-flex h-full items-center"
+										className="inline-flex items-center pr-2 pl-3 font-medium"
 										onClick={() => setOpenId(briefing.id)}
 										type="button"
 									>
@@ -880,7 +1139,7 @@ function BriefingsRoute() {
 									</button>
 									<button
 										aria-label={strings.delete}
-										className="inline-flex size-5 items-center justify-center text-[var(--text-muted)] hover:text-[var(--accent-red)]"
+										className="inline-flex w-7 items-center justify-center border-current/20 border-l opacity-60 transition-opacity hover:opacity-100"
 										onClick={() => removeBriefing(briefing)}
 										title={strings.delete}
 										type="button"
@@ -891,59 +1150,16 @@ function BriefingsRoute() {
 							))}
 						</div>
 						{open ? (
-							<>
-								<div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[12px] text-[var(--text-muted)]">
-									<span>{scopeLabel(open, topicList, strings, t)}</span>
-									<span>
-										{openSources.length} {strings.sources}
-									</span>
-									{open.keywords.length > 0 ? (
-										<span className="flex flex-wrap gap-1">
-											{open.keywords.map((keyword) => (
-												<span className={TAG_CLASS} key={keyword}>
-													{keyword}
-												</span>
-											))}
-										</span>
-									) : null}
-									<span>
-										{strings.everyDay} {String(open.hour).padStart(2, "0")}:00
-									</span>
-									<button
-										className="inline-flex items-center gap-1 text-[var(--accent-blue)] hover:underline"
-										onClick={() => startEdit(open)}
-										type="button"
-									>
-										<Pencil className="size-3" />
-										{strings.edit}
-									</button>
-									<button
-										className="inline-flex items-center gap-1 text-[var(--text-muted)] hover:text-[var(--accent-red)]"
-										onClick={() => removeBriefing(open)}
-										type="button"
-									>
-										<Trash2 className="size-3" />
-										{strings.delete}
-									</button>
-								</div>
-								<Delivery
-									briefing={open}
-									onChange={(patch) => update(open.id, patch)}
-									sourceIds={openSources}
-									strings={strings}
-								/>
-								{openSources.length > 0 ? (
-									<BriefingView
-										briefing={open}
-										sourceIds={openSources}
-										strings={strings}
-									/>
-								) : (
-									<p className="text-[12px] text-[var(--accent-red)]">
-										{strings.scopeFollowedEmpty}
-									</p>
-								)}
-							</>
+							<OpenBriefing
+								onChange={(patch) => update(open.id, patch)}
+								onEdit={startEdit}
+								onRemove={removeBriefing}
+								open={open}
+								openSources={openSources}
+								strings={strings}
+								topicList={topicList}
+								topicsLoaded={Boolean(topics.data)}
+							/>
 						) : null}
 					</section>
 				)}

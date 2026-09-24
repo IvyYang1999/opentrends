@@ -1,14 +1,21 @@
 import { env } from "@opentrends/env/web";
 import { ChevronDown, ChevronUp, Share2 } from "lucide-react";
 import {
+	lazy,
 	type ReactNode,
+	Suspense,
 	useCallback,
 	useEffect,
 	useMemo,
 	useRef,
 	useState,
 } from "react";
-import { Streamdown } from "streamdown";
+
+// The streaming Markdown renderer is a large chunk and only a digest being
+// generated live needs it; finished digests are laid out by hand.
+const Streamdown = lazy(() =>
+	import("streamdown").then((module) => ({ default: module.Streamdown }))
+);
 
 import { segmentClassName } from "@/components/chrome-styles";
 import {
@@ -581,9 +588,11 @@ function SummaryBody({
 							)}
 						</ol>
 					) : (
-						<Streamdown key={contentKey} linkSafety={LINK_SAFETY}>
-							{linkified}
-						</Streamdown>
+						<Suspense fallback={<DigestSkeleton rows={DIGEST_FOLD} />}>
+							<Streamdown key={contentKey} linkSafety={LINK_SAFETY}>
+								{linkified}
+							</Streamdown>
+						</Suspense>
 					)}
 				</div>
 				{foldable ? (

@@ -5,6 +5,7 @@ import {
 	segmentActiveClassName,
 	segmentClassName,
 } from "@/components/chrome-styles";
+import { SHOW_CALENDAR_VIEW } from "@/lib/feature-flags";
 import { type Locale, useT } from "@/lib/i18n";
 
 import { FOLLOWED_TOPIC_ID } from "./followed-sources";
@@ -55,17 +56,19 @@ export function ViewSwitch({ localeParam, topicId, view }: ViewSwitchProps) {
 					{t("nav.events")}
 				</Link>
 			)}
-			<Link
-				className={cn(
-					segmentClassName,
-					view === "calendar" && segmentActiveClassName
-				)}
-				params={{ locale: localeParam }}
-				search={{ topic: topicId ?? "ai" }}
-				to="/{-$locale}/calendar"
-			>
-				{t("nav.calendar")}
-			</Link>
+			{SHOW_CALENDAR_VIEW || view === "calendar" ? (
+				<Link
+					className={cn(
+						segmentClassName,
+						view === "calendar" && segmentActiveClassName
+					)}
+					params={{ locale: localeParam }}
+					search={{ topic: topicId ?? "ai" }}
+					to="/{-$locale}/calendar"
+				>
+					{t("nav.calendar")}
+				</Link>
+			) : null}
 		</nav>
 	);
 }

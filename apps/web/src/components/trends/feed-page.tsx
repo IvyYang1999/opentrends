@@ -7,6 +7,7 @@ import {
 	segmentClassName,
 	toolButtonClassName,
 } from "@/components/chrome-styles";
+import { SHOW_CONTENT_KINDS } from "@/lib/feature-flags";
 import { localePathParam, useLocale, useT } from "@/lib/i18n";
 import { CONTENT_KINDS, type ContentKind, contentKind } from "./content-kind";
 import {
@@ -245,20 +246,22 @@ export function FeedPage({ topicId }: FeedPageProps) {
 					) : null}
 				</div>
 			</div>
-			<div className="flex flex-wrap gap-1 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-1.5 sm:px-4">
-				<KindChip active={kind === null} onClick={() => setKind(null)}>
-					{t("kind.all")}
-				</KindChip>
-				{CONTENT_KINDS.map((value) => (
-					<KindChip
-						active={kind === value}
-						key={value}
-						onClick={() => setKind(kind === value ? null : value)}
-					>
-						{t(`kind.${value}`)}
+			{SHOW_CONTENT_KINDS ? (
+				<div className="flex flex-wrap gap-1 border-[var(--border-default)] border-b bg-[var(--surface-sidebar)] px-3 py-1.5 sm:px-4">
+					<KindChip active={kind === null} onClick={() => setKind(null)}>
+						{t("kind.all")}
 					</KindChip>
-				))}
-			</div>
+					{CONTENT_KINDS.map((value) => (
+						<KindChip
+							active={kind === value}
+							key={value}
+							onClick={() => setKind(kind === value ? null : value)}
+						>
+							{t(`kind.${value}`)}
+						</KindChip>
+					))}
+				</div>
+			) : null}
 			{sourceManagerOpen && primary ? (
 				<SourceManagerDialog
 					hiddenSourceIds={hiddenSourceIds}
@@ -437,7 +440,7 @@ function FeedCard({
 				<span className="flex items-center gap-1.5 text-[11px] text-[var(--text-muted)]">
 					<SourceFavicon homeUrl={source.homeUrl} />
 					<span className="min-w-0 flex-1 truncate">{source.title}</span>
-					{kindLabel ? (
+					{SHOW_CONTENT_KINDS && kindLabel ? (
 						<span className="shrink-0 rounded-sm border border-[var(--border-subtle)] px-1 text-[10px] leading-4">
 							{kindLabel}
 						</span>

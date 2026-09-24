@@ -14,6 +14,7 @@ import {
 	newSubscriptionId,
 	readSubscription,
 	saveSubscription,
+	sendSubscriptionNow,
 } from "../trends/services/briefing-subscriptions";
 import { parseTzOffset } from "../trends/services/get-calendar";
 import { normalizeTranslationLanguage } from "../trends/services/translate-news-items";
@@ -126,6 +127,26 @@ export const briefingRoutes = new Hono()
 			return c.json({ error: "storage_unavailable" }, 503);
 		}
 		return c.json({ id: subscription.id }, 201);
+	})
+	.post("/subscriptions/:id/send", async (c) => {
+		if (!isEmailConfigured()) {
+			return c.json({ error: "email_not_configured" }, 503);
+		}
+		const user = await authenticatedUser(c.req.raw.headers);
+		if (!user) {
+			return c.json({ error: "authentication_required" }, 401);
+		}
+		const existing = await readSubscription(c.req.param("id"));
+		if (!existing || existing.userId !== user.id) {
+			return c.json({ error: "subscription_not_found" }, 404);
+		}
+		try {
+			const outcome = await sendSubscriptionNow(existing);
+			return c.json({ outcome });
+		} catch (error) {
+			console.warn("[briefings] send now failed", error);
+			return c.json({ error: "send_failed" }, 502);
+		}
 	})
 	.delete("/subscriptions/:id", async (c) => {
 		const user = await authenticatedUser(c.req.raw.headers);

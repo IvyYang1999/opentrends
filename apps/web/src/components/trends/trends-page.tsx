@@ -1154,6 +1154,33 @@ function SourceDragHandle({
 	);
 }
 
+// A card's viewport shows about a dozen rows; the rest of its queue is
+// added once the page is interactive, so the server sends and the browser
+// hydrates a third of the rows and the card still scrolls to the full list.
+const INITIAL_CARD_ROWS = 12;
+
+function useDeferredRows<T>(items: readonly T[]): readonly T[] {
+	const [all, setAll] = useState(items.length <= INITIAL_CARD_ROWS);
+	useEffect(() => {
+		if (all) {
+			return;
+		}
+		const idle = (
+			window as Window & {
+				requestIdleCallback?: (callback: () => void) => number;
+				cancelIdleCallback?: (handle: number) => void;
+			}
+		).requestIdleCallback;
+		if (idle) {
+			const handle = idle(() => setAll(true));
+			return () => window.cancelIdleCallback?.(handle);
+		}
+		const timer = window.setTimeout(() => setAll(true), 200);
+		return () => window.clearTimeout(timer);
+	}, [all]);
+	return all ? items : items.slice(0, INITIAL_CARD_ROWS);
+}
+
 function SourceCardBody({
 	source,
 	settings,
@@ -1167,20 +1194,16 @@ function SourceCardBody({
 	locale: Locale;
 	translationPending: boolean;
 }) {
-	const empty = <SourceEmptyContent source={source} t={t} />;
-
-	if (source.status === "error" && source.items.length === 0) {
-		return empty;
-	}
+	const items = useDeferredRows(source.items);
 
 	if (source.items.length === 0) {
-		return empty;
+		return <SourceEmptyContent source={source} t={t} />;
 	}
 
 	const ranking = isRankingSource(source);
 	return (
 		<ul className="flex flex-col divide-y divide-[var(--border-subtle)]">
-			{source.items.map((item) => (
+			{items.map((item) => (
 				<li key={item.id}>
 					<NewsRow
 						item={item}

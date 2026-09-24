@@ -7,6 +7,7 @@ import {
 } from "../cache/source-cache";
 import {
 	FOLLOWED_TOPIC_ID,
+	followedSourcesKey,
 	followedTopicPreset,
 } from "../config/followed-topic";
 import { getSourceKind, getSourcePreset } from "../config/sources";
@@ -512,19 +513,63 @@ function buildTrendsPage(
 
 // The followed-sources page is assembled per request from the reader's own
 // list and never enters the shared page caches.
-export function getFollowedSourcesPage(
+// A followed list's page is one reader's, but the same list (a whole
+// topic, a briefing's scope) is asked for again and again; it is kept for
+// a few minutes in memory and in KV so a briefing opens at once.
+const FOLLOWED_PAGE_FRESH_MS = 3 * 60_000;
+const followedPageCache = new Map<
+	string,
+	{ freshUntil: number; page: TrendsPageData }
+>();
+
+export async function getFollowedSourcesPage(
 	sourceIds: readonly SourceId[],
 	lang: TranslationLanguage = "en",
 	translationMode: TranslationMode = "background",
 	itemsPerSource = DEFAULT_TRENDS_ITEMS_PER_SOURCE
 ): Promise<TrendsPageData> {
-	return buildPageFromPreset(
+	const cacheable = translationMode === "background";
+	const key = `trends:v5:page:mine:${followedSourcesKey(sourceIds)}:${lang}:${itemsPerSource}`;
+	const now = Date.now();
+	if (cacheable) {
+		const memory = followedPageCache.get(key);
+		if (memory && memory.freshUntil > now) {
+			return memory.page;
+		}
+		const hot = await hotCache.get<TrendsPageData>(key).catch(() => null);
+		if (hot && hot.freshUntil > now) {
+			followedPageCache.set(key, {
+				freshUntil: hot.freshUntil,
+				page: hot.value,
+			});
+			return hot.value;
+		}
+	}
+	const page = await buildPageFromPreset(
 		FOLLOWED_TOPIC_ID,
 		followedTopicPreset(sourceIds),
 		lang,
 		translationMode,
 		itemsPerSource
 	);
+	if (cacheable) {
+		const freshUntil = now + FOLLOWED_PAGE_FRESH_MS;
+		followedPageCache.set(key, { freshUntil, page });
+		await hotCache
+			.put(
+				key,
+				{
+					createdAt: now,
+					freshUntil,
+					schemaVersion: TRENDS_PAGE_HOT_CACHE_SCHEMA_VERSION,
+					staleUntil: freshUntil,
+					value: page,
+				},
+				Math.ceil(FOLLOWED_PAGE_FRESH_MS / 1000) + 60
+			)
+			.catch(() => false);
+	}
+	return page;
 }
 
 async function buildPageFromPreset(
